@@ -754,8 +754,17 @@ export class HanaEngine {
   setSessionThinkingLevel(sessionPath, level) { return this._sessionCoord.setSessionThinkingLevel(sessionPath, level); }
   getSandbox() { return this._prefs.getSandbox(); }
   setSandbox(v) { this._prefs.setSandbox(v); }
-  getSandboxNetwork() { return this._prefs.getSandboxNetwork(); }
-  setSandboxNetwork(v) { this._prefs.setSandboxNetwork(v); }
+  getSandboxNetwork() {
+    if (process.platform === "win32") return true;
+    return this._prefs.getSandboxNetwork();
+  }
+  setSandboxNetwork(v) {
+    const enabled = typeof v === "string" ? v === "true" : !!v;
+    if (process.platform === "win32" && !enabled) {
+      throw new Error("Windows command sandbox does not support network isolation; sandboxed commands keep network access.");
+    }
+    this._prefs.setSandboxNetwork(enabled);
+  }
   getHardwareAcceleration() { return this._prefs.getHardwareAcceleration(); }
   setHardwareAcceleration(v) { this._prefs.setHardwareAcceleration(v); }
   getFileBackup() { return this._prefs.getFileBackup(); }
@@ -1492,7 +1501,9 @@ export class HanaEngine {
       hanakoHome: this.hanakoHome,
       executionBoundary,
       getSandboxEnabled: () => this._readPreferences().sandbox !== false,
-      getSandboxNetworkEnabled: () => this._readPreferences().sandbox_network !== false,
+      getSandboxNetworkEnabled: () => process.platform === "win32"
+        ? true
+        : this._readPreferences().sandbox_network !== false,
       getExternalReadPaths,
       getSessionPath,
       recordFileOperation: (entry) => this.registerSessionFile(entry),

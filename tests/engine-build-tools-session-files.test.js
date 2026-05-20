@@ -94,6 +94,64 @@ describe("HanaEngine.buildTools session external sandbox grants", () => {
     expect(sandboxOpts.getSandboxNetworkEnabled()).toBe(false);
   });
 
+  it("keeps Windows restricted-token command sandbox networking enabled at the tool boundary", () => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-engine-win32-sandbox-network-"));
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+
+    try {
+      const hanakoHome = path.join(tempRoot, "hana-home");
+      const agentDir = path.join(hanakoHome, "agents", "hana");
+      const workspace = path.join(tempRoot, "workspace");
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.mkdirSync(workspace, { recursive: true });
+
+      const engine = Object.create(HanaEngine.prototype);
+      engine.hanakoHome = hanakoHome;
+      engine.getAgent = vi.fn(() => ({ id: "hana", agentDir, tools: [] }));
+      engine._pluginManager = null;
+      engine._prefs = { getFileBackup: () => ({ enabled: false }) };
+      engine._readPreferences = () => ({ sandbox: true, sandbox_network: false });
+      engine._confirmStore = null;
+      engine._emitEvent = vi.fn();
+      engine.getSessionPermissionMode = vi.fn(() => "operate");
+      engine._agentMgr = { agent: { id: "hana", agentDir, tools: [] } };
+      engine.listSessionFiles = vi.fn(() => []);
+
+      engine.buildTools(workspace, [], {
+        agentDir,
+        workspace,
+        getSessionPath: () => path.join(agentDir, "sessions", "one.jsonl"),
+      });
+
+      const sandboxOpts = createSandboxedTools.mock.calls[0][2];
+      expect(sandboxOpts.getSandboxNetworkEnabled()).toBe(true);
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    }
+  });
+
+  it("rejects disabling sandbox networking through HanaEngine on Windows", () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+
+    try {
+      const engine = Object.create(HanaEngine.prototype);
+      engine._prefs = {
+        getSandboxNetwork: vi.fn(() => false),
+        setSandboxNetwork: vi.fn(),
+      };
+
+      expect(engine.getSandboxNetwork()).toBe(true);
+      expect(() => engine.setSandboxNetwork(false)).toThrow("does not support network isolation");
+      expect(engine._prefs.setSandboxNetwork).not.toHaveBeenCalled();
+      engine.setSandboxNetwork(true);
+      expect(engine._prefs.setSandboxNetwork).toHaveBeenCalledWith(true);
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    }
+  });
+
   it("defaults sandbox networking to enabled when the preference has not been written yet", () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-engine-sandbox-network-default-"));
     const hanakoHome = path.join(tempRoot, "hana-home");

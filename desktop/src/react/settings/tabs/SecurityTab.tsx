@@ -69,11 +69,14 @@ function normalizeNetworkProxyDraft(value: Partial<NetworkProxyConfig> | null | 
 
 export function SecurityTab() {
   const settingsConfig = useSettingsStore(s => s.settingsConfig);
+  const platformName = useSettingsStore(s => s.platformName);
   const showToast = useSettingsStore(s => s.showToast);
   // 默认开（!== false）：和后端 preferences-manager.getSandboxNetwork / engine.getSandboxNetwork 保持一致。
   // 见 core/preferences-manager.js:86 和 commit 51ecc435。
   const sandboxEnabled = settingsConfig?.sandbox !== false;
-  const sandboxNetworkEnabled = settingsConfig?.sandbox_network !== false;
+  const isWindows = platformName === 'win32';
+  const sandboxNetworkEnabled = isWindows || settingsConfig?.sandbox_network !== false;
+  const sandboxNetworkDisabled = !sandboxEnabled || isWindows;
   const fileBackup = settingsConfig?.file_backup || { enabled: false, retention_days: 1, max_file_size_kb: 1024 };
 
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
@@ -181,14 +184,16 @@ export function SecurityTab() {
         />
         <SettingsRow
           label={t('settings.security.sandboxNetwork')}
-          hint={sandboxEnabled
+          hint={isWindows
+            ? t('settings.security.sandboxNetworkWin32Unsupported')
+            : sandboxEnabled
             ? t('settings.security.sandboxNetworkDesc')
             : t('settings.security.sandboxNetworkDisabledDesc')}
           control={
             <Toggle
               on={sandboxNetworkEnabled}
               onChange={handleSandboxNetworkToggle}
-              disabled={!sandboxEnabled}
+              disabled={sandboxNetworkDisabled}
             />
           }
         />

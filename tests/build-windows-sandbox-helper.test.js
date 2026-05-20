@@ -51,6 +51,73 @@ describe("Windows sandbox helper build script", () => {
     expect(source).not.toContain("SECURITY_CAPABILITIES capabilities");
   });
 
+  it("runs restricted-token children on a private desktop", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("CreateDesktopW");
+    expect(source).toContain("CloseDesktop");
+    expect(source).toContain("startup.StartupInfo.lpDesktop");
+  });
+
+  it("uses capability-style Hana write SIDs and exposes stale write ACL cleanup", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("S-1-15-3-4096-");
+    expect(source).toContain("sidForWritableRootLegacyAccountNamespace");
+    expect(source).toContain("--cleanup-hana-write-acl");
+    expect(source).toContain("hana-write-acl-cleaned");
+  });
+
+  it("restores temporary write ACL changes after sandboxed commands", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("struct AclRestore");
+    expect(source).toContain("restoreAcls");
+    expect(source).toContain("applyWriteAcls(opts.writableRoots, opts.denyWritePaths, aclRestores)");
+  });
+
+  it("preserves the token default DACL owner context when adding write SIDs", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("queryTokenDefaultDacl");
+    expect(source).toContain("SetEntriesInAclW(");
+    expect(source).toContain("baseDefaultDacl");
+  });
+
+  it("restricts child handle inheritance to stdio handles", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("PROC_THREAD_ATTRIBUTE_HANDLE_LIST");
+    expect(source).toContain("EXTENDED_STARTUPINFO_PRESENT");
+    expect(source).toContain("setupInheritedHandleList");
+  });
+
+  it("canonicalizes existing paths through the Win32 final path API before comparing sandbox roots", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("GetFinalPathNameByHandleW");
+    expect(source).toContain("FILE_FLAG_BACKUP_SEMANTICS");
+    expect(source).toContain("normalizePathKey");
+  });
+
   it("keeps a scoped legacy AppContainer diagnostic and cleanup path", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
