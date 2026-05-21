@@ -341,6 +341,9 @@ export function createSessionsRoute(engine, hub = null) {
           agentName: s.agentName || null,
           modelId: s.modelId || null,
           modelProvider: s.modelProvider || null,
+          permissionMode: typeof engine.getSessionPermissionMode === "function"
+            ? engine.getSessionPermissionMode(s.path)
+            : engine.permissionMode || null,
           pinnedAt: s.pinnedAt || null,
           hasSummary: !!summaryRecord,
           rcAttachment: rcAttachmentByPath.get(s.path)
@@ -1084,7 +1087,7 @@ function patchSessionFileLifecycleBlocks(blocks, engine, sessionPath) {
       } catch {}
     }
     if (!file) continue;
-    const patch = sessionFileLifecycleFields(file);
+    const patch = sessionFileLifecycleFields(file, engine);
     Object.assign(block, patch);
     if (block.type === "skill" && block.installedFile) {
       block.installedFile = { ...block.installedFile, ...patch };
@@ -1106,17 +1109,22 @@ function isMediaGenerationDeferredResult(result) {
   return result?.type === "image-generation" || result?.type === "video-generation";
 }
 
-function sessionFileLifecycleFields(file) {
-  const fileId = file.fileId || file.id || null;
+function sessionFileLifecycleFields(file, engine) {
+  const serialized = typeof engine?.serializeSessionFile === "function"
+    ? engine.serializeSessionFile(file)
+    : file;
+  const source = serialized || file;
+  const fileId = source.fileId || source.id || file.fileId || file.id || null;
   return {
     ...(fileId ? { fileId } : {}),
-    ...(file.filePath ? { filePath: file.filePath } : {}),
-    ...(file.label || file.displayName ? { label: file.label || file.displayName } : {}),
-    ...(file.ext !== undefined ? { ext: file.ext } : {}),
-    ...(file.mime ? { mime: file.mime } : {}),
-    ...(file.kind ? { kind: file.kind } : {}),
-    ...(file.storageKind ? { storageKind: file.storageKind } : {}),
-    ...(file.status ? { status: file.status } : {}),
-    ...(file.missingAt !== undefined ? { missingAt: file.missingAt } : {}),
+    ...(source.filePath ? { filePath: source.filePath } : {}),
+    ...(source.label || source.displayName ? { label: source.label || source.displayName } : {}),
+    ...(source.ext !== undefined ? { ext: source.ext } : {}),
+    ...(source.mime ? { mime: source.mime } : {}),
+    ...(source.kind ? { kind: source.kind } : {}),
+    ...(source.storageKind ? { storageKind: source.storageKind } : {}),
+    ...(source.status ? { status: source.status } : {}),
+    ...(source.missingAt !== undefined ? { missingAt: source.missingAt } : {}),
+    ...(source.resource ? { resource: source.resource } : {}),
   };
 }

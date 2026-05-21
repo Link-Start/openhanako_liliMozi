@@ -94,6 +94,7 @@ function sessionFileToContentBlock(file, extra = undefined) {
     ...(file.storageKind ? { storageKind: file.storageKind } : {}),
     ...(file.status ? { status: file.status } : {}),
     ...(file.missingAt !== undefined ? { missingAt: file.missingAt } : {}),
+    ...(file.resource ? { resource: file.resource } : {}),
   };
 }
 
@@ -471,7 +472,11 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
       });
 
       // Unified content_block emission for all tool results
-      const blocks = extractBlocks(event.toolName, event.result?.details, event.result);
+      const blocks = enrichSessionFileBlocks(
+        extractBlocks(event.toolName, event.result?.details, event.result),
+        engine,
+        sessionPath,
+      );
       for (const block of blocks) {
         emitStreamEvent(sessionPath, ss, { type: "content_block", block });
       }
@@ -754,7 +759,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         meta: event.meta,
       });
       if (event.status === "success") {
-        for (const block of deferredResultFileBlocks(event.result, event.taskId)) {
+        for (const block of enrichSessionFileBlocks(deferredResultFileBlocks(event.result, event.taskId), engine, sessionPath)) {
           emitStreamEvent(sessionPath, ss, { type: "content_block", block });
         }
       } else {
@@ -1063,6 +1068,53 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
   );
 
   return { restRoute, wsRoute };
+}
+
+function enrichSessionFileBlocks(blocks, engine, sessionPath) {
+  if (!Array.isArray(blocks) || blocks.length === 0 || !sessionPath) return blocks || [];
+  return blocks.map((block) => {
+    const patch = sessionFileBlockPatch(block, engine, sessionPath);
+    if (!patch) return block;
+    const next = { ...block, ...patch };
+    if (next.type === "skill" && next.installedFile) {
+      next.installedFile = { ...next.installedFile, ...patch };
+    }
+    return next;
+  });
+}
+
+function sessionFileBlockPatch(block, engine, sessionPath) {
+  if (!block || typeof block !== "object") return null;
+  if (!["file", "artifact", "skill"].includes(block.type)) return null;
+  let file = null;
+  if (block.fileId && typeof engine?.getSessionFile === "function") {
+    file = engine.getSessionFile(block.fileId, { sessionPath });
+  }
+  if (!file && block.filePath && typeof engine?.getSessionFileByPath === "function") {
+    file = engine.getSessionFileByPath(block.filePath, { sessionPath });
+  }
+  if (!file) return null;
+  const serialized = typeof engine?.serializeSessionFile === "function"
+    ? engine.serializeSessionFile(file)
+    : file;
+  return sessionFileFields(serialized || file);
+}
+
+function sessionFileFields(file) {
+  if (!file || typeof file !== "object") return null;
+  const fileId = file.fileId || file.id || null;
+  return {
+    ...(fileId ? { fileId } : {}),
+    ...(file.filePath ? { filePath: file.filePath } : {}),
+    ...(file.label || file.displayName || file.filename ? { label: file.label || file.displayName || file.filename } : {}),
+    ...(file.ext !== undefined ? { ext: file.ext } : {}),
+    ...(file.mime ? { mime: file.mime } : {}),
+    ...(file.kind ? { kind: file.kind } : {}),
+    ...(file.storageKind ? { storageKind: file.storageKind } : {}),
+    ...(file.status ? { status: file.status } : {}),
+    ...(file.missingAt !== undefined ? { missingAt: file.missingAt } : {}),
+    ...(file.resource ? { resource: file.resource } : {}),
+  };
 }
 
 /**

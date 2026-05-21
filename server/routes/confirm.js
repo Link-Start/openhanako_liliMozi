@@ -6,6 +6,7 @@
 
 import { Hono } from "hono";
 import { safeJson } from "../hono-helpers.js";
+import { createRequestContext } from "../http/boundary.js";
 
 export function createConfirmRoute(confirmStore, engine) {
   const route = new Hono();
@@ -17,6 +18,20 @@ export function createConfirmRoute(confirmStore, engine) {
 
     if (!action || !["confirmed", "rejected"].includes(action)) {
       return c.json({ error: "action must be 'confirmed' or 'rejected'" }, 400);
+    }
+
+    const pending = typeof confirmStore.get === "function" ? confirmStore.get(confirmId) : null;
+    if (!pending) {
+      return c.json({ error: "confirmation not found or already resolved" }, 404);
+    }
+
+    const auth = authorizeConfirmation(c, engine, pending);
+    if (!auth.allowed) {
+      return c.json({
+        error: "insufficient_scope",
+        reason: auth.reason,
+        capability: auth.capability,
+      }, 403);
     }
 
     const found = confirmStore.resolve(confirmId, action, value);
@@ -36,4 +51,43 @@ export function createConfirmRoute(confirmStore, engine) {
   });
 
   return route;
+}
+
+function authorizeConfirmation(c, engine, pending) {
+  const requestContext = createRequestContext(c, engine);
+  const capability = capabilityForConfirmation(pending);
+  const target = targetForConfirmation(pending, requestContext);
+  if (!target) {
+    return {
+      allowed: false,
+      reason: "missing_confirmation_target",
+      capability,
+    };
+  }
+  const decision = requestContext.authorize(capability, target);
+  return {
+    allowed: !!decision.allowed,
+    reason: decision.reason || (decision.allowed ? "allowed" : "insufficient_capability"),
+    capability,
+  };
+}
+
+function capabilityForConfirmation(pending) {
+  if (pending?.kind === "settings") return "settings.write";
+  return "sessions.write";
+}
+
+function targetForConfirmation(pending, requestContext) {
+  if (pending?.kind === "settings") {
+    return {
+      kind: "studio",
+      studioId: requestContext.studioId,
+    };
+  }
+  if (!pending?.sessionPath) return null;
+  return {
+    kind: "session",
+    studioId: requestContext.studioId,
+    sessionPath: pending.sessionPath,
+  };
 }

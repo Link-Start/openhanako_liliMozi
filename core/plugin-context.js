@@ -64,7 +64,7 @@ export function createPluginContext({ pluginId, pluginKey, source, pluginDir, da
       label,
       origin,
       storageKind,
-    }));
+    }), { runtimeContext: runtimeScope });
   }
 
   function toMediaItem(file) {

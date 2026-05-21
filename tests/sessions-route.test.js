@@ -244,6 +244,38 @@ describe("sessions route", () => {
     })]);
   });
 
+  it("includes each session's permission mode in the session list projection", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.js");
+    const app = new Hono();
+    const session = {
+      path: "/tmp/agents/hana/sessions/a.jsonl",
+      title: "Read only chat",
+      firstMessage: "",
+      modified: new Date("2026-05-16T08:00:00.000Z"),
+      messageCount: 1,
+      cwd: "/tmp/work",
+      agentId: "hana",
+      agentName: "Hana",
+    };
+    const getSessionPermissionMode = vi.fn(() => "read_only");
+
+    app.route("/api", createSessionsRoute({
+      listSessions: vi.fn(async () => [session]),
+      getSessionPermissionMode,
+      rcState: null,
+    }));
+
+    const res = await app.request("/api/sessions");
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data[0]).toMatchObject({
+      path: session.path,
+      permissionMode: "read_only",
+    });
+    expect(getSessionPermissionMode).toHaveBeenCalledWith(session.path);
+  });
+
   it("rejects session projection when the authenticated Studio differs from the server Studio", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.js");
     const app = new Hono();

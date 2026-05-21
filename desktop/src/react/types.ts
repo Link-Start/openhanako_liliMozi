@@ -25,6 +25,8 @@ export interface AutoLaunchStatus {
 
 // ── 核心数据结构 ──
 
+export type SessionPermissionMode = 'operate' | 'ask' | 'read_only';
+
 export interface Session {
   path: string;
   title: string | null;
@@ -34,6 +36,7 @@ export interface Session {
   agentId: string | null;
   agentName: string | null;
   cwd: string | null;
+  permissionMode?: SessionPermissionMode | null;
   pinnedAt?: string | null;
   hasSummary?: boolean;
   rcAttachment?: {

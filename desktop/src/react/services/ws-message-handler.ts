@@ -710,6 +710,7 @@ function applyContentBlockSessionFile(msg: any): void {
     storageKind: block.storageKind,
     status: block.status,
     missingAt: block.missingAt,
+    resource: block.resource,
     origin: block.origin,
     operations: block.operations,
   });

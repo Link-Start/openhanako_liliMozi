@@ -304,6 +304,50 @@ describe('selectSessionFiles', () => {
     });
   });
 
+  it('把 blocks.file 的 resource envelope 带入 FileRef', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'm-resource',
+        role: 'assistant',
+        blocks: [
+          {
+            type: 'file',
+            fileId: 'sf_generated',
+            filePath: '/generated/image.png',
+            label: 'image.png',
+            ext: 'png',
+            resource: {
+              schemaVersion: 1,
+              resourceId: 'res_sf_generated',
+              name: 'studios/studio_1/resources/res_sf_generated',
+              studioId: 'studio_1',
+              type: 'file',
+              source: 'session_file',
+              fileId: 'sf_generated',
+              lifecycle: { status: 'available', missingAt: null },
+              storage: { provider: 'session_file', localOnly: true },
+              links: {
+                self: '/api/resources/res_sf_generated',
+                content: '/api/resources/res_sf_generated/content',
+              },
+            },
+          },
+        ],
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items), '/s/1');
+
+    expect(refs[0].resource).toEqual({
+      resourceId: 'res_sf_generated',
+      studioId: 'studio_1',
+      links: {
+        self: '/api/resources/res_sf_generated',
+        content: '/api/resources/res_sf_generated/content',
+      },
+    });
+  });
+
   it('抽取 legacy artifact 对应的 session file', () => {
     const items: ChatListItem[] = [{
       type: 'message',

@@ -285,6 +285,49 @@ describe('ws-message-handler session-scoped desktop events', () => {
     ]);
   });
 
+  it('content_block 文件事件把 resource envelope 同步进 session registry', () => {
+    handleServerMessage({
+      type: 'content_block',
+      sessionPath: '/session/a.jsonl',
+      block: {
+        type: 'file',
+        fileId: 'sf_generated',
+        filePath: '/generated/image.png',
+        label: 'image.png',
+        ext: 'png',
+        mime: 'image/png',
+        kind: 'image',
+        resource: {
+          schemaVersion: 1,
+          resourceId: 'res_sf_generated',
+          name: 'studios/studio_1/resources/res_sf_generated',
+          studioId: 'studio_1',
+          type: 'file',
+          source: 'session_file',
+          fileId: 'sf_generated',
+          lifecycle: { status: 'available', missingAt: null },
+          storage: { provider: 'session_file', localOnly: true },
+          links: {
+            self: '/api/resources/res_sf_generated',
+            content: '/api/resources/res_sf_generated/content',
+          },
+        },
+      },
+    });
+
+    expect(useStore.getState().sessionRegistryFilesByPath['/session/a.jsonl']).toEqual([
+      expect.objectContaining({
+        fileId: 'sf_generated',
+        resource: expect.objectContaining({
+          resourceId: 'res_sf_generated',
+          links: expect.objectContaining({
+            content: '/api/resources/res_sf_generated/content',
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it('todo_write 全部 completed 时按生命周期移除当前 session todo', () => {
     useStore.setState({
       currentSessionPath: '/session/a.jsonl',

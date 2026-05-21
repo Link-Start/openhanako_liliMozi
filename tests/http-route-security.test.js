@@ -150,6 +150,7 @@ describe("HTTP route security policy", () => {
       ["GET", "/api/session-permission-mode"],
       ["POST", "/api/session-permission-mode"],
       ["POST", "/api/session-thinking-level"],
+      ["POST", "/api/confirm/confirm_1"],
       ["GET", "/api/browser/session-states"],
       ["GET", "/api/mobile/workbench/files"],
       ["GET", "/api/mobile/workbench/search"],

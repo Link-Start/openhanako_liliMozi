@@ -83,6 +83,39 @@ describe('stage_files', () => {
     });
   });
 
+  it('preserves session file resource envelopes for remote clients', () => {
+    const resource = {
+      schemaVersion: 1,
+      resourceId: 'res_sf_remote',
+      name: 'studios/studio_1/resources/res_sf_remote',
+      studioId: 'studio_1',
+      type: 'file',
+      source: 'session_file',
+      fileId: 'sf_remote',
+      lifecycle: { status: 'available', missingAt: null },
+      storage: { provider: 'session_file', localOnly: true },
+      links: {
+        self: '/api/resources/res_sf_remote',
+        content: '/api/resources/res_sf_remote/content',
+      },
+    };
+    const result = extractor({
+      files: [{
+        fileId: 'sf_remote',
+        filePath: '/a/generated.png',
+        label: 'generated.png',
+        ext: 'png',
+        resource,
+      }],
+    });
+
+    expect(result[0]).toMatchObject({
+      type: 'file',
+      fileId: 'sf_remote',
+      resource,
+    });
+  });
+
   it('empty details: returns empty array', () => {
     const result = extractor({});
     expect(result).toEqual([]);
@@ -174,6 +207,51 @@ describe('image-gen media generation', () => {
       mime: 'image/png',
       kind: 'image',
     }]);
+  });
+
+  it('preserves resource links when replacing completed media generation files', () => {
+    const resource = {
+      schemaVersion: 1,
+      resourceId: 'res_sf_img',
+      name: 'studios/studio_1/resources/res_sf_img',
+      studioId: 'studio_1',
+      type: 'file',
+      source: 'session_file',
+      fileId: 'sf_img',
+      lifecycle: { status: 'available', missingAt: null },
+      storage: { provider: 'session_file', localOnly: true },
+      links: {
+        self: '/api/resources/res_sf_img',
+        content: '/api/resources/res_sf_img/content',
+      },
+    };
+    const blocks = [{
+      type: 'media_generation',
+      taskId: 'task-a',
+      kind: 'image',
+      status: 'pending',
+    }];
+    const results = new Map([[
+      'task-a',
+      {
+        status: 'success',
+        result: {
+          sessionFiles: [{
+            fileId: 'sf_img',
+            filePath: '/tmp/generated.png',
+            label: 'generated.png',
+            ext: 'png',
+            resource,
+          }],
+        },
+      },
+    ]]);
+
+    expect(resolveMediaGenerationBlocks(blocks, results)[0]).toMatchObject({
+      type: 'file',
+      fileId: 'sf_img',
+      resource,
+    });
   });
 });
 

@@ -67,6 +67,48 @@ describe("createPluginContext", () => {
     });
   });
 
+  it("registers plugin session files with resource content links when runtime scope is available", () => {
+    const bus = { emit() {}, subscribe() {}, request() {}, hasHandler() {} };
+    const registerSessionFile = vi.fn((entry) => ({
+      id: "sf_plugin_output",
+      ...entry,
+      ext: "png",
+      mime: "image/png",
+      kind: "image",
+      status: "available",
+    }));
+    const ctx = createPluginContext({
+      pluginId: "image-gen",
+      pluginDir: "/plugins/image-gen",
+      dataDir: "/plugin-data/image-gen",
+      bus,
+      registerSessionFile,
+      runtimeContext: {
+        serverId: "server_scope",
+        serverNodeId: "node_scope",
+        userId: "user_scope",
+        studioId: "studio_scope",
+        connectionKind: "local",
+        credentialKind: "loopback_token",
+      },
+    });
+
+    const file = ctx.registerSessionFile({
+      sessionPath: "/sessions/a.jsonl",
+      filePath: "/plugin-data/image-gen/generated.png",
+      label: "generated.png",
+    });
+
+    expect(file.resource).toMatchObject({
+      resourceId: "res_sf_plugin_output",
+      studioId: "studio_scope",
+      links: {
+        self: "/api/resources/res_sf_plugin_output",
+        content: "/api/resources/res_sf_plugin_output/content",
+      },
+    });
+  });
+
   it("config.get/set reads and writes plugin-data config.json", async () => {
     const fs = await import("fs");
     const os = await import("os");
