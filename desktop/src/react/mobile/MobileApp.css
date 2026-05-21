@@ -5,10 +5,8 @@ body,
 }
 
 .mobile-desktop-root {
-  --mobile-layout-height: 100vh;
-  --mobile-keyboard-offset: 0px;
-  height: var(--mobile-layout-height);
-  min-height: var(--mobile-layout-height);
+  height: 100vh;
+  height: 100dvh;
   font-size: 1.0625rem;
   overflow: hidden;
   touch-action: pan-y;
@@ -124,23 +122,7 @@ body,
   }
 
   .mobile-desktop-root .input-area {
-    position: fixed;
-    bottom: 0;
     padding: 0 var(--space-sm) calc(env(safe-area-inset-bottom, 0px) + var(--space-sm));
-    transform: translate3d(0, calc(-1 * var(--mobile-keyboard-offset)), 0);
-    transition: transform var(--duration-fast) var(--ease-out);
-    will-change: transform;
-    z-index: 80;
-  }
-
-  .mobile-desktop-root[data-mobile-keyboard-open="true"] .input-area {
-    transition-duration: var(--duration-instant);
-  }
-
-  .mobile-desktop-root .main-content.welcome-mode .input-area {
-    position: fixed;
-    bottom: 0;
-    flex: none;
   }
 
   .mobile-desktop-root #previewPanel[data-preview-open="false"] {

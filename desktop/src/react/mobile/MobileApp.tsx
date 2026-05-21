@@ -36,26 +36,6 @@ type MobileEdgeGesture = {
   cancelled: boolean;
 };
 
-type MobileKeyboardLayout = {
-  layoutHeight: number;
-  keyboardOffset: number;
-  keyboardOpen: boolean;
-};
-
-type MobileShellStyle = React.CSSProperties & {
-  '--mobile-layout-height': string;
-  '--mobile-keyboard-offset': string;
-};
-
-type VirtualKeyboardLike = EventTarget & {
-  overlaysContent?: boolean;
-  boundingRect?: Pick<DOMRectReadOnly, 'height'> | null;
-};
-
-type NavigatorWithVirtualKeyboard = Navigator & {
-  virtualKeyboard?: VirtualKeyboardLike;
-};
-
 export function MobileApp(): React.ReactElement {
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [principal, setPrincipal] = useState<MobilePrincipal | null>(null);
@@ -155,7 +135,6 @@ function MobileDesktopShell({
   const currentSessionPath = useStore(s => s.currentSessionPath);
   const pendingNewSession = useStore(s => s.pendingNewSession);
   const isNarrow = useNarrowMobileViewport();
-  const keyboardLayout = useMobileKeyboardLayout(isNarrow);
   const edgeGestureRef = useRef<MobileEdgeGesture | null>(null);
   const t = window.t ?? ((p: string) => p);
 
@@ -164,11 +143,6 @@ function MobileDesktopShell({
     const currentSession = sessions.find(session => session.path === currentSessionPath);
     return currentSession?.title || currentSession?.firstMessage || t('session.untitled');
   }, [currentSessionPath, pendingNewSession, sessions, t]);
-
-  const shellStyle: MobileShellStyle = {
-    '--mobile-layout-height': `${keyboardLayout.layoutHeight}px`,
-    '--mobile-keyboard-offset': `${keyboardLayout.keyboardOffset}px`,
-  };
 
   useEffect(() => {
     useStore.setState({ currentTab: 'chat' });
@@ -256,8 +230,6 @@ function MobileDesktopShell({
     <main
       className="mobile-desktop-root"
       data-mobile-principal={principal?.credentialKind || 'session'}
-      data-mobile-keyboard-open={keyboardLayout.keyboardOpen ? 'true' : undefined}
-      style={shellStyle}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -428,143 +400,6 @@ function shouldIgnoreMobileEdgeGestureTarget(target: EventTarget | null): boolea
 function principalHasRequiredScopes(principal: MobilePrincipal, requiredScopes: readonly string[]): boolean {
   const scopes = Array.isArray(principal.scopes) ? principal.scopes : [];
   return requiredScopes.every((scope) => scopeAllows(scopes, scope));
-}
-
-function useMobileKeyboardLayout(enabled: boolean): MobileKeyboardLayout {
-  const [layout, setLayout] = useState<MobileKeyboardLayout>(() => {
-    const layoutHeight = measureMobileLayoutHeight();
-    return { layoutHeight, keyboardOffset: 0, keyboardOpen: false };
-  });
-  const layoutHeightRef = useRef(layout.layoutHeight);
-  const editingFocusedRef = useRef(false);
-  const rafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!enabled) {
-      const layoutHeight = measureMobileLayoutHeight();
-      layoutHeightRef.current = layoutHeight;
-      setLayout({ layoutHeight, keyboardOffset: 0, keyboardOpen: false });
-      return undefined;
-    }
-
-    const virtualKeyboard = getVirtualKeyboard();
-    if (virtualKeyboard && 'overlaysContent' in virtualKeyboard) {
-      try {
-        virtualKeyboard.overlaysContent = true;
-      } catch {
-        // Some browsers expose the object but keep the property read-only.
-      }
-    }
-
-    const applyLayout = () => {
-      rafRef.current = null;
-      const measuredHeight = measureMobileLayoutHeight();
-      const baselineHeight = Math.max(layoutHeightRef.current || 0, measuredHeight);
-      const focusedForKeyboard = editingFocusedRef.current || isTextEditingTarget(document.activeElement);
-      const keyboardOffset = focusedForKeyboard ? measureKeyboardOffset(baselineHeight) : 0;
-      const keyboardOpen = keyboardOffset > 0;
-
-      if (!keyboardOpen) {
-        layoutHeightRef.current = measuredHeight;
-      } else {
-        layoutHeightRef.current = baselineHeight;
-        keepLayoutViewportPinned();
-      }
-
-      const nextLayout: MobileKeyboardLayout = {
-        layoutHeight: layoutHeightRef.current,
-        keyboardOffset,
-        keyboardOpen,
-      };
-      setLayout(prev => (
-        prev.layoutHeight === nextLayout.layoutHeight
-        && prev.keyboardOffset === nextLayout.keyboardOffset
-        && prev.keyboardOpen === nextLayout.keyboardOpen
-          ? prev
-          : nextLayout
-      ));
-    };
-
-    const scheduleLayout = () => {
-      if (rafRef.current !== null) return;
-      rafRef.current = window.requestAnimationFrame(applyLayout);
-    };
-
-    const handleFocusIn = (event: FocusEvent) => {
-      editingFocusedRef.current = isTextEditingTarget(event.target);
-      scheduleLayout();
-    };
-
-    const handleFocusOut = () => {
-      window.setTimeout(() => {
-        editingFocusedRef.current = isTextEditingTarget(document.activeElement);
-        scheduleLayout();
-      }, 0);
-    };
-
-    window.addEventListener('resize', scheduleLayout);
-    window.addEventListener('orientationchange', scheduleLayout);
-    document.addEventListener('focusin', handleFocusIn);
-    document.addEventListener('focusout', handleFocusOut);
-    window.visualViewport?.addEventListener('resize', scheduleLayout);
-    window.visualViewport?.addEventListener('scroll', scheduleLayout);
-    virtualKeyboard?.addEventListener('geometrychange', scheduleLayout);
-    applyLayout();
-
-    return () => {
-      if (rafRef.current !== null) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-      window.removeEventListener('resize', scheduleLayout);
-      window.removeEventListener('orientationchange', scheduleLayout);
-      document.removeEventListener('focusin', handleFocusIn);
-      document.removeEventListener('focusout', handleFocusOut);
-      window.visualViewport?.removeEventListener('resize', scheduleLayout);
-      window.visualViewport?.removeEventListener('scroll', scheduleLayout);
-      virtualKeyboard?.removeEventListener('geometrychange', scheduleLayout);
-    };
-  }, [enabled]);
-
-  return layout;
-}
-
-function measureMobileLayoutHeight(): number {
-  const visualViewport = window.visualViewport;
-  const visualBottom = visualViewport ? visualViewport.height + visualViewport.offsetTop : 0;
-  return Math.round(Math.max(
-    window.innerHeight || 0,
-    document.documentElement.clientHeight || 0,
-    visualBottom,
-    1,
-  ));
-}
-
-function measureKeyboardOffset(layoutHeight: number): number {
-  const visualViewport = window.visualViewport;
-  const visualBottom = visualViewport ? visualViewport.height + visualViewport.offsetTop : layoutHeight;
-  const visualOffset = Math.max(0, layoutHeight - visualBottom);
-  const virtualKeyboardHeight = Math.max(0, getVirtualKeyboard()?.boundingRect?.height || 0);
-  const offset = Math.round(Math.max(visualOffset, virtualKeyboardHeight));
-  return offset >= 48 ? offset : 0;
-}
-
-function getVirtualKeyboard(): VirtualKeyboardLike | null {
-  return (navigator as NavigatorWithVirtualKeyboard).virtualKeyboard || null;
-}
-
-function isTextEditingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return Boolean(target.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'));
-}
-
-function keepLayoutViewportPinned(): void {
-  if (!window.scrollY && !window.scrollX) return;
-  try {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  } catch {
-    // The browser owns keyboard scroll heuristics; this is only a best-effort pin.
-  }
 }
 
 function scopeAllows(scopes: string[], required: string): boolean {

@@ -248,7 +248,7 @@ describe('MobileApp', () => {
     expect(screen.getByLabelText('titlebar.currentChatTitle')).toHaveTextContent('sidebar.newChat');
   });
 
-  it('keeps the mobile shell height stable and lifts only the input layer for the virtual keyboard', async () => {
+  it('leaves mobile keyboard viewport handling to the browser', async () => {
     stubNarrowViewport(true);
     const viewport = installVisualViewportStub({ height: 700, offsetTop: 0 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 700 });
@@ -263,8 +263,9 @@ describe('MobileApp', () => {
     render(<MobileApp />);
     await waitForMobileChatReady();
     const shell = mobileShell();
-    expect(shell.style.getPropertyValue('--mobile-layout-height')).toBe('700px');
-    expect(shell.style.getPropertyValue('--mobile-keyboard-offset')).toBe('0px');
+    expect(shell).not.toHaveAttribute('data-mobile-keyboard-open');
+    expect(shell.style.getPropertyValue('--mobile-layout-height')).toBe('');
+    expect(shell.style.getPropertyValue('--mobile-keyboard-offset')).toBe('');
 
     fireEvent.focusIn(screen.getByTestId('desktop-input-area'));
     viewport.height = 420;
@@ -272,11 +273,9 @@ describe('MobileApp', () => {
       viewport.dispatchEvent(new Event('resize'));
     });
 
-    await waitFor(() => {
-      expect(shell).toHaveAttribute('data-mobile-keyboard-open', 'true');
-      expect(shell.style.getPropertyValue('--mobile-layout-height')).toBe('700px');
-      expect(shell.style.getPropertyValue('--mobile-keyboard-offset')).toBe('280px');
-    });
+    expect(shell).not.toHaveAttribute('data-mobile-keyboard-open');
+    expect(shell.style.getPropertyValue('--mobile-layout-height')).toBe('');
+    expect(shell.style.getPropertyValue('--mobile-keyboard-offset')).toBe('');
   });
 
   it('renders server-broadcast user messages through the desktop websocket handler', async () => {
