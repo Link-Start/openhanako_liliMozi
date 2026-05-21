@@ -682,6 +682,7 @@ export class AgentManager {
     }
 
     const ag = this._agents.get(agentId);
+    this._d.getHub()?.abortAgentPhoneSessions?.("agent-deleted", { agentId });
     if (ag) {
       this._agents.delete(agentId);
       this._activityStores.delete(agentId);

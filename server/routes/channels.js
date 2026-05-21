@@ -549,6 +549,11 @@ export function createChannelsRoute(engine, hub) {
       if (agentDir) {
         await removeBookmarkEntry(path.join(agentDir, "channels.md"), name);
       }
+      hub?.abortAgentPhoneSessions?.("channel-member-removed", {
+        agentId: memberId,
+        conversationId: name,
+        conversationType: "channel",
+      });
 
       debugLog()?.log("api", `DELETE /channels/${name}/members/${memberId}`);
       return c.json({ ok: true, members: nextMembers });

@@ -59,9 +59,11 @@ export class ChannelManager {
 
       try {
         await removeChannelMember(filePath, agentId);
+        this._abortChannelPhoneSessions(channelId, agentId, "channel-member-removed");
         const remaining = getChannelMembers(filePath);
         if (remaining.length <= 1) {
           await deleteChannel(filePath);
+          this._abortChannelPhoneSessions(channelId, null, "channel-deleted");
           deletedChannels.push(channelId);
           log.log(`频道 "${channelId}" 成员不足，已删除`);
         }
@@ -85,6 +87,7 @@ export class ChannelManager {
     }
 
     await deleteChannel(filePath);
+    this._abortChannelPhoneSessions(channelId, null, "channel-deleted");
 
     // 清理所有 agent 的 bookmark
     const agentDirs = fs.readdirSync(this._agentsDir, { withFileTypes: true })
@@ -111,6 +114,16 @@ export class ChannelManager {
 
   async triggerChannelTriage(channelName, opts) {
     return this.triggerChannelDelivery(channelName, opts);
+  }
+
+  _abortChannelPhoneSessions(channelId, agentId, reason) {
+    const hub = this._getHub?.();
+    if (typeof hub?.abortAgentPhoneSessions !== "function") return;
+    hub.abortAgentPhoneSessions(reason, {
+      ...(agentId ? { agentId } : {}),
+      conversationId: channelId,
+      conversationType: "channel",
+    });
   }
 
   /**

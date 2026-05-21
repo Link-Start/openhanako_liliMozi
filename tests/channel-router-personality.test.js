@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 const { runAgentPhoneSessionMock, callTextMock } = vi.hoisted(() => ({
   runAgentPhoneSessionMock: vi.fn(async (_agentId, _rounds, options) => {
@@ -38,8 +41,17 @@ describe("ChannelRouter._executeCheck phone delivery", () => {
   it("does not run utility gating or disk personality fallback before the phone session", async () => {
     runAgentPhoneSessionMock.mockClear();
     callTextMock.mockClear();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-channel-router-personality-"));
+    const channelsDir = path.join(root, "channels");
+    const agentsDir = path.join(root, "agents");
+    const userDir = path.join(root, "user");
+    fs.mkdirSync(channelsDir, { recursive: true });
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(channelsDir, "general.md"), "---\nid: general\nmembers: [hana, yui]\n---\n", "utf-8");
+
     const mockAgent = {
-      agentDir: "/tmp/hana-agent-phone-delivery",
+      agentDir: path.join(agentsDir, "hana"),
       config: { agent: { name: "Hana", yuan: "hanako" } },
       personality: "我是 Hana，一个温柔的助手。这是内存中的 personality。",
     };
@@ -53,9 +65,9 @@ describe("ChannelRouter._executeCheck phone delivery", () => {
     const router = new ChannelRouter({
       hub: {
         engine: {
-          agentsDir: "/fake/agents",
-          channelsDir: "/fake/channels",
-          userDir: "/fake/user",
+          agentsDir,
+          channelsDir,
+          userDir,
           agents: new Map([["hana", mockAgent]]),
           getAgent: (id) => (id === "hana" ? mockAgent : null),
           resolveUtilityConfig,
@@ -76,5 +88,6 @@ describe("ChannelRouter._executeCheck phone delivery", () => {
     expect(runAgentPhoneSessionMock).toHaveBeenCalledOnce();
     expect(callTextMock).not.toHaveBeenCalled();
     expect(resolveUtilityConfig).not.toHaveBeenCalled();
+    fs.rmSync(root, { recursive: true, force: true });
   });
 });

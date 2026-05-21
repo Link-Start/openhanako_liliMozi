@@ -205,6 +205,25 @@ describe("ChannelManager", () => {
       expect(members).not.toContain("bob");
     });
 
+    it("aborts running phone sessions for an agent removed from a channel", async () => {
+      writeChannelMd(channelsDir, "crew", ["alice", "bob", "charlie"]);
+      const abortAgentPhoneSessions = vi.fn();
+      const abortingManager = new ChannelManager({
+        channelsDir,
+        agentsDir,
+        userDir,
+        getHub: () => ({ abortAgentPhoneSessions }),
+      });
+
+      await abortingManager.cleanupAgentFromChannels("bob");
+
+      expect(abortAgentPhoneSessions).toHaveBeenCalledWith("channel-member-removed", {
+        agentId: "bob",
+        conversationId: "crew",
+        conversationType: "channel",
+      });
+    });
+
     it("deletes channel when members drop to 1 or fewer", async () => {
       writeChannelMd(channelsDir, "alice-bob", ["alice", "bob"]);
 

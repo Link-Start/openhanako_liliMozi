@@ -17,7 +17,7 @@ import fs from "fs";
 import path from "path";
 import { createChannelTicker } from "../lib/channels/channel-ticker.js";
 import { Type } from "../lib/pi-sdk/index.js";
-import { appendMessage, formatMessagesForLLM, getChannelMeta, getRecentMessages } from "../lib/channels/channel-store.js";
+import { appendMessage, formatMessagesForLLM, getChannelMembers, getChannelMeta, getRecentMessages } from "../lib/channels/channel-store.js";
 import { extractMentionedAgentIds } from "../lib/channels/channel-mentions.js";
 import { loadConfig } from "../lib/memory/config-loader.js";
 import { callText } from "../core/llm-client.js";
@@ -168,6 +168,17 @@ export class ChannelRouter {
       setDecision?.(decision);
       return true;
     };
+    const isCurrentMember = () => {
+      if (!fs.existsSync(channelFile)) return false;
+      return getChannelMembers(channelFile).includes(agentId);
+    };
+    const notMemberResult = (action) => ({
+      content: [{
+        type: "text",
+        text: isZh ? "操作失败：你已不在这个频道中。" : "Action failed: you are no longer a member of this channel.",
+      }],
+      details: { action, error: "not a channel member" },
+    });
 
     return [
       {
@@ -188,6 +199,7 @@ export class ChannelRouter {
               details: { action: "read_context", error: "channel not found" },
             };
           }
+          if (!isCurrentMember()) return notMemberResult("read_context");
           const count = Math.max(1, Math.min(50, Number(params.count) || 20));
           const messages = getRecentMessages(channelFile, count);
           return {
@@ -239,6 +251,7 @@ export class ChannelRouter {
               details: { action: "reply", error: "channel not found" },
             };
           }
+          if (!isCurrentMember()) return notMemberResult("reply");
 
           const { timestamp } = await appendMessage(channelFile, agentId, content);
           const decision = {
@@ -284,6 +297,7 @@ export class ChannelRouter {
               details: { action: "pass", error: "already decided" },
             };
           }
+          if (!isCurrentMember()) return notMemberResult("pass");
           const decision = {
             type: "pass",
             replied: false,

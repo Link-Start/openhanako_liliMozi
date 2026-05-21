@@ -99,16 +99,19 @@ export class Hub {
     };
   }
 
-  abortAgentPhoneSessions(reason = "phone-disabled") {
+  abortAgentPhoneSessions(reason = "phone-disabled", filter = null) {
     const entries = [...this._agentPhoneAbortHandlers];
-    for (const { handler } of entries) {
+    let aborted = 0;
+    for (const { handler, meta } of entries) {
+      if (!matchesAgentPhoneAbortFilter(meta, filter)) continue;
       try {
         handler(reason);
+        aborted += 1;
       } catch (err) {
         log.warn(`agent phone abort handler failed: ${err.message}`);
       }
     }
-    return entries.length;
+    return aborted;
   }
 
   // ──────────── 订阅 ────────────
@@ -500,6 +503,16 @@ export class Hub {
     }
   }
 
+}
+
+function matchesAgentPhoneAbortFilter(meta = {}, filter = null) {
+  if (!filter) return true;
+  if (typeof filter === "function") return filter(meta);
+  for (const [key, value] of Object.entries(filter)) {
+    if (value === undefined || value === null) continue;
+    if (meta?.[key] !== value) return false;
+  }
+  return true;
 }
 
 function resolveAgentForBus(engine, agentId) {

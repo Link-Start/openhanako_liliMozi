@@ -98,4 +98,40 @@ describe("Hub agent config bus handlers", () => {
     await hub.toggleChannels(false);
     expect(abortHandler).not.toHaveBeenCalled();
   });
+
+  it("can abort only phone sessions matching a conversation member lifecycle change", () => {
+    const engine = createEngine();
+    const hub = new Hub({ engine });
+    const callbacks = engine.setHubCallbacks.mock.calls[0][0];
+    const removedMemberHandler = vi.fn();
+    const otherMemberHandler = vi.fn();
+    const otherConversationHandler = vi.fn();
+
+    callbacks.registerAgentPhoneAbortHandler(removedMemberHandler, {
+      agentId: "agent-1",
+      conversationId: "ch_crew",
+      conversationType: "channel",
+    });
+    callbacks.registerAgentPhoneAbortHandler(otherMemberHandler, {
+      agentId: "agent-2",
+      conversationId: "ch_crew",
+      conversationType: "channel",
+    });
+    callbacks.registerAgentPhoneAbortHandler(otherConversationHandler, {
+      agentId: "agent-1",
+      conversationId: "ch_other",
+      conversationType: "channel",
+    });
+
+    const aborted = hub.abortAgentPhoneSessions("channel-member-removed", {
+      agentId: "agent-1",
+      conversationId: "ch_crew",
+      conversationType: "channel",
+    });
+
+    expect(aborted).toBe(1);
+    expect(removedMemberHandler).toHaveBeenCalledWith("channel-member-removed");
+    expect(otherMemberHandler).not.toHaveBeenCalled();
+    expect(otherConversationHandler).not.toHaveBeenCalled();
+  });
 });
