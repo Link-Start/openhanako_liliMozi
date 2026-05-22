@@ -204,6 +204,7 @@ export class McpRuntime {
       this.Client ? new this.Client(connector, opts) : createDefaultClient(connector, opts)
     ));
     this.clients = new Map();
+    this.clientErrors = new Map();
     this.toolDisposers = [];
     this.oauthSessions = new Map();
   }
@@ -229,6 +230,7 @@ export class McpRuntime {
       await client.stop().catch(() => {});
     }
     this.clients.clear();
+    this.clientErrors.clear();
     this.oauthSessions.clear();
   }
 
@@ -250,6 +252,7 @@ export class McpRuntime {
     const connectors = config.connectors.map((connector) => publicConnector({
       connector,
       status: this.clients.get(connector.id)?.running ? "running" : "stopped",
+      error: this.clientErrors.get(connector.id) || "",
     }));
     return {
       enabled: config.enabled,
@@ -299,6 +302,7 @@ export class McpRuntime {
     config.connectors[index] = next;
     const saved = this.saveConfig(config);
     if (changedClient) await this.stopConnector(id);
+    this.clientErrors.delete(id);
     this.registerCachedTools();
     return saved.connectors[index];
   }
@@ -330,12 +334,14 @@ export class McpRuntime {
 
     const client = this.clientFactory(connector, { log: this.ctx.log, fetchImpl: this.fetchImpl });
     this.clients.set(id, client);
+    this.clientErrors.delete(id);
     try {
       await client.start();
       await this.refreshTools(id);
       return this.getConfig().connectors.find((s) => s.id === id);
     } catch (err) {
       this.clients.delete(id);
+      this.clientErrors.set(id, err.message || "MCP connector failed to start");
       await client.stop().catch(() => {});
       throw err;
     }
@@ -349,6 +355,7 @@ export class McpRuntime {
     const client = this.clients.get(id);
     if (!client) return;
     this.clients.delete(id);
+    this.clientErrors.delete(id);
     await client.stop();
   }
 
@@ -592,10 +599,11 @@ function connectorClientFingerprint(connector) {
   });
 }
 
-function publicConnector({ connector, status }) {
+function publicConnector({ connector, status, error = "" }) {
   return {
     ...connector,
     status,
+    error,
     env: redactRecord(connector.env),
     headers: redactRecord(connector.headers),
     authorizationToken: connector.authorizationToken ? "********" : "",

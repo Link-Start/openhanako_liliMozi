@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
 
@@ -22,9 +24,10 @@ export class McpStdioClient {
     if (!this.server?.command) throw new Error("MCP server command is required");
 
     this._closed = false;
-    this.process = spawn(this.server.command, this.server.args || [], {
+    const spawnSpec = resolveMcpStdioSpawnSpec(this.server);
+    this.process = spawn(spawnSpec.command, spawnSpec.args, {
       cwd: this.server.cwd || undefined,
-      env: { ...process.env, ...registryEnv(this.server), ...(this.server.env || {}) },
+      env: spawnSpec.env,
       stdio: ["pipe", "pipe", "pipe"],
       shell: false,
       windowsHide: true,
@@ -162,6 +165,28 @@ export class McpStdioClient {
   }
 }
 
+export function resolveMcpStdioSpawnSpec(server, {
+  platform = process.platform,
+  baseEnv = process.env,
+  existsSync = fs.existsSync,
+} = {}) {
+  const command = String(server?.command || "").trim();
+  const args = Array.isArray(server?.args) ? server.args : [];
+  const env = { ...baseEnv, ...registryEnv(server), ...(server?.env || {}) };
+  if (platform !== "win32") return { command, args, env };
+
+  const win32Command = resolveWin32Command(command, { env, existsSync });
+  if (!win32Command.needsCmd) {
+    return { command: win32Command.command, args, env };
+  }
+
+  return {
+    command: win32Comspec(env),
+    args: ["/d", "/s", "/c", buildWin32CmdLine(win32Command.command, args)],
+    env,
+  };
+}
+
 function registryEnv(server) {
   const registryUrl = typeof server?.registryUrl === "string" ? server.registryUrl.trim() : "";
   if (!registryUrl) return {};
@@ -181,10 +206,86 @@ function registryEnv(server) {
 function commandName(command) {
   const raw = typeof command === "string" ? command.trim() : "";
   const name = raw.split(/[\\/]/).pop() || raw;
-  return name.replace(/\.exe$/i, "").toLowerCase();
+  return name.replace(/\.(?:cmd|bat|exe)$/i, "").toLowerCase();
 }
 
 function requestTimeoutMs(server) {
   const timeout = Number(server?.timeout || 0);
   return Number.isFinite(timeout) && timeout > 0 ? timeout * 1000 : 30_000;
+}
+
+function resolveWin32Command(command, { env, existsSync }) {
+  const resolved = resolveWin32PathCommand(command, { env, existsSync });
+  const effective = resolved || command;
+  if (isWin32CmdShim(effective)) return { command: effective, needsCmd: true };
+  if (isWin32Executable(effective)) return { command: effective, needsCmd: false };
+  if (isBareWin32Command(command)) {
+    return { command: effective, needsCmd: true };
+  }
+  return { command: effective, needsCmd: false };
+}
+
+function resolveWin32PathCommand(command, { env, existsSync }) {
+  const raw = String(command || "").trim();
+  if (!raw) return "";
+  const hasPath = /[\\/]/.test(raw) || /^[A-Za-z]:/.test(raw);
+  const ext = path.win32.extname(raw);
+  const pathext = win32PathExts(env);
+  const candidates = ext
+    ? [raw]
+    : [raw, ...pathext.map((suffix) => `${raw}${suffix}`)];
+
+  if (hasPath) {
+    return candidates.find((candidate) => existsSync(candidate)) || "";
+  }
+
+  for (const dir of win32PathDirs(env)) {
+    for (const candidate of candidates) {
+      const fullPath = path.win32.join(dir, candidate);
+      if (existsSync(fullPath)) return fullPath;
+    }
+  }
+  return "";
+}
+
+function win32PathDirs(env) {
+  const pathKey = Object.keys(env || {}).find((key) => key.toLowerCase() === "path");
+  const rawPath = pathKey ? String(env[pathKey] || "") : "";
+  return rawPath.split(";").map((entry) => entry.trim()).filter(Boolean);
+}
+
+function win32PathExts(env) {
+  const pathextKey = Object.keys(env || {}).find((key) => key.toLowerCase() === "pathext");
+  const raw = pathextKey ? String(env[pathextKey] || "") : ".COM;.EXE;.BAT;.CMD";
+  const values = raw.split(";").map((entry) => entry.trim()).filter(Boolean);
+  return values.length ? values : [".COM", ".EXE", ".BAT", ".CMD"];
+}
+
+function win32Comspec(env) {
+  const key = Object.keys(env || {}).find((item) => item.toLowerCase() === "comspec");
+  return key && env[key] ? String(env[key]) : "cmd.exe";
+}
+
+function isBareWin32Command(command) {
+  const raw = String(command || "").trim();
+  return !!raw && !/[\\/]/.test(raw) && !/^[A-Za-z]:/.test(raw);
+}
+
+function isWin32CmdShim(command) {
+  return /\.(?:cmd|bat)$/i.test(String(command || ""));
+}
+
+function isWin32Executable(command) {
+  return /\.exe$/i.test(String(command || ""));
+}
+
+function buildWin32CmdLine(command, args) {
+  return [command, ...args].map(quoteWin32CmdArg).join(" ");
+}
+
+function quoteWin32CmdArg(value) {
+  const text = String(value ?? "");
+  if (text.length === 0) return "\"\"";
+  if (!/[\s"&|<>^()%]/.test(text)) return text;
+  return `"${text.replace(/"/g, "\\\"").replace(/%/g, "%%")}"`;
 }

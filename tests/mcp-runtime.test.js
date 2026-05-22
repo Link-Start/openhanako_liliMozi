@@ -255,6 +255,46 @@ describe("MCP runtime policy", () => {
     expect(connector.oauthClientSecret).toBe("********");
   });
 
+  it("surfaces connector start errors in public state", async () => {
+    const stored = {
+      enabled: true,
+      connectors: [
+        {
+          id: "local",
+          name: "Local",
+          command: "npx",
+          args: ["-y", "broken-mcp"],
+        },
+      ],
+    };
+    const runtime = new McpRuntime({
+      dataDir: "/tmp/mcp-test",
+      config: {
+        get: vi.fn(() => stored),
+        set: vi.fn(),
+      },
+      registerTool: vi.fn(() => () => {}),
+      bus: { request: vi.fn() },
+      log: console,
+    }, {
+      clientFactory: () => ({
+        running: false,
+        start: vi.fn(async () => {
+          throw new Error("spawn EINVAL");
+        }),
+        stop: vi.fn(async () => {}),
+      }),
+    });
+
+    await expect(runtime.startConnector("local")).rejects.toThrow("spawn EINVAL");
+
+    expect(runtime.getState().connectors[0]).toMatchObject({
+      id: "local",
+      status: "stopped",
+      error: "spawn EINVAL",
+    });
+  });
+
   it("returns an explicit tool error when MCP is globally disabled at call time", async () => {
     const callTool = vi.fn();
     const tool = createMcpToolDefinition({
