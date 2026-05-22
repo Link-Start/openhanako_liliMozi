@@ -766,7 +766,7 @@
         "title": "ツール",
         "description": "ツールの切り替えは、会話を再開するか新しく始めた後に反映されます。進行中の会話は開始時のツールセットを使い続けます。",
         "items": {
-          "automation": { "label": "自動化", "summary": "通知やファイル作成などのスケジュール動作を Agent が作成できるようにします" },
+          "automation": { "label": "自動化", "summary": "通知とプラグインのスケジュール動作を Agent が作成できるようにします" },
           "browser": { "label": "ブラウザ", "summary": "ヘッドレスブラウザを操作してウェブを閲覧" },
           "computer": { "label": "Computer Use", "summary": "承認済みのデスクトップアプリを操作し、動作カーソルを表示します" },
           "cron": { "label": "定期実行", "summary": "指定した時刻にタスクを自動実行" },
@@ -1585,7 +1585,7 @@
     "executor": {
       "agentSession": "エージェント実行",
       "notify": "通知",
-      "fileCreate": "ファイル作成",
+      "pluginAction": "プラグインアクション",
       "directAction": "直接アクション"
     },
     "edit": "編集",

@@ -108,6 +108,35 @@ describe("PluginDevService", () => {
     expect(invocation.result.content[0].text).toBe("Echo hi");
   });
 
+  it("invokes dynamically registered dev tools with the SDK input/context signature", async () => {
+    const sourcePath = writeDevPlugin(sourceRoot, "dev-dynamic", {
+      trust: "full-access",
+      manifest: { activationEvents: ["onStartup"] },
+      lifecycle: `
+        export default class DevDynamic {
+          async onload() {
+            this.register(this.ctx.registerTool({
+              name: "dynamic",
+              description: "Dynamic dev tool",
+              execute: async (input, ctx) => (ctx.agentId || "") + ":" + input.text,
+            }));
+          }
+        }
+      `,
+    });
+    await service.installFromSource({ sourcePath, allowFullAccess: true });
+
+    const invocation = await service.invokeTool({
+      pluginId: "dev-dynamic",
+      toolName: "dynamic",
+      input: { text: "hi" },
+      agentId: "agent-dev",
+    });
+
+    expect(invocation.toolName).toBe("dev-dynamic_dynamic");
+    expect(invocation.result.content[0].text).toBe("agent-dev:hi");
+  });
+
   it("reloads from the source slot and refreshes the installed code", async () => {
     const sourcePath = writeDevPlugin(sourceRoot, "dev-reload", { prefix: "One" });
     await service.installFromSource({ sourcePath });

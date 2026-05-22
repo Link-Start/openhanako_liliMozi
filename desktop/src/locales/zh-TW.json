@@ -766,7 +766,7 @@
         "title": "工具",
         "description": "這些工具開關會在重啟對話或建立新對話後生效。目前進行中的會話會繼續使用建立時的工具集。",
         "items": {
-          "automation": { "label": "自動化", "summary": "讓 Agent 建立通知、檔案等定時動作" },
+          "automation": { "label": "自動化", "summary": "讓 Agent 建立通知和外掛定時動作" },
           "browser": { "label": "瀏覽器", "summary": "控制無頭瀏覽器瀏覽網頁" },
           "computer": { "label": "電腦控制", "summary": "控制已批准的桌面應用，並顯示即時動作游標" },
           "cron": { "label": "定時任務", "summary": "在指定時間自動執行任務" },
@@ -1585,7 +1585,7 @@
     "executor": {
       "agentSession": "助手執行",
       "notify": "通知",
-      "fileCreate": "建立檔案",
+      "pluginAction": "外掛動作",
       "directAction": "直接動作"
     },
     "edit": "編輯",

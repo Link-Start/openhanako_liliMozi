@@ -5,14 +5,19 @@
  * Cron：Studio 级任务列表统一调度，不随 active agent / workspace 切换而变化
  *
  * 通知策略：agent_session 由 agent 自行决定是否调用 notify 工具；
- * direct_action:notify 由 scheduler 走统一通知网关执行。
+ * direct_action:notify 由 scheduler 走统一通知网关执行；
+ * plugin_action 由 scheduler 到点调用指定插件工具。
  */
 
 import fs from "fs";
 import path from "path";
 import { createHeartbeat } from "../lib/desk/heartbeat.js";
 import { createCronScheduler } from "../lib/desk/cron-scheduler.js";
-import { executeDirectAutomationAction, getAutomationExecutor } from "../lib/desk/automation-executors.js";
+import {
+  executeDirectAutomationAction,
+  executePluginAutomationAction,
+  getAutomationExecutor,
+} from "../lib/desk/automation-executors.js";
 import { getLocale } from "../server/i18n.js";
 import { createFreshCompactDailyScheduler } from "../lib/fresh-compact/daily-scheduler.js";
 import { FreshCompactMaintainer } from "./fresh-compact-maintainer.js";
@@ -226,6 +231,11 @@ export class Scheduler {
         deliverNotification: (payload, opts) => this._engine.deliverNotification(payload, opts),
       });
     }
+    if (executor.kind === "plugin_action") {
+      return executePluginAutomationAction(job, {
+        invokePluginAction: (request, runtimeContext) => this._invokePluginAutomationAction(request, runtimeContext),
+      });
+    }
     if (executor.kind !== "agent_session") {
       throw new Error(`unsupported automation executor: ${executor.kind}`);
     }
@@ -235,6 +245,53 @@ export class Scheduler {
     }
     await this._executeCronJobForAgent(actorAgentId, job, executor);
     return { executorKind: "agent_session" };
+  }
+
+  async _invokePluginAutomationAction({ pluginId, actionId, params }, runtimeContext = {}) {
+    const pluginManager = this._engine.pluginManager;
+    if (!pluginManager) throw new Error("plugin manager unavailable");
+    const entry = typeof pluginManager.getPlugin === "function"
+      ? pluginManager.getPlugin(pluginId)
+      : null;
+    if (!entry) throw new Error(`plugin not found: ${pluginId}`);
+    if (entry.status !== "loaded") {
+      throw new Error(`plugin is not loaded: ${pluginId}`);
+    }
+    if (typeof pluginManager.getPluginTool !== "function"
+      || typeof pluginManager.executePluginTool !== "function") {
+      throw new Error("plugin manager tool invocation unavailable");
+    }
+    const tool = pluginManager.getPluginTool(pluginId, actionId, { entry });
+    if (!tool) throw new Error(`plugin action not found: ${pluginId}/${actionId}`);
+
+    const cwd = typeof runtimeContext.cwd === "string" && runtimeContext.cwd.trim()
+      ? runtimeContext.cwd
+      : null;
+    const executionBoundary = cwd && this._engine.runtimeContext
+      ? this._engine.createExecutionBoundary({ workbenchRoot: cwd })
+      : null;
+    return pluginManager.executePluginTool(tool, {
+      toolCallId: `automation-${runtimeContext.jobId || Date.now()}`,
+      input: params,
+      runtimeCtx: {
+        automation: {
+          jobId: runtimeContext.jobId || null,
+          label: runtimeContext.label || "",
+        },
+        agentId: runtimeContext.actorAgentId || null,
+        ...(runtimeContext.sessionPath ? {
+          sessionPath: runtimeContext.sessionPath,
+          sessionManager: {
+            getSessionFile: () => runtimeContext.sessionPath,
+            getCwd: () => cwd,
+          },
+        } : {}),
+        ...(executionBoundary ? {
+          serverNodeId: executionBoundary.serverNodeId,
+          executionBoundary,
+        } : {}),
+      },
+    });
   }
 
   /**

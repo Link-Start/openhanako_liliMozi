@@ -124,6 +124,28 @@ function normalizeRouteExecutor(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function validateRouteExecutor(executor) {
+  if (!executor) return null;
+  if (executor.kind === "agent_session") return null;
+  if (executor.kind === "direct_action") {
+    if (executor.action === "notify") return null;
+    return `unsupported direct automation action: ${executor.action || ""}`;
+  }
+  if (executor.kind === "plugin_action") {
+    if (typeof executor.pluginId !== "string" || !executor.pluginId.trim()) {
+      return "plugin_action.pluginId required";
+    }
+    if (typeof executor.actionId !== "string" || !executor.actionId.trim()) {
+      return "plugin_action.actionId required";
+    }
+    if (executor.params !== undefined && (!executor.params || typeof executor.params !== "object" || Array.isArray(executor.params))) {
+      return "plugin_action.params must be an object";
+    }
+    return null;
+  }
+  return `unsupported automation executor: ${executor.kind}`;
+}
+
 /** 列出工作台目录下的文件（异步） */
 async function listWorkspaceFiles(dir) {
   let entries;
@@ -383,6 +405,8 @@ export function createDeskRoute(engine, hub) {
       case "add": {
         const type = params.scheduleType || params.type;
         const executor = normalizeRouteExecutor(params.executor);
+        const executorError = validateRouteExecutor(executor);
+        if (executorError) return c.json({ error: executorError }, 400);
         const requiresPrompt = !executor || executor.kind === "agent_session";
         if (!type || !params.schedule || (requiresPrompt && !params.prompt)) {
           return c.json({ error: "scheduleType, schedule, prompt required" }, 400);

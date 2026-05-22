@@ -258,4 +258,136 @@ describe("Scheduler studio cron", () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("executes plugin-action cron jobs through plugin tools without creating an agent session", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-scheduler-cron-"));
+    try {
+      const agentsDir = path.join(root, "agents");
+      fs.mkdirSync(path.join(agentsDir, "agent-a"), { recursive: true });
+      const executeIsolated = vi.fn();
+      const pluginToolExecute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+      const pluginTool = {
+        name: "notes_create_note",
+        _pluginId: "notes",
+        _dynamic: true,
+        execute: pluginToolExecute,
+      };
+      const executePluginTool = vi.fn(async (tool, invocation) => (
+        tool._dynamic
+          ? tool.execute(invocation.input, invocation.runtimeCtx)
+          : tool.execute(invocation.toolCallId, invocation.input, invocation.runtimeCtx)
+      ));
+      const engine = {
+        agentsDir,
+        agents: new Map(),
+        runtimeContext: null,
+        getStudioCronStore: () => ({ listJobs: vi.fn(() => []) }),
+        getHeartbeatMaster: () => false,
+        executeIsolated,
+        pluginManager: {
+          getPlugin: vi.fn(() => ({ id: "notes", status: "loaded" })),
+          getPluginTool: vi.fn(() => pluginTool),
+          executePluginTool,
+        },
+        emitDevLog: vi.fn(),
+      };
+      const scheduler = new Scheduler({ hub: { engine, eventBus: { emit: vi.fn() } } });
+      scheduler.start();
+      const executeJob = createCronSchedulerMock.mock.calls[0][0].executeJob;
+
+      const result = await executeJob({
+        id: "studio_job_plugin",
+        label: "Daily note",
+        actorAgentId: "agent-a",
+        executionContext: {
+          kind: "session_workspace",
+          cwd: "/workspace/a",
+          workspaceFolders: [],
+          sourceSessionPath: "/sessions/a.jsonl",
+          createdByAgentId: "agent-a",
+        },
+        executor: {
+          kind: "plugin_action",
+          pluginId: "notes",
+          actionId: "create_note",
+          params: { title: "Today" },
+        },
+      });
+
+      expect(executeIsolated).not.toHaveBeenCalled();
+      expect(executePluginTool).toHaveBeenCalledWith(
+        pluginTool,
+        {
+          toolCallId: "automation-studio_job_plugin",
+          input: { title: "Today" },
+          runtimeCtx: {
+            automation: { jobId: "studio_job_plugin", label: "Daily note" },
+            agentId: "agent-a",
+            sessionPath: "/sessions/a.jsonl",
+            sessionManager: {
+              getSessionFile: expect.any(Function),
+              getCwd: expect.any(Function),
+            },
+          },
+        },
+      );
+      expect(pluginToolExecute).toHaveBeenCalledWith(
+        { title: "Today" },
+        {
+          automation: { jobId: "studio_job_plugin", label: "Daily note" },
+          agentId: "agent-a",
+          sessionPath: "/sessions/a.jsonl",
+          sessionManager: {
+            getSessionFile: expect.any(Function),
+            getCwd: expect.any(Function),
+          },
+        },
+      );
+      expect(result).toEqual({
+        executorKind: "plugin_action",
+        pluginId: "notes",
+        actionId: "create_note",
+        result: { content: [{ type: "text", text: "ok" }] },
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails plugin-action cron jobs explicitly when the plugin tool is unavailable", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-scheduler-cron-"));
+    try {
+      const agentsDir = path.join(root, "agents");
+      fs.mkdirSync(path.join(agentsDir, "agent-a"), { recursive: true });
+      const engine = {
+        agentsDir,
+        agents: new Map(),
+        getStudioCronStore: () => ({ listJobs: vi.fn(() => []) }),
+        getHeartbeatMaster: () => false,
+        pluginManager: {
+          getPlugin: vi.fn(() => ({ id: "notes", status: "loaded" })),
+          getPluginTool: vi.fn(() => null),
+          executePluginTool: vi.fn(),
+        },
+        emitDevLog: vi.fn(),
+      };
+      const scheduler = new Scheduler({ hub: { engine, eventBus: { emit: vi.fn() } } });
+      scheduler.start();
+      const executeJob = createCronSchedulerMock.mock.calls[0][0].executeJob;
+
+      await expect(executeJob({
+        id: "studio_job_plugin_missing",
+        label: "Missing plugin action",
+        actorAgentId: "agent-a",
+        executor: {
+          kind: "plugin_action",
+          pluginId: "notes",
+          actionId: "create_note",
+          params: {},
+        },
+      })).rejects.toThrow(/plugin action not found: notes\/create_note/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -419,6 +419,62 @@ describe("tool loading", () => {
     expect(tools[0].description).toBe("Search the web");
   });
 
+  it("invokes static plugin tools through the unified tool adapter", async () => {
+    const dir = path.join(pluginsDir, "static-invoke");
+    fs.mkdirSync(path.join(dir, "tools"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "tools", "echo.js"), `
+      export const name = "echo";
+      export const description = "Echo text";
+      export const parameters = {};
+      export async function execute(input, ctx) {
+        return (ctx.sessionPath || "") + ":" + input.text;
+      }
+    `);
+    const pm = new PluginManager({ pluginsDir, dataDir, bus: await makeBus() });
+    pm.scan();
+    await pm.loadAll();
+
+    const tool = pm.getPluginTool("static-invoke", "echo");
+    const result = await pm.executePluginTool(tool, {
+      toolCallId: "call-static",
+      input: { text: "hello" },
+      runtimeCtx: { sessionPath: "/sessions/static.jsonl" },
+    });
+
+    expect(result.content[0].text).toBe("/sessions/static.jsonl:hello");
+  });
+
+  it("finds plugin tools when the action id contains underscores", async () => {
+    const dir = path.join(pluginsDir, "underscore-plugin");
+    fs.mkdirSync(path.join(dir, "tools"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "tools", "create-note.js"), `
+      export const name = "create_note";
+      export const description = "Create note";
+      export const parameters = {};
+      export async function execute(input) {
+        return input.title;
+      }
+    `);
+    fs.writeFileSync(path.join(dir, "tools", "archive.js"), `
+      export const name = "underscore-plugin_archive";
+      export const description = "Archive note";
+      export const parameters = {};
+      export async function execute(input) {
+        return input.title;
+      }
+    `);
+    const pm = new PluginManager({ pluginsDir, dataDir, bus: await makeBus() });
+    pm.scan();
+    await pm.loadAll();
+
+    expect(pm.getPluginTool("underscore-plugin", "create_note")?.name)
+      .toBe("underscore-plugin_create_note");
+    expect(pm.getPluginTool("underscore-plugin", "underscore-plugin_create_note")?.name)
+      .toBe("underscore-plugin_create_note");
+    expect(pm.getPluginTool("underscore-plugin", "underscore-plugin_archive")?.name)
+      .toBe("underscore-plugin_underscore-plugin_archive");
+  });
+
   it("exposes a session file registration helper to plugin tools", async () => {
     const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
       id: "sf_plugin_output",
@@ -965,9 +1021,82 @@ describe("addTool (dynamic registration)", () => {
     expect(tools).toHaveLength(1);
     expect(tools[0].name).toBe("mcp-bridge_search");
     expect(tools[0]._dynamic).toBe(true);
+    expect(tools[0]._dynamicInvocationStyle).toBe("sdk_tool");
 
     remove();
     expect(pm.getAllTools()).toHaveLength(0);
+  });
+
+  it("invokes dynamic plugin tools with the SDK input/context signature", async () => {
+    const dir = path.join(pluginsDir, "dyn-invoke");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+      id: "dyn-invoke",
+      name: "Dynamic Invoke",
+      version: "1.0.0",
+    }));
+    const pm = new PluginManager({ pluginsDir, dataDir, bus: await makeBus() });
+    pm.scan();
+    await pm.loadAll();
+    const entry = pm.getPlugin("dyn-invoke");
+    const execute = vi.fn(async (input, ctx) => `${ctx.agentId}:${input.query}`);
+    const remove = pm.addTool("dyn-invoke", {
+      name: "search",
+      description: "Dynamic search",
+      execute,
+    }, { pluginKey: entry.pluginKey, source: entry.source });
+
+    const tool = pm.getPluginTool("dyn-invoke", "search");
+    const result = await pm.executePluginTool(tool, {
+      toolCallId: "call-dynamic",
+      input: { query: "notes" },
+      runtimeCtx: { agentId: "agent-a" },
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      { query: "notes" },
+      { agentId: "agent-a" },
+    );
+    expect(result.content[0].text).toBe("agent-a:notes");
+    remove();
+  });
+
+  it("keeps legacy Pi-signature dynamic tools callable through the unified adapter", async () => {
+    const dir = path.join(pluginsDir, "mcp-bridge");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+      id: "mcp-bridge",
+      name: "MCP Bridge",
+      version: "1.0.0",
+    }));
+    const pm = new PluginManager({ pluginsDir, dataDir, bus: await makeBus() });
+    pm.scan();
+    await pm.loadAll();
+    const entry = pm.getPlugin("mcp-bridge");
+    const execute = vi.fn(async (_toolCallId, params, runtimeCtx) => (
+      `${runtimeCtx.agentId}:${params.query}`
+    ));
+    const remove = pm.addTool("mcp-bridge", {
+      name: "github_search",
+      description: "Legacy MCP search",
+      invocationStyle: "pi_tool",
+      execute,
+    }, { pluginKey: entry.pluginKey, source: entry.source });
+
+    const tool = pm.getPluginTool("mcp-bridge", "github_search");
+    const result = await pm.executePluginTool(tool, {
+      toolCallId: "call-pi",
+      input: { query: "issues" },
+      runtimeCtx: { agentId: "agent-a" },
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      "call-pi",
+      { query: "issues" },
+      { agentId: "agent-a" },
+    );
+    expect(result.content[0].text).toBe("agent-a:issues");
+    remove();
   });
 
   it("plugin can register tools via ctx.registerTool in onload", async () => {

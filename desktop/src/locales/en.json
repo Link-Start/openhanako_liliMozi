@@ -766,7 +766,7 @@
         "title": "Tools",
         "description": "Tool switches take effect after restarting or starting a conversation. Active conversations keep using the tool set they started with.",
         "items": {
-          "automation": { "label": "Automation", "summary": "Let the agent create scheduled notifications, files, and other actions" },
+          "automation": { "label": "Automation", "summary": "Let the agent create scheduled notifications and plugin actions" },
           "browser": { "label": "Browser", "summary": "Control a headless browser to navigate web pages" },
           "computer": { "label": "Computer Use", "summary": "Control approved desktop apps with a visible action overlay" },
           "cron": { "label": "Scheduled Tasks", "summary": "Run tasks automatically at specified times" },
@@ -1585,7 +1585,7 @@
     "executor": {
       "agentSession": "Agent",
       "notify": "Notify",
-      "fileCreate": "Create file",
+      "pluginAction": "Plugin action",
       "directAction": "Direct action"
     },
     "edit": "Edit",

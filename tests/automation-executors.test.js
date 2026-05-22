@@ -1,10 +1,10 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
 import { describe, expect, it, vi } from "vitest";
-import { executeDirectAutomationAction } from "../lib/desk/automation-executors.js";
+import {
+  executeDirectAutomationAction,
+  executePluginAutomationAction,
+} from "../lib/desk/automation-executors.js";
 
-describe("direct automation executors", () => {
+describe("automation executors", () => {
   it("delivers notify actions through the notification gateway", async () => {
     const deliverNotification = vi.fn(async () => ({
       ok: true,
@@ -43,91 +43,84 @@ describe("direct automation executors", () => {
     });
   });
 
-  it("creates files inside the captured execution cwd", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-automation-file-"));
-    try {
-      const result = await executeDirectAutomationAction({
-        id: "job_file",
+  it("rejects file.create as an unsupported direct action", async () => {
+    await expect(executeDirectAutomationAction({
+      id: "job_file",
+      executor: {
+        kind: "direct_action",
+        action: "file.create",
+        params: { relativePath: "notes/today.md", content: "# Today\n" },
+      },
+    }, {})).rejects.toThrow(/unsupported direct automation action: file\.create/);
+  });
+
+  it("invokes plugin actions through the plugin action gateway", async () => {
+    const invokePluginAction = vi.fn(async () => ({ ok: true, text: "created" }));
+
+    const result = await executePluginAutomationAction({
+      id: "job_plugin",
+      label: "Create note",
+      actorAgentId: "hana",
+      executionContext: {
+        kind: "session_workspace",
+        cwd: "/workspace",
+        workspaceFolders: ["/workspace/ref"],
+        sourceSessionPath: "/sessions/source.jsonl",
+        createdByAgentId: "hana",
+      },
+      executor: {
+        kind: "plugin_action",
+        pluginId: "notes",
+        actionId: "create_note",
+        params: { title: "Today" },
+      },
+    }, { invokePluginAction });
+
+    expect(invokePluginAction).toHaveBeenCalledWith(
+      { pluginId: "notes", actionId: "create_note", params: { title: "Today" } },
+      {
+        jobId: "job_plugin",
+        label: "Create note",
         actorAgentId: "hana",
         executionContext: {
           kind: "session_workspace",
-          cwd: root,
-          workspaceFolders: [],
+          cwd: "/workspace",
+          workspaceFolders: ["/workspace/ref"],
           sourceSessionPath: "/sessions/source.jsonl",
           createdByAgentId: "hana",
         },
-        executor: {
-          kind: "direct_action",
-          action: "file.create",
-          params: {
-            relativePath: "notes/today.md",
-            content: "# Today\n",
-            ifExists: "fail",
-          },
-        },
-      }, {});
-
-      const filePath = path.join(root, "notes", "today.md");
-      expect(fs.readFileSync(filePath, "utf-8")).toBe("# Today\n");
-      expect(result).toMatchObject({
-        executorKind: "direct_action",
-        action: "file.create",
-        file: {
-          filePath,
-          relativePath: "notes/today.md",
-          created: true,
-        },
-      });
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+        cwd: "/workspace",
+        workspaceFolders: ["/workspace/ref"],
+        sessionPath: "/sessions/source.jsonl",
+      },
+    );
+    expect(result).toEqual({
+      executorKind: "plugin_action",
+      pluginId: "notes",
+      actionId: "create_note",
+      result: { ok: true, text: "created" },
+    });
   });
 
-  it("rejects file creation outside the captured cwd", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-automation-file-"));
-    try {
-      await expect(executeDirectAutomationAction({
-        id: "job_file",
-        executionContext: { kind: "session_workspace", cwd: root, workspaceFolders: [] },
-        executor: {
-          kind: "direct_action",
-          action: "file.create",
-          params: { relativePath: "../escape.md", content: "no" },
-        },
-      }, {})).rejects.toThrow(/relativePath must stay inside execution cwd/);
+  it("requires plugin action identity fields", async () => {
+    await expect(executePluginAutomationAction({
+      id: "job_plugin",
+      executor: {
+        kind: "plugin_action",
+        pluginId: "",
+        actionId: "create_note",
+        params: {},
+      },
+    }, { invokePluginAction: vi.fn() })).rejects.toThrow(/plugin_action\.pluginId is required/);
 
-      await expect(executeDirectAutomationAction({
-        id: "job_file",
-        executionContext: { kind: "session_workspace", cwd: root, workspaceFolders: [] },
-        executor: {
-          kind: "direct_action",
-          action: "file.create",
-          params: { relativePath: path.join(root, "absolute.md"), content: "no" },
-        },
-      }, {})).rejects.toThrow(/relativePath must be relative/);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("does not overwrite existing files by default", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-automation-file-"));
-    try {
-      fs.writeFileSync(path.join(root, "daily.md"), "old", "utf-8");
-
-      await expect(executeDirectAutomationAction({
-        id: "job_file",
-        executionContext: { kind: "session_workspace", cwd: root, workspaceFolders: [] },
-        executor: {
-          kind: "direct_action",
-          action: "file.create",
-          params: { relativePath: "daily.md", content: "new" },
-        },
-      }, {})).rejects.toThrow(/target already exists/);
-
-      expect(fs.readFileSync(path.join(root, "daily.md"), "utf-8")).toBe("old");
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+    await expect(executePluginAutomationAction({
+      id: "job_plugin",
+      executor: {
+        kind: "plugin_action",
+        pluginId: "notes",
+        actionId: "",
+        params: {},
+      },
+    }, { invokePluginAction: vi.fn() })).rejects.toThrow(/plugin_action\.actionId is required/);
   });
 });

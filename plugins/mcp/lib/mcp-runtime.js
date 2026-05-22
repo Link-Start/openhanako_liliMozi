@@ -153,6 +153,7 @@ export function createMcpToolDefinition({
     name,
     description: description || `MCP connector tool ${connectorId}/${toolName}`,
     parameters: inputSchema || { type: "object", properties: {} },
+    invocationStyle: "pi_tool",
     metadata: { kind: "mcp", connectorId, serverId: connectorId, toolName },
     isEnabledForAgentConfig: (agentConfig) => isMcpToolEnabledForAgentConfig(agentConfig, {
       globalEnabled: getGlobalEnabled(),

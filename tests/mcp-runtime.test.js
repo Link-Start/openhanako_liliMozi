@@ -12,6 +12,18 @@ describe("MCP runtime policy", () => {
     expect(toMcpToolId("github.com", "search/repositories")).toBe("github_com_search_repositories");
   });
 
+  it("marks MCP dynamic tools as legacy Pi-signature tools", () => {
+    const tool = createMcpToolDefinition({
+      connectorId: "github",
+      toolName: "search",
+      getGlobalEnabled: () => true,
+      getAgentConfig: vi.fn(async () => ({})),
+      callTool: vi.fn(),
+    });
+
+    expect(tool.invocationStyle).toBe("pi_tool");
+  });
+
   it("requires global, server, and tool-level agent enablement before exposing a tool", () => {
     const enabledAgent = {
       mcp: {

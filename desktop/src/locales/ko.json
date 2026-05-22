@@ -766,7 +766,7 @@
         "title": "도구",
         "description": "도구 스위치는 대화를 다시 시작하거나 새 대화를 시작한 뒤 적용돼요. 진행 중인 대화는 시작할 때의 도구 집합을 계속 사용해요.",
         "items": {
-          "automation": { "label": "자동화", "summary": "Agent가 알림, 파일 등 예약 동작을 만들 수 있게 합니다" },
+          "automation": { "label": "자동화", "summary": "Agent가 알림과 플러그인 예약 동작을 만들 수 있게 합니다" },
           "browser": { "label": "브라우저", "summary": "헤드리스 브라우저로 웹 페이지를 탐색" },
           "computer": { "label": "Computer Use", "summary": "승인된 데스크톱 앱을 제어하고 실시간 동작 커서를 표시합니다" },
           "cron": { "label": "예약 작업", "summary": "지정한 시간에 작업을 자동 실행" },
@@ -1585,7 +1585,7 @@
     "executor": {
       "agentSession": "에이전트 실행",
       "notify": "알림",
-      "fileCreate": "파일 생성",
+      "pluginAction": "플러그인 작업",
       "directAction": "직접 작업"
     },
     "edit": "편집",

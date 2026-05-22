@@ -19,6 +19,8 @@ interface CronJob {
     kind?: string;
     action?: string;
     agentId?: string | null;
+    pluginId?: string;
+    actionId?: string;
     params?: Record<string, unknown>;
   };
 }
@@ -176,9 +178,9 @@ function automationExecutorLabel(job: CronJob): string {
   const t = window.t ?? ((p: string) => p);
   if (job.executor?.kind === 'direct_action') {
     if (job.executor.action === 'notify') return t('automation.executor.notify');
-    if (job.executor.action === 'file.create') return t('automation.executor.fileCreate');
     return t('automation.executor.directAction');
   }
+  if (job.executor?.kind === 'plugin_action') return t('automation.executor.pluginAction');
   return t('automation.executor.agentSession');
 }
 
@@ -214,7 +216,7 @@ function AutomationItem({
   const modelPanelRef = useRef<HTMLDivElement>(null);
 
   const labelText = job.label || job.prompt?.slice(0, 40) || job.id;
-  const isAgentSession = job.executor?.kind !== 'direct_action';
+  const isAgentSession = !job.executor || job.executor.kind === 'agent_session';
   const executorLabel = automationExecutorLabel(job);
 
   const startEdit = useCallback(() => {

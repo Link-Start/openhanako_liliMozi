@@ -148,6 +148,8 @@ export interface HanaToolDefinition<Input = unknown, Output = unknown> {
   parameters?: JsonSchema;
   promptSnippet?: string;
   promptGuidelines?: string;
+  metadata?: Record<string, unknown>;
+  invocationStyle?: 'sdk_tool' | 'pi_tool';
   execute(input: Input, ctx: HanaToolContext): MaybePromise<Output>;
 }
 

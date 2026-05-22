@@ -86,6 +86,26 @@ function activationMatches(events = [], reason = {}) {
   return false;
 }
 
+function normalizePluginToolResult(raw, pluginId) {
+  let result;
+  if (typeof raw === "string") {
+    result = { content: [{ type: "text", text: raw }] };
+  } else if (raw && raw.content) {
+    result = raw;
+  } else {
+    result = { content: [{ type: "text", text: String(raw ?? "") }] };
+  }
+  if (result.details?.card && pluginId && !result.details.card.pluginId) {
+    result.details.card.pluginId = pluginId;
+  }
+  return result;
+}
+
+function getDynamicToolInvocationStyle(toolDef = {}) {
+  const style = toolDef.invocationStyle || toolDef.metadata?.hanaInvocationStyle;
+  return style === "pi_tool" ? "pi_tool" : "sdk_tool";
+}
+
 export class PluginManager {
   /**
    * @param {{ pluginsDirs: string[], dataDir: string, bus: object }} opts
@@ -581,21 +601,7 @@ export class PluginManager {
               ? { ...ctx, ...runtimeCtx, ...sessionCtx }
               : { ...ctx, ...sessionCtx };
             const raw = await origExecute(params, mergedCtx);
-            // Pi SDK 期望 { content: ContentBlock[], details? }
-            // Plugin tool 可能返回纯字符串，需要包装
-            let result;
-            if (typeof raw === "string") {
-              result = { content: [{ type: "text", text: raw }] };
-            } else if (raw && raw.content) {
-              result = raw;
-            } else {
-              result = { content: [{ type: "text", text: String(raw ?? "") }] };
-            }
-            // Plugin Card: auto-inject pluginId
-            if (result.details?.card && !result.details.card.pluginId) {
-              result.details.card.pluginId = ctx.pluginId;
-            }
-            return result;
+            return normalizePluginToolResult(raw, ctx.pluginId);
           },
           _pluginId: entry.id,
           _pluginKey: entry.pluginKey,
@@ -617,16 +623,24 @@ export class PluginManager {
   addTool(pluginId, toolDef, options = {}) {
     const source = options.source ? normalizePluginSource(options.source) : null;
     const pluginKey = options.pluginKey || null;
+    const invocationStyle = getDynamicToolInvocationStyle(toolDef);
+    const origExecute = toolDef.execute;
     const tool = {
       name: `${pluginId}_${toolDef.name}`,
       description: toolDef.description || "",
       parameters: toolDef.parameters || { type: "object", properties: {} },
-      execute: toolDef.execute,
+      execute: async (toolCallId, params, runtimeCtx) => {
+        const raw = invocationStyle === "pi_tool"
+          ? await origExecute(toolCallId, params, runtimeCtx)
+          : await origExecute(params, runtimeCtx);
+        return normalizePluginToolResult(raw, pluginId);
+      },
       _pluginId: pluginId,
       _pluginKey: pluginKey,
       ...(pluginKey ? { _pluginKey: pluginKey } : {}),
       ...(source ? { _pluginSource: source } : {}),
       _dynamic: true,
+      _dynamicInvocationStyle: invocationStyle,
     };
     if (typeof toolDef.isEnabledForAgentConfig === "function") {
       tool.isEnabledForAgentConfig = toolDef.isEnabledForAgentConfig;
@@ -639,6 +653,27 @@ export class PluginManager {
       const idx = this._tools.indexOf(tool);
       if (idx !== -1) this._tools.splice(idx, 1);
     };
+  }
+
+  getPluginTool(pluginId, toolName, options = {}) {
+    const entry = options.entry || this._resolvePluginEntry(pluginId, options);
+    if (!entry || !toolName) return null;
+    const requestedToolName = String(toolName).trim();
+    if (!requestedToolName) return null;
+    const prefixedToolName = `${entry.id}_${requestedToolName}`;
+    return this.getAllTools({ includeShadowed: options.includeShadowed === true }).find((candidate) => (
+      candidate?._pluginKey === entry.pluginKey
+      && (candidate.name === prefixedToolName || candidate.name === requestedToolName)
+    )) || null;
+  }
+
+  async executePluginTool(tool, { toolCallId, input = {}, runtimeCtx = {} } = {}) {
+    if (!tool || typeof tool.execute !== "function") {
+      throw new Error("plugin tool is not executable");
+    }
+    const callId = toolCallId || `plugin-tool-${Date.now()}`;
+    const raw = await tool.execute(callId, input, runtimeCtx);
+    return normalizePluginToolResult(raw, tool._pluginId);
   }
 
   getAllTools(options = {}) {

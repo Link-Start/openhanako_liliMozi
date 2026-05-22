@@ -604,11 +604,10 @@ export class PluginDevService {
     if (entry.status !== "loaded") {
       throw createDevError(`Plugin "${pluginId}" is not loaded`, 409, "PLUGIN_DEV_PLUGIN_NOT_LOADED");
     }
-    const fullToolName = toolName.includes("_") ? toolName : `${pluginId}_${toolName}`;
-    const tool = this._pluginManager.getAllTools({ includeShadowed: true }).find((candidate) => (
-      candidate._pluginKey === entry.pluginKey
-      && (candidate.name === fullToolName || candidate.name === toolName)
-    ));
+    const tool = this._pluginManager.getPluginTool?.(pluginId, toolName, {
+      entry,
+      includeShadowed: true,
+    });
     if (!tool) {
       throw createDevError(`Tool "${toolName}" not found for plugin "${pluginId}"`, 404, "PLUGIN_DEV_TOOL_NOT_FOUND");
     }
@@ -621,7 +620,11 @@ export class PluginDevService {
         sessionManager: { getSessionFile: () => sessionPath },
       } : {}),
     };
-    const result = await tool.execute(`plugin-dev-${startedAt}`, input, runtimeCtx);
+    const result = await this._pluginManager.executePluginTool(tool, {
+      toolCallId: `plugin-dev-${startedAt}`,
+      input,
+      runtimeCtx,
+    });
     return {
       pluginId,
       toolName: tool.name,

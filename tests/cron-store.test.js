@@ -390,13 +390,12 @@ describe("Automation job read model", () => {
     expect(job.createdBy).toEqual({ kind: "agent", agentId: "hana", sourceSessionPath: "/sessions/source.jsonl" });
   });
 
-  it("preserves explicit file.create direct-action executors", () => {
+  it("preserves explicit plugin-action executors", () => {
     const store = makeTmpStore();
 
     const job = store.addJob({
       type: "cron",
       schedule: "0 18 * * *",
-      label: "Daily note",
       actorAgentId: "hana",
       executionContext: {
         kind: "session_workspace",
@@ -406,26 +405,36 @@ describe("Automation job read model", () => {
         createdByAgentId: "hana",
       },
       executor: {
-        kind: "direct_action",
-        action: "file.create",
-        params: {
-          relativePath: "notes/today.md",
-          content: "# Today\n",
-          ifExists: "fail",
-        },
+        kind: "plugin_action",
+        pluginId: "notes",
+        actionId: "create_note",
+        params: { folder: "daily" },
       },
     });
 
+    expect(job.label).toBe("notes:create_note");
     expect(job.executor).toEqual({
-      kind: "direct_action",
-      action: "file.create",
-      params: {
-        relativePath: "notes/today.md",
-        content: "# Today\n",
-        ifExists: "fail",
-      },
+      kind: "plugin_action",
+      pluginId: "notes",
+      actionId: "create_note",
+      params: { folder: "daily" },
     });
     expect(job.createdBy).toEqual({ kind: "agent", agentId: "hana" });
+  });
+
+  it("rejects removed file.create direct-action executors on new writes", () => {
+    const store = makeTmpStore();
+
+    expect(() => store.addJob({
+      type: "cron",
+      schedule: "0 18 * * *",
+      actorAgentId: "hana",
+      executor: {
+        kind: "direct_action",
+        action: "file.create",
+        params: { relativePath: "notes/today.md", content: "# Today\n" },
+      },
+    })).toThrow(/unsupported direct automation action: file\.create/);
   });
 });
 

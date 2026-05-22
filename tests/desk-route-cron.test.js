@@ -219,4 +219,102 @@ describe("desk cron route", () => {
       createdBy: { kind: "user" },
     });
   });
+
+  it("adds plugin-action automation jobs through the cron compatibility route", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desk-cron-"));
+    roots.push(root);
+    const service = new StudioCronService({
+      hanakoHome: root,
+      agentsDir: path.join(root, "agents"),
+      getStudioId: () => "studio-main",
+    });
+    const engine = {
+      getAgent: (id) => (id === "agent-a" ? { id, agentName: "Agent A" } : null),
+      getStudioCronStore: () => service,
+      listAgents: () => [],
+    };
+    const app = await createApp(engine);
+
+    const res = await app.request("/api/desk/cron", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "add",
+        scheduleType: "cron",
+        schedule: "0 18 * * *",
+        label: "Daily Note",
+        actorAgentId: "agent-a",
+        executionContext: {
+          kind: "session_workspace",
+          cwd: "/workspace/a",
+          workspaceFolders: [],
+          sourceSessionPath: "/sessions/a.jsonl",
+          createdByAgentId: "agent-a",
+        },
+        executor: {
+          kind: "plugin_action",
+          pluginId: "notes",
+          actionId: "create_note",
+          params: { title: "Today" },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.job).toMatchObject({
+      prompt: "",
+      label: "Daily Note",
+      executor: {
+        kind: "plugin_action",
+        pluginId: "notes",
+        actionId: "create_note",
+        params: { title: "Today" },
+      },
+      createdBy: { kind: "user" },
+    });
+  });
+
+  it("rejects removed file.create direct-action jobs through the cron route", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desk-cron-"));
+    roots.push(root);
+    const service = new StudioCronService({
+      hanakoHome: root,
+      agentsDir: path.join(root, "agents"),
+      getStudioId: () => "studio-main",
+    });
+    const engine = {
+      getAgent: (id) => (id === "agent-a" ? { id, agentName: "Agent A" } : null),
+      getStudioCronStore: () => service,
+      listAgents: () => [],
+    };
+    const app = await createApp(engine);
+
+    const res = await app.request("/api/desk/cron", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "add",
+        scheduleType: "cron",
+        schedule: "0 18 * * *",
+        actorAgentId: "agent-a",
+        executionContext: {
+          kind: "session_workspace",
+          cwd: "/workspace/a",
+          workspaceFolders: [],
+          sourceSessionPath: "/sessions/a.jsonl",
+          createdByAgentId: "agent-a",
+        },
+        executor: {
+          kind: "direct_action",
+          action: "file.create",
+          params: { relativePath: "notes/today.md", content: "# Today\n" },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "unsupported direct automation action: file.create" });
+    expect(service.listJobs()).toEqual([]);
+  });
 });
