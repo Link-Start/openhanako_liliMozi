@@ -4,6 +4,7 @@ import { useAnyBrowserRunning } from '../../stores/browser-slice';
 import { ChannelListSidebar } from '../channels/ChannelList';
 import { RegionalErrorBoundary } from '../RegionalErrorBoundary';
 import { SessionList } from '../SessionList';
+import { SidebarNoticeSlot } from '../notices/SidebarNoticeSlot';
 
 interface ChatSidebarProps {
   open: boolean;
@@ -111,6 +112,7 @@ export function ChatSidebar({
             <RegionalErrorBoundary region={region} resetKeys={[currentAgentId]}>
               <SessionList />
             </RegionalErrorBoundary>
+            <SidebarNoticeSlot />
           </div>
         </div>
 
