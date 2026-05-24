@@ -851,6 +851,59 @@ export class Agent {
     return fill(raw);
   }
 
+  _formatTeamRoster(isZh, options = {}) {
+    const includeSelf = options.includeSelf !== false;
+    if (!this._listAgents) return "";
+    const allAgents = this._listAgents();
+    const others = allAgents.filter(a => a.id !== this.id);
+    if (others.length === 0) return "";
+    const rosterAgents = includeSelf ? allAgents : others;
+    return rosterAgents.map(a => {
+      const tag = a.id === this.id ? (isZh ? "（你）" : " (you)") : "";
+      const model = a.model ? ` [${a.model}]` : "";
+      const desc = a.summary ? ` — ${a.summary}` : "";
+      const nameLabel = a.name && a.name !== a.id ? `（${a.name}）` : "";
+      return `- \`${a.id}\`${nameLabel}${tag}${model}${desc}`;
+    }).join("\n");
+  }
+
+  buildMemoryReflectionSnapshot(options = {}) {
+    const forceMemoryEnabled = Object.prototype.hasOwnProperty.call(options, "forceMemoryEnabled")
+      ? options.forceMemoryEnabled
+      : null;
+    const memoryEnabled = typeof forceMemoryEnabled === "boolean"
+      ? forceMemoryEnabled
+      : this.memoryEnabled;
+    const isZh = String(this._config.locale || "").startsWith("zh");
+    const readFile = (filePath) => safeReadFile(filePath, "");
+
+    const pinnedMd = readFile(path.join(this.agentDir, "pinned.md")).trim();
+    const memoryMd = readFile(this.memoryMdPath).trim();
+    const hasMemory = memoryMd && memoryMd !== "（暂无记忆）" && memoryMd !== "(No memory yet)";
+    const existingMemory = memoryEnabled
+      ? [
+        pinnedMd
+          ? (isZh ? `# 置顶记忆\n\n${pinnedMd}` : `# Pinned Memories\n\n${pinnedMd}`)
+          : "",
+        hasMemory
+          ? (isZh ? `# 长期记忆\n\n${memoryMd}` : `# Long-Term Memory\n\n${memoryMd}`)
+          : "",
+      ].filter(Boolean).join("\n\n")
+      : "";
+
+    return {
+      version: 1,
+      locale: this._config.locale || "",
+      agentId: this.id,
+      agentName: this.agentName,
+      userName: this.userName,
+      identityAndPersonality: this.personality.trim(),
+      userProfile: readFile(path.join(this.userDir, "user.md")).trim(),
+      existingMemory,
+      roster: this._formatTeamRoster(isZh, { includeSelf: false }),
+    };
+  }
+
   /**
    * 组装 system prompt
    * @param {object} [options]
@@ -1155,18 +1208,9 @@ export class Agent {
 
     // 团队协作（仅当存在其他 agent 时注入）
     // Subagent 场景下跳过：subagent 没有 subagent 工具，知道其他 agent 也使不上
-    if (this._listAgents && !forSubagent) {
-      const myId = this.id;
-      const allAgents = this._listAgents();
-      const others = allAgents.filter(a => a.id !== myId);
-      if (others.length > 0) {
-        const roster = allAgents.map(a => {
-          const tag = a.id === myId ? (isZh ? "（你）" : " (you)") : "";
-          const model = a.model ? ` [${a.model}]` : "";
-          const desc = a.summary ? ` — ${a.summary}` : "";
-          const nameLabel = a.name && a.name !== a.id ? `（${a.name}）` : "";
-          return `- \`${a.id}\`${nameLabel}${tag}${model}${desc}`;
-        }).join("\n");
+    if (!forSubagent) {
+      const roster = this._formatTeamRoster(isZh);
+      if (roster) {
         parts.push(isZh
           ? `\n## 团队\n\n` +
             `你不是独自工作。当前环境中有多个 agent，各有不同的专长和模型：\n\n${roster}\n\n` +

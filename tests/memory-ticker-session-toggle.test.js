@@ -232,6 +232,35 @@ describe("memory ticker respects session-level memory toggle", () => {
     });
   });
 
+  it("passes the session memory reflection snapshot from session-meta into rollingSummary", async () => {
+    const metaPath = path.join(tmpDir, "sessions", "session-meta.json");
+    const snapshot = {
+      version: 1,
+      agentName: "Hana",
+      userName: "测试用户",
+      identityAndPersonality: "Hana 的人格设定。",
+      userProfile: "测试用户的主人设定。",
+      existingMemory: "已有长期记忆。",
+      roster: "同处于这个系统里的别的 Agent：Butter。",
+    };
+    fs.writeFileSync(metaPath, JSON.stringify({
+      [path.basename(sessionPath)]: {
+        memoryReflectionSnapshot: snapshot,
+      },
+    }, null, 2), "utf-8");
+    const { ticker, summaryManager } = makeTicker(tmpDir, () => true);
+
+    ticker.notifyTurn(sessionPath);
+    await ticker.notifySessionEnd(sessionPath);
+
+    expect(summaryManager.rollingSummary).toHaveBeenCalledOnce();
+    expect(summaryManager.rollingSummary.mock.calls[0][3]).toEqual({
+      resetAt: null,
+      timeZone: "Asia/Shanghai",
+      memoryReflectionSnapshot: snapshot,
+    });
+  });
+
   it("startup recovery skips sessions whose file mtime is before the reset watermark", async () => {
     const memoryDir = path.join(tmpDir, "memory");
     writeResetMarker(memoryDir, "2026-04-29T08:00:00.000Z");

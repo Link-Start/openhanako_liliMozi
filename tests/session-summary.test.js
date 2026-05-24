@@ -130,4 +130,45 @@ describe("SessionSummaryManager.rollingSummary prompt contract", () => {
       cleanup();
     }
   });
+
+  it("frames rolling summary as the agent reviewing its own existing memory snapshot", async () => {
+    callText.mockResolvedValueOnce("### 重要事实\n- 无\n\n### 事情经过\n- [2026-04-15 10:00] 用户在讨论记忆系统。");
+    const { manager, cleanup } = createManager();
+    try {
+      await manager.rollingSummary(
+        "s1",
+        [{ role: "user", content: "我们看一下记忆 rolling。", timestamp: "2026-04-15T10:00:00.000Z" }],
+        { model: "m", api: "openai-completions", api_key: "k", base_url: "http://x" },
+        {
+          memoryReflectionSnapshot: {
+            version: 1,
+            locale: "zh-CN",
+            agentName: "Hana",
+            userName: "测试用户",
+            identityAndPersonality: "我是 Hana，偏文学但工程严谨。",
+            userProfile: "用户叫测试用户。",
+            existingMemory: "用户长期关注 Project Hana 的记忆系统。",
+            roster: "同处于这个系统里的别的 Agent：Butter、Ming。",
+          },
+        },
+      );
+
+      const request = callText.mock.calls.at(-1)[0];
+      expect(request.systemPrompt).toContain("你是 Hana");
+      expect(request.systemPrompt).toContain("你正在整理自己刚刚经历的一段对话");
+      expect(request.systemPrompt).toContain("## 你的身份与人格");
+      expect(request.systemPrompt).toContain("我是 Hana，偏文学但工程严谨。");
+      expect(request.systemPrompt).toContain("## 主人设定");
+      expect(request.systemPrompt).toContain("用户叫测试用户。");
+      expect(request.systemPrompt).toContain("## 你已有的长期记忆");
+      expect(request.systemPrompt).toContain("这是你在本次对话开始前已经拥有的记忆");
+      expect(request.systemPrompt).toContain("不要因为它出现在这里就重复写入");
+      expect(request.systemPrompt).toContain("## 花名册");
+      expect(request.systemPrompt).toContain("同处于这个系统里的别的 Agent");
+      expect(request.messages[0].content).toContain("## 新增对话");
+      expect(request.messages[0].content).toContain("## 本次摘要预算");
+    } finally {
+      cleanup();
+    }
+  });
 });

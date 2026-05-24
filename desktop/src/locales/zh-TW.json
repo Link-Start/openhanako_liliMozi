@@ -1475,9 +1475,14 @@
       "failed": "連線區域網路伺服器失敗"
     },
     "name": {
-      "title": "我該怎麼稱呼你？",
-      "subtitle": "這會讓我們的對話更自然",
-      "placeholder": "輸入你的名字",
+      "title": "名字與記憶",
+      "subtitle": "先讓我知道該怎麼稱呼你，也給這個 Agent 一個名字。",
+      "userLabel": "我該怎麼稱呼你？",
+      "placeholder": "你的名字",
+      "agentLabel": "這個 Agent 叫什麼？",
+      "agentPlaceholder": "小花",
+      "memoryTitle": "記憶系統",
+      "memoryHint": "開啟後，系統會在對話結束時整理聊天內容，形成記憶。因為記憶會經常更新，會導致模型快取命中率降低，關掉記憶時通常會更省錢。",
       "back": "上一步",
       "next": "下一步"
     },

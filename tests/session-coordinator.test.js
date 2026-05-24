@@ -1628,6 +1628,12 @@ describe("SessionCoordinator", () => {
       buildSystemPrompt: vi.fn(({ forceMemoryEnabled } = {}) =>
         forceMemoryEnabled ? "MEMORY ON" : "MEMORY OFF",
       ),
+      buildMemoryReflectionSnapshot: vi.fn(({ forceMemoryEnabled } = {}) => ({
+        version: 1,
+        agentName: "Hana",
+        userName: "测试用户",
+        existingMemory: forceMemoryEnabled ? "已有长期记忆" : "",
+      })),
       config: { tools: {} },
       tools: [{ name: "todo_write" }],
     };
@@ -1679,6 +1685,15 @@ describe("SessionCoordinator", () => {
     expect(createAgentSessionMock.mock.calls[0][0].resourceLoader.getSystemPrompt()).toBe("MEMORY OFF");
     const meta = JSON.parse(fs.readFileSync(path.join(tempDir, "hana", "sessions", "session-meta.json"), "utf-8"));
     expect(meta[path.basename(sessionFile)].memoryEnabled).toBe(false);
+    expect(agent.buildMemoryReflectionSnapshot).toHaveBeenCalledWith({
+      forceMemoryEnabled: false,
+    });
+    expect(meta[path.basename(sessionFile)].memoryReflectionSnapshot).toEqual({
+      version: 1,
+      agentName: "Hana",
+      userName: "测试用户",
+      existingMemory: "",
+    });
   });
 
   it("blocks provider calls when an existing session cache prefix mutates without renew", async () => {

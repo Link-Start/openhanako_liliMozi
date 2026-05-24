@@ -530,6 +530,9 @@ export class SessionCoordinator {
         forceMemoryEnabled: frozenMemoryEnabled,
         forceExperienceEnabled: frozenExperienceEnabled,
       });
+    const memoryReflectionSnapshot = (!restore && typeof agent.buildMemoryReflectionSnapshot === "function")
+      ? agent.buildMemoryReflectionSnapshot({ forceMemoryEnabled: frozenMemoryEnabled })
+      : null;
     if (preserveAgentMemoryState) {
       creatingAgent.setMemoryEnabled(prevSessionMemoryEnabled);
     }
@@ -792,6 +795,7 @@ export class SessionCoordinator {
       planMode: initialPlanMode,
       thinkingLevel: initialThinkingLevel,
       toolNames: snapshotToolNames,  // null for legacy sessions (Case B), array otherwise
+      memoryReflectionSnapshot,
       lastTouchedAt: Date.now(),
       unsub,
     });
@@ -830,6 +834,9 @@ export class SessionCoordinator {
         thinkingLevel: initialThinkingLevel,
         promptSnapshot: promptSnapshotToWrite,
       };
+      if (memoryReflectionSnapshot) {
+        metaPatch.memoryReflectionSnapshot = memoryReflectionSnapshot;
+      }
       if (snapshotToolNames !== null) metaPatch.toolNames = snapshotToolNames;
       await this.writeSessionMeta(sessionPath, metaPatch);
     } else if (restore && sessionPath) {

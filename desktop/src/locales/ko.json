@@ -1475,9 +1475,14 @@
       "failed": "LAN 서버 연결 실패"
     },
     "name": {
-      "title": "어떻게 부르면 될까요?",
-      "subtitle": "대화가 더 자연스러워져요",
-      "placeholder": "이름을 입력해 주세요",
+      "title": "이름과 메모리",
+      "subtitle": "당신을 어떻게 부르면 좋을지와 이 Agent의 이름을 알려 주세요.",
+      "userLabel": "어떻게 부르면 될까요?",
+      "placeholder": "당신의 이름",
+      "agentLabel": "이 Agent를 뭐라고 부를까요?",
+      "agentPlaceholder": "Hanako",
+      "memoryTitle": "메모리 시스템",
+      "memoryHint": "켜 두면 시스템이 대화가 끝날 때 채팅 내용을 정리해 메모리로 만듭니다. 메모리가 자주 업데이트되면 모델 캐시 적중률이 낮아질 수 있습니다. 메모리를 끄면 보통 비용이 더 적게 듭니다.",
       "back": "뒤로",
       "next": "다음"
     },

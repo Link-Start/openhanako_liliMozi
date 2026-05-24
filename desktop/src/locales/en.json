@@ -1475,9 +1475,14 @@
       "failed": "Failed to connect to LAN server"
     },
     "name": {
-      "title": "What should I call you?",
-      "subtitle": "This makes our conversations more natural",
-      "placeholder": "Enter your name",
+      "title": "Names and Memory",
+      "subtitle": "Tell me what to call you, and give this Agent a name.",
+      "userLabel": "What should I call you?",
+      "placeholder": "Your name",
+      "agentLabel": "What should this Agent be called?",
+      "agentPlaceholder": "Hanako",
+      "memoryTitle": "Memory system",
+      "memoryHint": "When enabled, the system reviews chats after they end and turns them into memory. Because memory updates often, model cache hit rates may be lower. Turning memory off is usually cheaper.",
       "back": "Back",
       "next": "Next"
     },

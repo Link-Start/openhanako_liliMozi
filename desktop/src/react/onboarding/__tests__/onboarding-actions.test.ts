@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { saveModel, saveWorkspace } from '../onboarding-actions';
+import { saveModel, saveOnboardingIdentity, saveWorkspace } from '../onboarding-actions';
 import type { HanaFetch } from '../onboarding-actions';
 
 function jsonResponse(body: unknown): Response {
@@ -40,6 +40,46 @@ describe('onboarding saveModel', () => {
       'deepseek-v4-flash',
       { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
     ]);
+  });
+});
+
+describe('onboarding saveOnboardingIdentity', () => {
+  it('persists user name, optional agent name, and the memory master switch together', async () => {
+    const hanaFetch = vi.fn<HanaFetch>(async () => jsonResponse({ ok: true }));
+
+    await saveOnboardingIdentity({
+      hanaFetch,
+      userName: '  测试用户  ',
+      agentName: '  小花  ',
+      memoryEnabled: true,
+    });
+
+    expect(hanaFetch).toHaveBeenCalledWith('/api/agents/hanako/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user: { name: '测试用户' },
+        agent: { name: '小花' },
+        memory: { enabled: true },
+      }),
+    });
+  });
+
+  it('keeps the current agent name when the agent name input is left blank', async () => {
+    const hanaFetch = vi.fn<HanaFetch>(async () => jsonResponse({ ok: true }));
+
+    await saveOnboardingIdentity({
+      hanaFetch,
+      userName: '测试用户',
+      agentName: '   ',
+      memoryEnabled: false,
+    });
+
+    const body = JSON.parse(String(hanaFetch.mock.calls[0][1]?.body));
+    expect(body).toEqual({
+      user: { name: '测试用户' },
+      memory: { enabled: false },
+    });
   });
 });
 

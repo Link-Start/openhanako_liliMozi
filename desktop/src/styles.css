@@ -3152,11 +3152,55 @@ html[data-platform="linux"] .onboarding {
 }
 .ob-input::placeholder {
     color: var(--text-muted);
+    font-style: italic;
+    opacity: 0.55;
 }
 .ob-field-label {
     font-size: 0.78rem;
     color: var(--text-muted);
     align-self: flex-start;
+}
+
+.ob-name-form {
+    width: min(100%, 360px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ob-name-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+
+.ob-memory-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    width: 100%;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--border);
+}
+
+.ob-memory-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.ob-memory-title {
+    font-size: 0.86rem;
+    color: var(--text);
+}
+
+.ob-memory-hint {
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--text-muted);
 }
 
 /* ── Provider grid ── */

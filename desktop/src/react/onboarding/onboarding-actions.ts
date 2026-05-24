@@ -180,7 +180,42 @@ export async function saveLocale(hanaFetch: HanaFetch, locale: string): Promise<
   });
 }
 
-// ── Save user name ──
+// ── Save identity ──
+
+interface SaveOnboardingIdentityParams {
+  hanaFetch: HanaFetch;
+  userName: string;
+  agentName: string;
+  memoryEnabled: boolean;
+}
+
+export async function saveOnboardingIdentity({
+  hanaFetch,
+  userName,
+  agentName,
+  memoryEnabled,
+}: SaveOnboardingIdentityParams): Promise<void> {
+  const trimmedUserName = userName.trim();
+  const trimmedAgentName = agentName.trim();
+  const body: {
+    user: { name: string };
+    agent?: { name: string };
+    memory: { enabled: boolean };
+  } = { user: { name: trimmedUserName }, memory: { enabled: memoryEnabled } };
+  if (trimmedAgentName) {
+    body.agent = { name: trimmedAgentName };
+  }
+
+  await hanaFetch(`/api/agents/${AGENT_ID}/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user: body.user,
+      ...(body.agent ? { agent: body.agent } : {}),
+      memory: body.memory,
+    }),
+  });
+}
 
 export async function saveUserName(hanaFetch: HanaFetch, name: string): Promise<void> {
   await hanaFetch(`/api/agents/${AGENT_ID}/config`, {

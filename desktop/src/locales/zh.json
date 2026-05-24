@@ -1475,9 +1475,14 @@
       "failed": "连接局域网服务器失败"
     },
     "name": {
-      "title": "我该怎么称呼你？",
-      "subtitle": "这会让我们的对话更自然",
-      "placeholder": "输入你的名字",
+      "title": "名字与记忆",
+      "subtitle": "先让我知道该怎么称呼你，也给这个 Agent 一个名字。",
+      "userLabel": "我该怎么称呼你？",
+      "placeholder": "你的名字",
+      "agentLabel": "这个 Agent 叫什么？",
+      "agentPlaceholder": "小花",
+      "memoryTitle": "记忆系统",
+      "memoryHint": "开启后，系统会在对话结束时整理聊天内容，形成记忆。因为记忆会经常更新，会导致模型缓存命中率降低，关掉记忆时通常会更省钱。",
       "back": "上一步",
       "next": "下一步"
     },

@@ -42,13 +42,24 @@ describe("memory prompt boundaries", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("session summary centers memory on the user model and keeps work only at theme level", async () => {
+  it("session summary uses the agent reflection frame and keeps work only at theme level", async () => {
     const manager = new SessionSummaryManager(path.join(tmpDir, "summaries"));
 
-    await manager._callRollingLLM("【用户】我最近在关注记忆系统。", "", RESOLVED_MODEL, 2);
+    await manager._callRollingLLM("【用户】我最近在关注记忆系统。", "", RESOLVED_MODEL, 2, {
+      memoryReflectionSnapshot: {
+        agentName: "Hana",
+        userName: "测试用户",
+        identityAndPersonality: "Hana 的人格设定。",
+        userProfile: "测试用户的主人设定。",
+        existingMemory: "已有长期记忆。",
+        roster: "同处于这个系统里的别的 Agent：Butter。",
+      },
+    });
 
     const prompt = callText.mock.calls[0][0].systemPrompt;
-    expect(prompt).toContain("记忆的核心职责是维护用户模型");
+    expect(prompt).toContain("你是 Hana");
+    expect(prompt).toContain("从自己的视角审视本次对话");
+    expect(prompt).toContain("这是你在本次对话开始前已经拥有的记忆");
     expect(prompt).toContain("工作相关内容只允许保留到大主题层级");
     expect(prompt).toContain("如果这条信息回答的是“和用户工作时该怎么做”");
     expect(prompt).toContain("如果这条信息回答的是“用户最近在关注哪个领域/项目/主题”");
