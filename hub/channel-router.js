@@ -39,13 +39,6 @@ import {
 } from "../lib/conversations/agent-phone-prompt.js";
 
 const log = createModuleLogger("channel");
-const CHANNEL_PHONE_BASE_TOOL_NAMES = Object.freeze(["search_memory"]);
-
-function compactPromptLine(value, maxChars = 240) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, Math.max(0, maxChars - 1))}…`;
-}
 
 export class ChannelRouter {
   /**
@@ -160,45 +153,6 @@ export class ChannelRouter {
       return resolved;
     } catch {
       return null;
-    }
-  }
-
-  _formatPhoneProjectionDigest(agentId, channelName, isZh) {
-    try {
-      const agent = this._getAgentInstance(agentId);
-      const agentDir = agent?.agentDir || path.join(this._engine.agentsDir || "", agentId);
-      const projection = readAgentPhoneProjection(getAgentPhoneProjectionPath(agentDir, channelName));
-      const meta = projection.meta || {};
-      const summary = compactPromptLine(meta.summary || "");
-      const state = compactPromptLine(meta.state || "");
-      const lastViewed = compactPromptLine(meta.lastViewedTimestamp || "");
-      const updatedAt = compactPromptLine(meta.updatedAt || "");
-
-      if (!summary && !state && !lastViewed && !updatedAt) {
-        return isZh
-          ? "频道视角摘要：这是你第一次处理这个频道，以上方最近消息和频道 Truth 为准。"
-          : "Channel perspective digest: this is your first turn for this channel; rely on the recent messages above and the channel Truth.";
-      }
-
-      const lines = isZh
-        ? ["频道视角摘要：这是你的 per-agent projection，不是频道全部历史。"]
-        : ["Channel perspective digest: this is your per-agent projection, not the full channel history."];
-      if (state || summary) {
-        lines.push(isZh
-          ? `- 最近状态：${[state, summary].filter(Boolean).join("，")}`
-          : `- Recent state: ${[state, summary].filter(Boolean).join(", ")}`);
-      }
-      if (lastViewed) {
-        lines.push(isZh ? `- 上次看到：${lastViewed}` : `- Last viewed: ${lastViewed}`);
-      }
-      if (updatedAt) {
-        lines.push(isZh ? `- 视角更新时间：${updatedAt}` : `- Perspective updated at: ${updatedAt}`);
-      }
-      return lines.join("\n");
-    } catch {
-      return isZh
-        ? "频道视角摘要：暂时没有可用的旧视角，以上方最近消息和频道 Truth 为准。"
-        : "Channel perspective digest: no prior perspective is available; rely on the recent messages above and the channel Truth.";
     }
   }
 
@@ -670,11 +624,11 @@ export class ChannelRouter {
     return isZh
       ? [
         `注意：较早的 ${dropped} 条未读消息没有放入本次投递窗口。`,
-        "需要更早上下文时，用 channel_read_context 读取频道 Truth，并结合频道视角摘要理解。",
+        "需要更早上下文时，用 channel_read_context 读取频道 Truth，并结合此前 Phone Session 内容理解。",
       ].join("\n")
       : [
         `Note: ${dropped} older unread message(s) were not included in this delivery window.`,
-        "Use channel_read_context to read the channel Truth when you need older context, and interpret this window together with the channel perspective digest.",
+        "Use channel_read_context to read the channel Truth when you need older context, and interpret this window together with the prior Phone Session content.",
       ].join("\n");
   }
 
@@ -691,7 +645,6 @@ export class ChannelRouter {
     const promptGuidance = this._formatPhonePromptGuidance(agentId, phoneSettings, isZh);
     const behaviorGuidance = this._formatChannelBehaviorGuidance(agentId, mentionedAgents, mentionTargeted, isZh);
     const deliveryWindowGuidance = this._formatDeliveryWindowGuidance(deliveryWindow, isZh);
-    const projectionDigest = this._formatPhoneProjectionDigest(agentId, channelName, isZh);
     const zhIntro = proactive
       ? `你的手机收到了 #${channelName} 的频道提醒。\n\n`
         + `以下是最近的频道内容，来源是频道聊天记录 Truth，不是用户单独发给你的请求，也不一定是新消息：\n\n`
@@ -711,23 +664,21 @@ export class ChannelRouter {
           text: isZh
             ? zhIntro
               + `${msgText || "（没有新消息）"}\n\n`
-              + `${projectionDigest ? `${projectionDigest}\n\n` : ""}`
               + `${deliveryWindowGuidance ? `${deliveryWindowGuidance}\n\n` : ""}`
               + `请像群聊成员一样阅读并行动：\n`
               + `${behaviorGuidance}\n`
               + `- 需要旧上下文时，用 channel_read_context 读取频道 Truth；需要事实和长期背景时，用 search_memory\n`
-              + `- 结合上方频道视角摘要理解这批消息；本次投递窗口不是频道全部历史\n`
+              + `- 结合此前 Phone Session 内容理解这批消息；本次投递窗口不是频道全部历史\n`
               + `${promptGuidance}\n`
               + `- 本轮最后必须调用 channel_reply 或 channel_pass 之一完成动作\n`
               + `- 不要把最终群聊回复写在普通文本里；只有 channel_reply.content 会进入群聊`
             : enIntro
               + `${msgText || "(No new messages)"}\n\n`
-              + `${projectionDigest ? `${projectionDigest}\n\n` : ""}`
               + `${deliveryWindowGuidance ? `${deliveryWindowGuidance}\n\n` : ""}`
               + `Read and act like a group chat member:\n`
               + `${behaviorGuidance}\n`
               + `- Use channel_read_context for older channel Truth; use search_memory for facts and long-term background\n`
-              + `- Interpret this batch together with the channel perspective digest above; this delivery window is not the channel's full history\n`
+              + `- Interpret this batch together with the prior Phone Session content; this delivery window is not the channel's full history\n`
               + `${promptGuidance}\n`
               + `- End this turn by calling exactly one of channel_reply or channel_pass\n`
               + `- Do not write the final channel reply as ordinary text; only channel_reply.content enters the channel`,
@@ -741,7 +692,6 @@ export class ChannelRouter {
         conversationType: "channel",
         toolMode: phoneSettings.toolMode,
         modelOverride: phoneSettings.modelOverrideEnabled ? phoneSettings.modelOverrideModel : null,
-        allowedBaseToolNames: CHANNEL_PHONE_BASE_TOOL_NAMES,
         emitEvents: true,
         extraCustomTools: this._createChannelPhoneTools(agentId, channelName, {
           setDecision: (next) => { if (!decision) decision = next; },

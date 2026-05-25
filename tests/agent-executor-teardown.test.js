@@ -339,7 +339,7 @@ describe("runAgentSession teardown", () => {
     ]);
   });
 
-  it("channel phone sessions can narrow base tools without reusing stale projection tool names", async () => {
+  it("phone sessions reuse stored active tools while preserving invocation custom tools", async () => {
     const cwd = path.join(rootDir, "cwd");
     fs.mkdirSync(cwd, { recursive: true });
     const agent = makeAgent(rootDir);
@@ -372,7 +372,7 @@ describe("runAgentSession teardown", () => {
       patch: {
         phoneSessionFile: path.relative(agent.agentDir, sessionFile).split(path.sep).join("/"),
         lastPhoneSessionUsedAt: "2026-05-25T11:55:00.000Z",
-        toolNames: ["read", "write", "record_experience", "search_memory"],
+        toolNames: ["read", "write", "search_memory"],
       },
     });
     vi.useFakeTimers();
@@ -395,20 +395,26 @@ describe("runAgentSession teardown", () => {
       engine,
       conversationId: "ch_crew",
       conversationType: "channel",
-      allowedBaseToolNames: ["search_memory"],
       extraCustomTools: [
         { name: "channel_reply", execute: vi.fn() },
         { name: "channel_pass", execute: vi.fn() },
       ],
     });
 
-    expect(createAgentSessionMock.mock.calls[0][0].tools.map((tool) => tool.name)).toEqual([]);
+    expect(createAgentSessionMock.mock.calls[0][0].tools.map((tool) => tool.name)).toEqual([
+      "read",
+      "write",
+    ]);
     expect(createAgentSessionMock.mock.calls[0][0].customTools.map((tool) => tool.name)).toEqual([
       "search_memory",
+      "record_experience",
+      "web_fetch",
       "channel_reply",
       "channel_pass",
     ]);
     expect(setActiveToolsByName).toHaveBeenCalledWith([
+      "read",
+      "write",
       "search_memory",
       "channel_reply",
       "channel_pass",

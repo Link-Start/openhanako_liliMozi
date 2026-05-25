@@ -61,8 +61,8 @@ describe("ChannelRouter reply tool boundary", () => {
       conversationId: "ch_crew",
       conversationType: "channel",
       toolMode: "read_only",
-      allowedBaseToolNames: ["search_memory"],
     });
+    expect(options).not.toHaveProperty("allowedBaseToolNames");
     expect(options.extraCustomTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining(["channel_read_context", "channel_reply", "channel_pass"]),
     );
@@ -256,8 +256,8 @@ describe("ChannelRouter reply tool boundary", () => {
     expect(phonePrompt).toContain("较早的 5 条未读消息没有放入本次投递窗口");
     expect(phonePrompt).toContain("channel_read_context");
     expect(phonePrompt).toContain("频道 Truth");
-    expect(phonePrompt).toContain("频道视角摘要");
-    expect(phonePrompt).not.toContain("此前 Phone Session");
+    expect(phonePrompt).toContain("此前 Phone Session");
+    expect(phonePrompt).not.toContain("频道视角摘要");
   });
 
   it("emits a complete incremental message from the channel_reply tool, not raw model text", async () => {

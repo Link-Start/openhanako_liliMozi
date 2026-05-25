@@ -53,13 +53,16 @@ function buildAgentPhonePromptSnapshot(agent, ctx, systemPrompt) {
   });
 }
 
-function filterBuiltToolsByName({ tools = [], customTools = [] } = {}, allowedNames) {
-  if (!Array.isArray(allowedNames)) return { tools, customTools };
-  const names = new Set(allowedNames.filter((name) => typeof name === "string" && name.length > 0));
-  return {
-    tools: tools.filter((tool) => names.has(tool?.name)),
-    customTools: customTools.filter((tool) => names.has(tool?.name)),
-  };
+function normalizeToolNames(value) {
+  return Array.isArray(value) ? value.filter((name) => typeof name === "string" && name.length > 0) : null;
+}
+
+function mergeToolNames(...groups) {
+  return [...new Set(
+    groups
+      .flat()
+      .filter((name) => typeof name === "string" && name.length > 0),
+  )];
 }
 
 function isAgentPhoneEnabled(engine) {
@@ -246,7 +249,6 @@ export async function runAgentPhoneSession(agentId, rounds, {
   onSessionReady,
   emitEvents = false,
   extraCustomTools = [],
-  allowedBaseToolNames = null,
   now = new Date(),
 } = {}) {
   if (!conversationId) throw new Error("conversationId is required for agent phone session");
@@ -306,16 +308,21 @@ export async function runAgentPhoneSession(agentId, rounds, {
     getSessionPath: () => sessionManager?.getSessionFile?.() || null,
     getPermissionMode: () => phonePermissionMode,
   });
-  const phoneTools = filterAgentPhoneTools(built, { toolMode });
-  const { tools, customTools } = filterBuiltToolsByName(phoneTools, allowedBaseToolNames);
+  const { tools, customTools } = filterAgentPhoneTools(built, { toolMode });
   const sessionCustomTools = [
     ...customTools,
     ...(Array.isArray(extraCustomTools) ? extraCustomTools : []),
   ];
-  const activeToolNames = getAgentPhoneActiveToolNames({
-    tools,
-    customTools: sessionCustomTools,
+  const storedToolNames = normalizeToolNames(projection.meta.toolNames);
+  const invocationCustomToolNames = getAgentPhoneActiveToolNames({
+    customTools: Array.isArray(extraCustomTools) ? extraCustomTools : [],
   });
+  const activeToolNames = storedToolNames
+    ? mergeToolNames(storedToolNames, invocationCustomToolNames)
+    : getAgentPhoneActiveToolNames({
+      tools,
+      customTools: sessionCustomTools,
+    });
   const model = resolveAgentPhoneModel(engine, ctx, agent.config, modelOverride);
   const { session } = await createAgentSession({
     cwd,
