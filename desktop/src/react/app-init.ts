@@ -47,6 +47,14 @@ declare function t(key: string, vars?: Record<string, string | number>): string;
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 全局 bootstrap：platform/IPC callback 签名含 any */
 
+function markRendererLaunch(event: string, details?: unknown) {
+  if (details === undefined) {
+    console.info(`[hana-launch] ${event}`);
+  } else {
+    console.info(`[hana-launch] ${event}`, details);
+  }
+}
+
 // ── __hanaLog：前端日志上报 ──
 window.__hanaLog = function (level: string, module: string, message: string) {
   if (!hasServerConnection(useStore.getState())) return;
@@ -104,6 +112,7 @@ export async function initApp(): Promise<void> {
 
   if (!activeServerConnection) {
     setStatus('status.serverNotReady', false);
+    markRendererLaunch('app-ready', JSON.stringify({ reason: 'no-active-server-connection' }));
     platform.appReady();
     return;
   }
@@ -134,12 +143,14 @@ export async function initApp(): Promise<void> {
       } catch (localErr) {
         console.error('[init] server identity failed:', localErr);
         setStatus('status.serverNotReady', false);
+        markRendererLaunch('app-ready', JSON.stringify({ reason: 'local-server-identity-failed' }));
         platform.appReady();
         return;
       }
     } else {
       console.error('[init] server identity failed:', err);
       setStatus('status.serverNotReady', false);
+      markRendererLaunch('app-ready', JSON.stringify({ reason: 'server-identity-failed' }));
       platform.appReady();
       return;
     }
@@ -250,6 +261,7 @@ export async function initApp(): Promise<void> {
   });
 
   // 22. 通知 app ready
+  markRendererLaunch('app-ready');
   platform.appReady();
 }
 
