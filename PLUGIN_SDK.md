@@ -29,6 +29,7 @@ Built-in plugins may use the same source patterns, but they should be checked ag
 - Runtime plugins use `index.js` for lifecycle, EventBus handlers, background tasks, schedules, or dynamic tools. They require `trust: "full-access"`.
 - UI plugins use iframe routes plus `@hana/plugin-sdk` and, for React UI, `@hana/plugin-components`. They require `trust: "full-access"` and explicit `ui.hostCapabilities` grants for host calls such as `external.open` or `clipboard.writeText`.
 - Provider contribution plugins use `providers/*.js` declarations. They require `trust: "full-access"` and should declare `capabilities.chat` separately from `capabilities.media.*` so chat selectors stay clean while image, video, or speech tools discover media providers.
+- Pi SDK extension plugins use `extensions/*.js` factories. They require `trust: "full-access"` because they run inside the LLM request pipeline. Hana reloads idle sessions after full-access plugin install/enable/reload so existing chats can pick up new extension handlers without requiring an app restart; busy sessions defer the change until the next safe rebuild.
 - Marketplace metadata lives outside the app repo in `OH-Plugins`, the official community plugin catalog. The app reads the generated catalog URL by default, installs `distribution.kind = "release"` entries by downloading the zip package and verifying `sha256`, and keeps `distribution.kind = "source"` for local file marketplace development only. `versions[]` lets the catalog keep multiple SemVer releases; Hana selects the highest app-compatible version, blocks implicit downgrades, backs up old installs, and records successful installs in `${HANA_HOME}/plugin-installs.json`. `readmePath` is resolved relative to the catalog when the official URL is used.
 
 ## Agent Dev Loop
@@ -102,6 +103,23 @@ Lifecycle plugins should declare `activationEvents` in `manifest.json` when they
 Long-running plugins should use the runtime task helpers (`registerTask`, `updateTask`, `completeTask`, `failTask`, `cancelTask`, `scheduleTask`) instead of hand-writing EventBus payloads.
 
 For Agent-assisted development, plugins can declare `manifest.dev.scenarios`. These are not runtime features; they are smoke-test instructions for Hana's dev loop and should only describe repeatable checks such as invoking a tool, expecting text in the result, or opening a declared UI surface.
+
+Pi SDK extension factories live in `extensions/*.js` and are loaded only for full-access plugins:
+
+```js
+// extensions/request-audit.js
+export default function(pi) {
+  pi.on('before_provider_request', (event) => {
+    event.payload.metadata = {
+      ...(event.payload.metadata || {}),
+      auditedBy: 'my-plugin',
+    };
+    return event.payload;
+  });
+}
+```
+
+Use extensions for request-pipeline hooks such as provider request rewriting, context filtering, and tool-call observation. Do not use them for ordinary tool behavior; a normal `tools/*.js` contribution is safer and can remain restricted.
 
 Provider plugins can use `defineProvider()` for TypeScript-friendly authoring, then export named provider fields from `providers/*.js`:
 

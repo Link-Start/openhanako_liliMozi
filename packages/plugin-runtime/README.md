@@ -181,3 +181,21 @@ export const { id, displayName, authType, runtime, capabilities } = provider;
 ```
 
 Keep chat and media capabilities explicit. Media-only providers should use `chat.projection = "none"`, and CLI providers must use structured argument bindings rather than shell command strings.
+
+## Pi SDK extensions
+
+Pipeline extensions live in `extensions/*.js` and require `trust: "full-access"`. They receive Pi SDK's `ExtensionAPI` and can observe or transform request-pipeline events such as provider requests, context construction, and tool calls.
+
+```ts
+export default function(pi) {
+  pi.on('before_provider_request', (event) => {
+    event.payload.metadata = {
+      ...(event.payload.metadata || {}),
+      source: 'my-plugin',
+    };
+    return event.payload;
+  });
+}
+```
+
+Use extensions only when the plugin needs to run inside the LLM pipeline. Ordinary Agent actions should stay in `tools/*.js` so they can use the restricted permission tier. After a full-access plugin is installed, enabled, or reloaded, Hana rebinds extension runners for idle sessions; in-flight sessions pick up the change on the next safe rebuild.

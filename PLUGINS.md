@@ -287,6 +287,7 @@ return {
 - `pluginId` 由框架自动注入，工具无需填写
 - 卡片在工具完成时立即渲染，不依赖 LLM 行为
 - 卡片数据随 toolResult 存入 JSONL，会话重载时自动恢复
+- 插件 route / Session Bus 发送的自定义消息如果携带同样的 `details.card`，也会被提取成 `plugin_card`，历史回放时保持一致
 - 卡片本身可以随 Bridge 或移动端做不同呈现；卡片关联的文件仍通过 `SessionFile` 生命周期恢复
 
 ### Skills（知识注入）
@@ -402,7 +403,9 @@ export default function(pi) {
 | `before_agent_start` | 用户输入后 | 注入 system prompt |
 | `input` | 用户输入到达时 | 拦截/变换输入 |
 
-工厂函数在 session 创建时被 Pi SDK 调用，handler 在对应事件触发时执行。完整事件列表参见 Pi SDK extension 文档。
+工厂函数在 session 创建时被 Pi SDK 调用，handler 在对应事件触发时执行。安装、启用或 reload full-access 插件后，Hana 会让当前空闲 session 重新绑定 extension runner；正在 streaming、compacting 或切换中的 session 会跳过重绑，下一次安全重建时生效。完整事件列表参见 Pi SDK extension 文档。
+
+`extensions/` 仍是 full-access 边界。restricted 插件即使包含 `extensions/` 目录也不会加载这些工厂；如果插件需要拦截 provider 请求、tool 调用或上下文构建，必须在 manifest 中声明 `"trust": "full-access"`，并由用户开启全权插件开关。
 
 ### Providers（Provider Contribution）⚡ full-access
 

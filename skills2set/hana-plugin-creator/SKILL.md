@@ -38,7 +38,7 @@ Hana plugins can provide:
 - Iframe pages, widgets, and cards using Hana theme and host capabilities.
 - Lifecycle and EventBus handlers for full-access integrations.
 - Provider contributions for chat and media capabilities, including image/video/speech providers backed by HTTP, OAuth HTTP, local CLI, browser CLI, or plugin runtimes.
-- Extension-style integrations where the app has explicit extension points.
+- Pi SDK extension-style integrations under `extensions/*.js` where the plugin must observe or transform the LLM request pipeline.
 - SessionFile-backed outputs for files and media.
 
 Hana provides install/enable/reload, per-agent skill toggles, manifest capability checks, iframe host messaging, theme tokens, toast/clipboard/external host APIs, EventBus, data directories, and SDK packages.
@@ -118,6 +118,8 @@ python3 skills2set/hana-plugin-creator/scripts/create_hana_plugin.py "Jimeng Pro
 - Dev authority is not a manifest permission. Hana grants it from the remembered dev install slot under `${HANA_HOME}/plugins-dev/`, and Agent dev tools are hidden until the user enables the dev tools setting.
 - Local files returned to users must go through `toolCtx.stageFile({ sessionPath, filePath, label })`, then media details. Do not hand-build local `MEDIA:` or `file://` output.
 - Page and widget contributions require `"trust": "full-access"` and route-backed iframe UI.
+- Pi SDK extension factories under `extensions/*.js` require `"trust": "full-access"`. They are for provider request rewriting, context filtering, and tool-call observation; use ordinary `tools/*.js` for Agent-callable actions.
+- After full-access plugin install, enable, or reload, Hana rebinds extension runners for idle sessions. Busy sessions pick up the change on the next safe rebuild, so do not promise that an in-flight reply will use freshly edited extension code.
 - Declare only the iframe host capabilities actually used.
 - EventBus handlers should return `HANA_BUS_SKIP` for payloads that do not belong to them.
 - Keep iframe UI self-contained. Do not import renderer internals from `desktop/src/react`.

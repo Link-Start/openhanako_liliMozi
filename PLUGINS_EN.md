@@ -251,6 +251,7 @@ return {
 - `pluginId` is auto-injected by the framework; tools don't need to set it
 - Cards render immediately when the tool completes, independent of LLM behavior
 - Card data is stored in JSONL with the toolResult and auto-restored on session reload
+- Custom messages sent by plugin routes or the Session Bus use the same `details.card` extraction path and are restored as `plugin_card` blocks during history replay
 - Cards can be adapted by Bridge, Mobile PWA, or future remote clients, while their related files still restore through the `SessionFile` lifecycle
 
 ### Skills (Knowledge Injection)
@@ -366,7 +367,9 @@ Common events:
 | `before_agent_start` | After user input | Inject system prompt |
 | `input` | When user input arrives | Intercept/transform input |
 
-Factory functions are invoked by Pi SDK at session creation time; handlers fire when the corresponding event occurs. See Pi SDK extension documentation for the full event list.
+Factory functions are invoked by Pi SDK at session creation time; handlers fire when the corresponding event occurs. After a full-access plugin is installed, enabled, or reloaded, Hana rebinds extension runners for currently idle sessions; sessions that are streaming, compacting, or switching are skipped and pick up the new extension set on the next safe rebuild. See Pi SDK extension documentation for the full event list.
+
+`extensions/` remains a full-access boundary. Restricted plugins that include an `extensions/` directory do not load those factories. If a plugin needs to intercept provider requests, tool calls, or context construction, it must declare `"trust": "full-access"` and the user must enable the full-access plugin toggle.
 
 ### Providers (Provider Contribution) ⚡ full-access
 
