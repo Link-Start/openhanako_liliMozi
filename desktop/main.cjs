@@ -1079,12 +1079,6 @@ function showPrimaryWindow() {
   if (process.platform === "darwin") app.dock.show();
   const win = mainWindow || onboardingWindow;
   focusExistingWindow(win);
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.show();
-  if (browserViewerWindow && !browserViewerWindow.isDestroyed()) browserViewerWindow.show();
-  for (const [, vw] of _viewerWindows) {
-    if (vw && !vw.isDestroyed()) vw.show();
-  }
 }
 
 /**
@@ -1894,23 +1888,33 @@ function _isBrowserViewDestroyed(view) {
   }
 }
 
+function _detachActiveBrowserView({ view = _browserWebView, sessionPath = _currentBrowserSession, destroy = false, hideIfVisible = false, reason = null } = {}) {
+  if (!view || view !== _browserWebView) return false;
+  if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
+    try { browserViewerWindow.contentView.removeChildView(view); } catch {}
+  }
+  _browserWebView = null;
+  _currentBrowserSession = null;
+  if (destroy) {
+    try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch {}
+    if (sessionPath) _browserViews.delete(sessionPath);
+  }
+  if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
+    browserViewerWindow.webContents.send("browser-update", { running: false, reason });
+    if (hideIfVisible) browserViewerWindow.hide();
+  }
+  return true;
+}
+
 function _forgetBrowserView(view, reason) {
   if (!view) return;
   const wasActive = view === _browserWebView;
-  if (wasActive && browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-    try { browserViewerWindow.contentView.removeChildView(view); } catch {}
-  }
+  const activeSessionPath = wasActive ? _currentBrowserSession : null;
+  if (wasActive) _detachActiveBrowserView({ view, sessionPath: activeSessionPath, hideIfVisible: true, reason });
   for (const [sp, candidate] of _browserViews) {
     if (candidate === view) _browserViews.delete(sp);
   }
   try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch {}
-  if (wasActive) {
-    _browserWebView = null;
-    _currentBrowserSession = null;
-    if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-      browserViewerWindow.webContents.send("browser-update", { running: false, reason });
-    }
-  }
 }
 
 function _bindBrowserViewLifecycle(view, sessionPath) {
@@ -2161,20 +2165,12 @@ async function handleBrowserCommand(cmd, params) {
       const sp = params.sessionPath;
       const view = sp ? _getViewForSession(sp) : _browserWebView;
       if (view) {
-        // 如果是当前活跃 view，从窗口移除
         if (view === _browserWebView) {
-          if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-            try { browserViewerWindow.contentView.removeChildView(view); } catch {}
-          }
-          _browserWebView = null;
-          _currentBrowserSession = null;
+          _detachActiveBrowserView({ view, sessionPath: sp || _currentBrowserSession, destroy: true, hideIfVisible: true });
+        } else {
+          try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch {}
+          if (sp) _browserViews.delete(sp);
         }
-        try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch {}
-        if (sp) _browserViews.delete(sp);
-      }
-      // 通知浮窗状态变化，但不自动隐藏（让用户自己决定关不关）
-      if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-        browserViewerWindow.webContents.send("browser-update", { running: false });
       }
       return {};
     }
@@ -2184,16 +2180,7 @@ async function handleBrowserCommand(cmd, params) {
       const sp = params.sessionPath;
       const view = sp ? _getViewForSession(sp) : _browserWebView;
       if (view && view === _browserWebView) {
-        // 只有当前活跃 view 需要从窗口摘下
-        if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-          try { browserViewerWindow.contentView.removeChildView(view); } catch {}
-        }
-        _browserWebView = null;
-        _currentBrowserSession = null;
-      }
-      // 非活跃 view 本来就不在窗口上，suspend 是 no-op（view 留在 Map 里）
-      if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-        browserViewerWindow.webContents.send("browser-update", { running: false });
+        _detachActiveBrowserView({ view, sessionPath: sp || _currentBrowserSession, hideIfVisible: true });
       }
       return {};
     }
@@ -2430,18 +2417,11 @@ async function handleBrowserCommand(cmd, params) {
         const view = _getViewForSession(sp);
         if (!view) return {};
         if (view === _browserWebView) {
-          if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-            try { browserViewerWindow.contentView.removeChildView(view); } catch {}
-          }
-          _browserWebView = null;
-          _currentBrowserSession = null;
-          if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-            browserViewerWindow.webContents.send("browser-update", { running: false });
-            browserViewerWindow.hide();
-          }
+          _detachActiveBrowserView({ view, sessionPath: sp, destroy: true, hideIfVisible: true });
+        } else {
+          try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch {}
+          _browserViews.delete(sp);
         }
-        try { if (!view.webContents.isDestroyed()) view.webContents.close(); } catch {}
-        _browserViews.delete(sp);
       }
       return {};
     }
@@ -2940,18 +2920,7 @@ wrapIpcBestEffortHandler("browser-emergency-stop", () => {
   }
   // 兼容无 sessionPath 的旧浏览器实例：没有 server 状态可同步，只能本地清理。
   if (_browserWebView) {
-    if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-      try { browserViewerWindow.contentView.removeChildView(_browserWebView); } catch {}
-    }
-    _browserWebView.webContents.close();
-    if (_currentBrowserSession) {
-      _browserViews.delete(_currentBrowserSession);
-    }
-    _browserWebView = null;
-    _currentBrowserSession = null;
-  }
-  if (browserViewerWindow && !browserViewerWindow.isDestroyed()) {
-    browserViewerWindow.webContents.send("browser-update", { running: false });
+    _detachActiveBrowserView({ destroy: true, hideIfVisible: true, reason: "emergency-stop" });
   }
 });
 

@@ -915,4 +915,32 @@ describe("desktop GPU startup policy", () => {
     expect(diagnostics).toContain("GPU sandbox disabled by policy: true");
     expect(diagnostics).toContain("Incomplete startup classification: gpu-recovery");
   });
+
+  it("classifies suspected sandbox init failure without persisting unsafe no-sandbox", () => {
+    const hanakoHome = makeHome();
+    const statePath = path.join(hanakoHome, "user", "gpu-startup.json");
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 2,
+      autoGpuMode: {
+        mode: "diagnostic-failed",
+        reason: "gpu-child-process-gone",
+        previousMode: "deep-compat",
+        updatedAt: "2026-05-19T01:02:00.000Z",
+      },
+    }, null, 2));
+
+    const policy = resolveGpuStartupPolicy({
+      hanakoHome,
+      platform: "win32",
+      argv: ["Hanako.exe"],
+      env: {},
+    });
+    const diagnostics = buildGpuStartupDiagnostics({ hanakoHome, policy });
+
+    expect(policy.mode).toBe("diagnostic-failed");
+    expect(policy.shouldApplyUnsafeNoSandboxSwitch).toBe(false);
+    expect(diagnostics).toContain("GPU sandbox diagnostic classification: sandbox-init-failure-suspected");
+    expect(diagnostics).toContain("Unsafe no-sandbox note: only enabled by --hana-gpu-unsafe-no-sandbox for one diagnostic launch");
+  });
 });

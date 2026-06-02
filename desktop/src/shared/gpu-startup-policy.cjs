@@ -306,6 +306,15 @@ function isGpuRecoveryIncompleteStartup(state) {
   return classifyIncompleteStartup(state) === "gpu-recovery";
 }
 
+function classifyGpuSandboxDiagnostic(state, policy) {
+  if (policy?.shouldApplyUnsafeNoSandboxSwitch === true) return "explicit-unsafe-no-sandbox";
+  const mode = policy?.mode || state?.autoGpuMode?.mode || null;
+  if (mode === GPU_MODE_DIAGNOSTIC_FAILED || state?.autoGpuMode?.mode === GPU_MODE_DIAGNOSTIC_FAILED) {
+    return "sandbox-init-failure-suspected";
+  }
+  return "none";
+}
+
 function resolveGpuStartupPolicy({
   hanakoHome,
   platform = process.platform,
@@ -660,6 +669,8 @@ function buildGpuStartupDiagnostics({ hanakoHome, policy, app } = {}) {
   } catch {}
   const state = readState(hanakoHome);
   items.push(`Incomplete startup classification: ${classifyIncompleteStartup(state)}`);
+  items.push(`GPU sandbox diagnostic classification: ${classifyGpuSandboxDiagnostic(state, policy)}`);
+  items.push(`Unsafe no-sandbox note: only enabled by --hana-gpu-unsafe-no-sandbox for one diagnostic launch`);
   if (state.startup) items.push(`GPU startup marker: ${JSON.stringify(state.startup)}`);
   if (state.autoGpuMode) items.push(`GPU auto mode: ${JSON.stringify(state.autoGpuMode)}`);
   if (state.safeMode) items.push(`GPU safe mode: ${JSON.stringify(state.safeMode)}`);
