@@ -86,47 +86,10 @@ function handleDetailClick(e: React.MouseEvent, detail: ToolDetail) {
   void openInternalLink(detail.href, { origin: 'session' });
 }
 
-function finiteNumber(value: unknown): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function waitSecondsFromTool(tool: ToolCall, now: number): number | null {
-  const args = tool.args || {};
-  const details = tool.details || {};
-  const detailSeconds = finiteNumber(details.seconds);
-  const argSeconds = finiteNumber(args.seconds);
-  const seconds = detailSeconds ?? argSeconds;
-
-  if (tool.done) return seconds;
-
-  const startedAt = finiteNumber(args.startedAt);
-  const durationMs = finiteNumber(args.durationMs);
-  if (startedAt !== null && durationMs !== null) {
-    return Math.max(0, Math.ceil((startedAt + durationMs - now) / 1000));
-  }
-  return seconds;
-}
-
-function waitToolDetail(tool: ToolCall, now: number): ToolDetail {
-  const seconds = waitSecondsFromTool(tool, now);
-  return { text: seconds === null ? '?s' : `${seconds}s` };
-}
-
 const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: ToolCall; agentName: string }) {
-  const [now, setNow] = useState(() => Date.now());
   const [linkMenu, setLinkMenu] = useState<LinkContextMenuState | null>(null);
-  useEffect(() => {
-    if (tool.name !== 'wait' || tool.done) return;
-    if (finiteNumber(tool.args?.startedAt) === null || finiteNumber(tool.args?.durationMs) === null) return;
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [tool.name, tool.done, tool.args?.startedAt, tool.args?.durationMs]);
 
-  const detail = tool.name === 'wait'
-    ? waitToolDetail(tool, now)
-    : extractToolDetail(tool.name, tool.args);
+  const detail = extractToolDetail(tool.name, tool.args);
   const label = getToolLabel(tool.name, tool.done ? 'done' : 'running', agentName);
   const detailTitle = detail.title || detail.href;
 

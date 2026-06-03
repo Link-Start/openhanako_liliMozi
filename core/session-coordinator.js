@@ -395,7 +395,7 @@ function makeBackgroundTaskPrompt(locale) {
 
 1. 先继续做手头还没做完的工作，不要立刻停下来等
 2. 手头工作做完后，调 check_pending_tasks 查看后台任务状态
-3. 如果还有任务未完成，根据任务复杂度自行估算等待时间，调 wait 等待后再查。最多查 2 次，之后不再轮询，告知用户任务仍在后台运行，完成后会自动处理
+3. 如果还有任务未完成，不要轮询等待；告知用户任务仍在后台运行，完成后会自动处理
 4. 只有需要你继续处理的后台任务，系统才会以 <hana-background-result> 消息送达结果；媒体生成成功由界面和 Bridge 自动处理，不要等待或主动追问。媒体生成失败可能会以 <hana-background-result> 送达：只说明失败原因，并询问用户是否要你新生成一张；原地重新生成只由用户在 UI 中操作`
     : `## Background Tasks
 
@@ -403,7 +403,7 @@ After dispatching subagent or other background tasks:
 
 1. Continue with any remaining work first — do not stop immediately to wait
 2. Once your other work is done, call check_pending_tasks to check status
-3. If tasks are still pending, estimate a reasonable wait time based on task complexity, then call wait and check again. Check at most 2 times — after that, stop polling and tell the user the task is still running and will be handled in the background
+3. If tasks are still pending, do not poll or wait; tell the user the task is still running and will be handled in the background
 4. Only background tasks that need your follow-up are delivered via <hana-background-result> messages. Successful media generation is handled by the UI and Bridge automatically; do not wait for it or ask about it again. Failed media generation may be delivered via <hana-background-result>: explain only why it failed, then ask whether the user wants you to create a new image. In-place regeneration is a UI-only action for the user`;
 }
 

@@ -604,11 +604,6 @@
       "done": "🧭 Clone dispatched",
       "failed": "🧭 Clone ran into trouble"
     },
-    "wait": {
-      "running": "⏳ {name} is waiting for results",
-      "done": "⏳ Wait finished",
-      "failed": "⏳ Wait interrupted"
-    },
     "check_pending_tasks": {
       "running": "📋 {name} is checking unfinished business",
       "done": "📋 {name} all caught up",
@@ -2403,11 +2398,6 @@
       "filepathsDesc": "Local absolute file paths to deliver. After locating files, pass them here so StageFile can register them for desktop, Bridge, or future mobile consumers.",
       "filePathDesc": "(Compat) Single local absolute file path. Prefer filepaths for new calls.",
       "labelDesc": "(Compat) File name shown to the user. Usually omit this; the filename is used by default."
-    },
-    "wait": {
-      "label": "Wait",
-      "description": "Wait for a specified number of seconds. Used to keep the turn active while waiting for background tasks to complete.",
-      "secondsDesc": "Seconds to wait (1-300)"
     },
     "subagent": {
       "label": "Launch Sub-agent",

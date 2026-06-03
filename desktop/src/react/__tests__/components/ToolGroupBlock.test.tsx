@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolGroupBlock } from '../../components/chat/ToolGroupBlock';
 
@@ -78,34 +78,5 @@ describe('ToolGroupBlock', () => {
 
     expect(screen.queryByText('toolGroup.count')).toBeNull();
     expect(screen.getByText('npm test')).toBeTruthy();
-  });
-
-  it('shows a live remaining countdown for running wait tools', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_700_000_000_000);
-
-    render(
-      <ToolGroupBlock
-        collapsed={false}
-        tools={[{
-          name: 'wait',
-          args: {
-            seconds: 30,
-            startedAt: 1_700_000_000_000,
-            durationMs: 30_000,
-          },
-          done: false,
-          success: false,
-        }]}
-      />,
-    );
-
-    expect(screen.getByText('30s')).toBeTruthy();
-
-    act(() => {
-      vi.advanceTimersByTime(11_000);
-    });
-
-    expect(screen.getByText('19s')).toBeTruthy();
   });
 });

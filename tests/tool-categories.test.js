@@ -65,11 +65,11 @@ describe("assertAllToolsCategorized", () => {
 });
 
 describe("computeSettingsAvailableToolNames", () => {
-  it("adds built-in optional tool categories even when runtime only has wait", () => {
-    expect(computeSettingsAvailableToolNames(["wait"], {
+  it("adds built-in optional tool categories to runtime tool names", () => {
+    expect(computeSettingsAvailableToolNames(["current_status"], {
       pluginTools: [{ _pluginId: "beautify" }],
     })).toEqual(expect.arrayContaining([
-      "wait",
+      "current_status",
       "automation",
       "beautify",
       "browser",
@@ -81,7 +81,7 @@ describe("computeSettingsAvailableToolNames", () => {
   });
 
   it("hides plugin-backed optional categories when the plugin is not registered", () => {
-    const result = computeSettingsAvailableToolNames(["wait"], { pluginTools: [] });
+    const result = computeSettingsAvailableToolNames(["current_status"], { pluginTools: [] });
 
     expect(result).toContain("browser");
     expect(result).not.toContain("beautify");

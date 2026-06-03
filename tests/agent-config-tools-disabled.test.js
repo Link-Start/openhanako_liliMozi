@@ -186,7 +186,7 @@ describe("agents route: tools.disabled", () => {
     engine.getAgent.mockReturnValue({
       id: agentId,
       runtimeInitialized: false,
-      tools: [{ name: "wait" }],
+      tools: [{ name: "current_status" }],
     });
 
     const res = await app.request(`/api/agents/${agentId}/config`);

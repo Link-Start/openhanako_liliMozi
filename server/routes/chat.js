@@ -25,7 +25,6 @@ import {
 import { AppError } from "../../shared/errors.js";
 import { errorBus } from "../../shared/error-bus.js";
 import { createRequestContext } from "../http/boundary.js";
-import { waitTimingDetails } from "../../lib/tools/wait-contract.js";
 import { buildDeferredResultInterludeBlock, resolveDeferredReceiverName } from "../deferred-result-interlude.js";
 import { isAllowedChatImageMime, isChatImageBase64WithinLimit } from "../../shared/image-mime.js";
 import { isAllowedChatVideoMime, isChatVideoBase64WithinLimit } from "../../shared/video-mime.js";
@@ -51,9 +50,6 @@ export function summarizeToolStartArgs(toolName, rawArgs, startedAt = Date.now()
   const args = {};
   for (const k of TOOL_ARG_SUMMARY_KEYS) {
     if (rawArgs[k] !== undefined) args[k] = rawArgs[k];
-  }
-  if (toolName === "wait" && rawArgs.seconds !== undefined) {
-    Object.assign(args, waitTimingDetails(rawArgs.seconds, startedAt));
   }
   return Object.keys(args).length ? args : undefined;
 }

@@ -604,11 +604,6 @@
       "done": "🧭 分身出發了",
       "failed": "🧭 分身出了岔子"
     },
-    "wait": {
-      "running": "⏳ {name} 正在等待結果",
-      "done": "⏳ 等待結束",
-      "failed": "⏳ 等待被中斷"
-    },
     "check_pending_tasks": {
       "running": "📋 {name} 正在找找沒做完的事兒",
       "done": "📋 {name} 找完了",
@@ -2354,11 +2349,6 @@
       "filepathsDesc": "要交付的本機檔案絕對路徑陣列。找到檔案後把路徑傳到這裡，由 StageFile 統一登記並交給桌面、Bridge 或未來行動端消費。",
       "filePathDesc": "（相容）單一個本機檔案的絕對路徑；新呼叫優先使用 filepaths。",
       "labelDesc": "（相容）顯示給使用者的檔案名稱，通常可以省略，預設使用檔名。"
-    },
-    "wait": {
-      "label": "等待",
-      "description": "等待指定秒數。用於等待後台任務完成時保持 turn 活躍。",
-      "secondsDesc": "等待秒數（1-300）"
     },
     "subagent": {
       "label": "啟動子 Agent",

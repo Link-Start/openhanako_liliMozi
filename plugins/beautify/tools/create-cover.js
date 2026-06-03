@@ -11,7 +11,7 @@ export const promptGuidelines = [
   "The image may come from image-gen, a built-in cover asset, or a user-selected local image.",
   "This tool does not read the article to design prompts, does not call any language model, and does not generate images.",
   "When the user asks to create/generate/replace/improve a Markdown cover from chat, first call beautify_get-cover-style-guide and read the target Markdown file before writing the image prompt.",
-  "For a new Markdown cover, write the image prompt yourself using the style guide, call image-gen_generate-image with ratio 3:2, then wait/check pending tasks until a generated SessionFile is available.",
+  "For a new Markdown cover, write the image prompt yourself using the style guide, call image-gen_generate-image with ratio 3:2, then call check_pending_tasks once to inspect whether a generated SessionFile is already available.",
   "After image generation resolves, pass the generated SessionFile filePath as generatedFilePath and the Markdown path as targetFilePath.",
   "If the target Markdown file path is not explicit and cannot be inferred from attached file metadata, ask the user to confirm the path before calling this tool.",
   "When called from an editor button, the file path is explicit; use it directly.",

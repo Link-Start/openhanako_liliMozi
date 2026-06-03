@@ -58,7 +58,7 @@ const HANAKO_CUSTOM_OBJS = [
   "search_memory", "pin_memory", "unpin_memory", "web_search",
   "web_fetch", "todo_write", "notify",
   "stage_files", "subagent", "channel", "record_experience",
-  "recall_experience", "check_pending_tasks", "current_status", "wait", "stop_task",
+  "recall_experience", "check_pending_tasks", "current_status", "stop_task",
   "session_folders", "browser", "cron", "dm", "install_skill", "update_settings",
 ].map(makeTool);
 
