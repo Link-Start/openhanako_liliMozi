@@ -185,18 +185,19 @@ describe('GeneralTab', () => {
     installHana();
     hanaFetch
       .mockResolvedValueOnce(jsonResponse({ notifications: { turnCompletion: 'never' } }))
-      .mockResolvedValueOnce(jsonResponse({ ok: true, notifications: { turnCompletion: 'when_unfocused' } }));
+      .mockResolvedValueOnce(jsonResponse({ ok: true, notifications: { turnCompletion: 'when_session_unfocused' } }));
 
     render(<GeneralTab />);
 
     const select = await screen.findByLabelText('turn-completion-notification');
-    fireEvent.change(select, { target: { value: 'when_unfocused' } });
+    expect(screen.getByText('settings.general.notifications.turnCompletionWhenSessionUnfocused')).toBeTruthy();
+    fireEvent.change(select, { target: { value: 'when_session_unfocused' } });
 
     await waitFor(() => expect(hanaFetch).toHaveBeenLastCalledWith('/api/preferences/notifications', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notifications: { turnCompletion: 'when_unfocused' } }),
+      body: JSON.stringify({ notifications: { turnCompletion: 'when_session_unfocused' } }),
     }));
-    expect((select as HTMLSelectElement).value).toBe('when_unfocused');
+    expect((select as HTMLSelectElement).value).toBe('when_session_unfocused');
   });
 });

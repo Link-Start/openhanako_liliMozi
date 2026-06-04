@@ -15,6 +15,7 @@ describe("chat route notification messages", () => {
       body: "该喝水了",
       agentId: "hana",
       desktopFocusPolicy: "always",
+      sessionPath: null,
     });
   });
 
@@ -29,6 +30,7 @@ describe("chat route notification messages", () => {
       body: "正文",
       agentId: null,
       desktopFocusPolicy: "always",
+      sessionPath: null,
     });
   });
 
@@ -45,6 +47,25 @@ describe("chat route notification messages", () => {
       body: "这一轮已经结束",
       agentId: "hana",
       desktopFocusPolicy: "when_unfocused",
+      sessionPath: null,
+    });
+  });
+
+  it("carries the completed sessionPath for session-aware desktop notification filtering", () => {
+    expect(toNotificationWsMessage({
+      type: "notification",
+      title: "完成",
+      body: "这一轮已经结束",
+      agentId: "hana",
+      desktopFocusPolicy: "when_session_unfocused",
+      sessionPath: "/tmp/finished.jsonl",
+    })).toEqual({
+      type: "notification",
+      title: "完成",
+      body: "这一轮已经结束",
+      agentId: "hana",
+      desktopFocusPolicy: "when_session_unfocused",
+      sessionPath: "/tmp/finished.jsonl",
     });
   });
 });

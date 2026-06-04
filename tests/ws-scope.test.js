@@ -71,6 +71,34 @@ describe("websocket scope filtering", () => {
     })).toBe(true);
   });
 
+  it("allows same-Studio LAN clients to receive session-aware notifications", () => {
+    const client = createWsClientRecord({
+      principal: {
+        kind: "device",
+        credentialKind: "device_credential",
+        connectionKind: "lan",
+        userId: "user_1",
+        studioId: "studio_1",
+        serverNodeId: "node_1",
+        scopes: ["chat.read"],
+      },
+      subscriptions: [{ kind: "studio", studioId: "studio_1" }],
+    });
+
+    expect(wsClientCanReceiveEvent(client, {
+      type: "notification",
+      studioId: "studio_1",
+      sessionPath: "/s/finished.jsonl",
+      desktopFocusPolicy: "when_session_unfocused",
+    })).toBe(true);
+    expect(wsClientCanReceiveEvent(client, {
+      type: "notification",
+      studioId: "studio_2",
+      sessionPath: "/s/finished.jsonl",
+      desktopFocusPolicy: "when_session_unfocused",
+    })).toBe(false);
+  });
+
   it("blocks remote base64 media events and unknown global events", () => {
     const client = createWsClientRecord({
       principal: {

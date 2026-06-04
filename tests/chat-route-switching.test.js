@@ -324,6 +324,62 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
+  it("delivers a session-aware turn completion notification with the completed sessionPath", async () => {
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+      abort: vi.fn(async () => true),
+    };
+    const deliverNotification = vi.fn(async () => ({ ok: true }));
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getNotificationPreferences: vi.fn(() => ({ turnCompletion: "when_session_unfocused" })),
+      deliverNotification,
+      getSessionByPath: vi.fn(() => ({
+        entries: [],
+        agentId: "agent-2",
+        agentName: "小蓝",
+      })),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    subscriber?.({ type: "session_status", isStreaming: true }, "/tmp/session-aware.jsonl");
+    subscriber?.({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "完成了。" },
+    }, "/tmp/session-aware.jsonl");
+    subscriber?.({ type: "turn_end" }, "/tmp/session-aware.jsonl");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(deliverNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "小蓝",
+        sessionPath: "/tmp/session-aware.jsonl",
+        desktopFocusPolicy: "when_session_unfocused",
+      }),
+      { agentId: "agent-2" },
+    );
+
+    handlers.onClose({}, ws);
+  });
+
   it("does not deliver turn completion notification after an aborted turn", async () => {
     let createHandlers;
     let subscriber;

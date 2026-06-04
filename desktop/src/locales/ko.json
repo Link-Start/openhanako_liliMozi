@@ -720,7 +720,8 @@
         "title": "알림",
         "turnCompletion": "턴 완료 알림",
         "turnCompletionNever": "사용 안 함",
-        "turnCompletionWhenUnfocused": "HanaAgent에 포커스가 없을 때"
+        "turnCompletionWhenUnfocused": "HanaAgent에 포커스가 없을 때",
+        "turnCompletionWhenSessionUnfocused": "완료된 Session에 포커스가 없을 때"
       }
     },
     "computerUse": {

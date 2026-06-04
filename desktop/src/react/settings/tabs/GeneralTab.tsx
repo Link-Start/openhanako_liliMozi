@@ -14,7 +14,7 @@ import {
 } from '../../../../../shared/notification-preferences.js';
 import styles from '../Settings.module.css';
 
-type TurnCompletionNotificationMode = 'never' | 'when_unfocused';
+type TurnCompletionNotificationMode = 'never' | 'when_unfocused' | 'when_session_unfocused';
 
 interface NotificationPreferences {
   turnCompletion: TurnCompletionNotificationMode;
@@ -167,6 +167,7 @@ export function GeneralTab() {
               options={[
                 { value: 'never', label: t('settings.general.notifications.turnCompletionNever') },
                 { value: 'when_unfocused', label: t('settings.general.notifications.turnCompletionWhenUnfocused') },
+                { value: 'when_session_unfocused', label: t('settings.general.notifications.turnCompletionWhenSessionUnfocused') },
               ]}
               value={notificationPrefs.turnCompletion}
               onChange={handleTurnCompletionChange}

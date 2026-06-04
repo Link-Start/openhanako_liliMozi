@@ -35,8 +35,11 @@ describe("notification preferences", () => {
     expect(prefs.setNotificationPreferences({ turnCompletion: "when_unfocused" })).toEqual({
       turnCompletion: "when_unfocused",
     });
+    expect(prefs.setNotificationPreferences({ turnCompletion: "when_session_unfocused" })).toEqual({
+      turnCompletion: "when_session_unfocused",
+    });
     expect(prefs.getPreferences().notifications).toEqual({
-      turnCompletion: "when_unfocused",
+      turnCompletion: "when_session_unfocused",
     });
     expect(prefs.setNotificationPreferences({ turnCompletion: "sometimes" })).toEqual({
       turnCompletion: "never",
@@ -52,7 +55,9 @@ describe("notification preferences", () => {
       getNotificationPreferences: vi.fn(() => notifications),
       setNotificationPreferences: vi.fn((patch) => {
         notifications = {
-          turnCompletion: patch.turnCompletion === "when_unfocused" ? "when_unfocused" : "never",
+          turnCompletion: patch.turnCompletion === "when_unfocused" || patch.turnCompletion === "when_session_unfocused"
+            ? patch.turnCompletion
+            : "never",
         };
         return notifications;
       }),
@@ -68,16 +73,16 @@ describe("notification preferences", () => {
     const updated = await app.request("/api/preferences/notifications", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notifications: { turnCompletion: "when_unfocused" } }),
+      body: JSON.stringify({ notifications: { turnCompletion: "when_session_unfocused" } }),
     });
 
     expect(updated.status).toBe(200);
     expect(engine.setNotificationPreferences).toHaveBeenCalledWith({
-      turnCompletion: "when_unfocused",
+      turnCompletion: "when_session_unfocused",
     });
     expect(await updated.json()).toEqual({
       ok: true,
-      notifications: { turnCompletion: "when_unfocused" },
+      notifications: { turnCompletion: "when_session_unfocused" },
     });
   });
 });

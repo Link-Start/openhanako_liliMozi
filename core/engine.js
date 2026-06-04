@@ -337,14 +337,15 @@ export class HanaEngine {
       getUsageLedger: () => this._usageLedger,
     });
     this._notifications = new NotificationService({
-      emitDesktop: ({ title, body, agentId, desktopFocusPolicy }) => {
+      emitDesktop: ({ title, body, agentId, desktopFocusPolicy, sessionPath }) => {
         this._hubCallbacks?.eventBus?.emit({
           type: "notification",
           title,
           body,
           agentId: agentId || null,
           desktopFocusPolicy,
-        }, null);
+          ...(sessionPath ? { sessionPath } : {}),
+        }, sessionPath || null);
       },
       getBridgeManager: () => this._hubCallbacks?.hub?.bridgeManager || null,
     });
@@ -1050,7 +1051,7 @@ export class HanaEngine {
   get permissionMode() { return this._sessionCoord.getPermissionMode(); }
   getSessionPermissionMode(sessionPath) { return this._sessionCoord.getPermissionMode(sessionPath); }
   setSessionPermissionMode(mode) { return this._sessionCoord.setPermissionMode(mode); }
-  setSessionPermissionModeForSession(sessionPath, mode) { return this._sessionCoord.setSessionPermissionMode(sessionPath, mode); }
+  setSessionPermissionModeForSession(sessionPath, mode, options) { return this._sessionCoord.setSessionPermissionMode(sessionPath, mode, options); }
   setCurrentSessionPermissionMode(mode) { return this._sessionCoord.setCurrentSessionPermissionMode(mode); }
   setPendingSessionPermissionMode(mode) { return this._sessionCoord.setPendingPermissionMode(mode); }
   getSessionPermissionModeDefault() { return this._sessionCoord.getPermissionModeDefault(); }

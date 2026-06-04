@@ -110,6 +110,18 @@ function upsertCreatedSession(msg: any): void {
   });
 }
 
+function resolveNotificationDesktopFocusPolicy(msg: any): 'always' | 'when_unfocused' {
+  if (msg.desktopFocusPolicy === 'when_session_unfocused') {
+    const completedSessionPath = typeof msg.sessionPath === 'string' && msg.sessionPath.trim()
+      ? msg.sessionPath.trim()
+      : null;
+    const currentSessionPath = useStore.getState().currentSessionPath || null;
+    if (completedSessionPath && currentSessionPath !== completedSessionPath) return 'always';
+    return 'when_unfocused';
+  }
+  return msg.desktopFocusPolicy === 'when_unfocused' ? 'when_unfocused' : 'always';
+}
+
 function hasOptimisticCurrentSession(): boolean {
   const state = useStore.getState();
   const sessionPath = state.currentSessionPath;
@@ -513,7 +525,7 @@ export function handleServerMessage(msg: any): void {
         // agentId 标识触发通知的助手，主进程据此读取该 agent 头像作为通知 icon。
         // 缺失时透传 null，主进程退回无 icon，禁止从当前焦点 agent 兜底。
         window.hana.showNotification(msg.title, msg.body, msg.agentId ?? null, {
-          desktopFocusPolicy: msg.desktopFocusPolicy === 'when_unfocused' ? 'when_unfocused' : 'always',
+          desktopFocusPolicy: resolveNotificationDesktopFocusPolicy(msg),
         });
       }
       break;

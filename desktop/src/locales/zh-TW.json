@@ -720,7 +720,8 @@
         "title": "通知",
         "turnCompletion": "輪次完成通知",
         "turnCompletionNever": "從不",
-        "turnCompletionWhenUnfocused": "焦點不在 HanaAgent 時"
+        "turnCompletionWhenUnfocused": "焦點不在 HanaAgent 時",
+        "turnCompletionWhenSessionUnfocused": "焦點不在完成任務的 Session 時"
       }
     },
     "computerUse": {

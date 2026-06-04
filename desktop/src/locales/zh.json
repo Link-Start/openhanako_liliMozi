@@ -923,7 +923,8 @@
         "title": "通知",
         "turnCompletion": "轮次完成通知",
         "turnCompletionNever": "从不",
-        "turnCompletionWhenUnfocused": "焦点不在 HanaAgent 时"
+        "turnCompletionWhenUnfocused": "焦点不在 HanaAgent 时",
+        "turnCompletionWhenSessionUnfocused": "焦点不在完成任务的 Session 时"
       }
     },
     "about": {

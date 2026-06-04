@@ -1,9 +1,11 @@
 const TURN_COMPLETION_NEVER = "never";
 const TURN_COMPLETION_WHEN_UNFOCUSED = "when_unfocused";
+const TURN_COMPLETION_WHEN_SESSION_UNFOCUSED = "when_session_unfocused";
 
 export const TURN_COMPLETION_NOTIFICATION_MODES = Object.freeze([
   TURN_COMPLETION_NEVER,
   TURN_COMPLETION_WHEN_UNFOCUSED,
+  TURN_COMPLETION_WHEN_SESSION_UNFOCUSED,
 ]);
 
 export function normalizeTurnCompletionNotificationMode(value) {

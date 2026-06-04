@@ -720,7 +720,8 @@
         "title": "通知",
         "turnCompletion": "ターン完了通知",
         "turnCompletionNever": "通知しない",
-        "turnCompletionWhenUnfocused": "HanaAgent にフォーカスがないとき"
+        "turnCompletionWhenUnfocused": "HanaAgent にフォーカスがないとき",
+        "turnCompletionWhenSessionUnfocused": "完了した Session にフォーカスしていないとき"
       }
     },
     "computerUse": {

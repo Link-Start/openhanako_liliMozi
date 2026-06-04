@@ -141,7 +141,12 @@ export function toCompactionLifecycleWsMessage(event, sessionPath, getSessionByP
   };
 }
 
-export function toNotificationWsMessage(event) {
+export function toNotificationWsMessage(event, sessionPath = null) {
+  const desktopFocusPolicy = event.desktopFocusPolicy === "when_session_unfocused"
+    ? "when_session_unfocused"
+    : event.desktopFocusPolicy === "when_unfocused"
+      ? "when_unfocused"
+      : "always";
   return {
     type: "notification",
     title: event.title,
@@ -149,7 +154,8 @@ export function toNotificationWsMessage(event) {
     // 携带触发 agent 的 agentId，展示侧据此显示对应助手头像（多 agent 并发定时任务可分辨身份）。
     // 缺失时归一化为 null，由消费侧退回无 icon 行为，禁止从全局焦点兜底。
     agentId: event.agentId ?? null,
-    desktopFocusPolicy: event.desktopFocusPolicy === "when_unfocused" ? "when_unfocused" : "always",
+    desktopFocusPolicy,
+    sessionPath: event.sessionPath ?? sessionPath ?? null,
   };
 }
 
@@ -468,7 +474,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     if (!sessionPath || wasAborted || !wasSuccessful) return;
     try {
       const prefs = engine.getNotificationPreferences?.();
-      if (prefs?.turnCompletion !== "when_unfocused") return;
+      if (prefs?.turnCompletion !== "when_unfocused" && prefs?.turnCompletion !== "when_session_unfocused") return;
       if (typeof engine.deliverNotification !== "function") return;
 
       const { agentId, agentName } = resolveSessionNotificationIdentity(sessionPath);
@@ -477,7 +483,10 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         title: agentName || "HanaAgent",
         body: t("notification.turnCompletionBody"),
         channels: ["desktop"],
-        desktopFocusPolicy: "when_unfocused",
+        desktopFocusPolicy: prefs.turnCompletion === "when_session_unfocused"
+          ? "when_session_unfocused"
+          : "when_unfocused",
+        sessionPath,
         ...(idempotencyKey ? { idempotencyKey } : {}),
       }, {
         agentId,
@@ -821,7 +830,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     } else if (event.type === "plan_mode") {
       broadcast({ type: "plan_mode", enabled: event.enabled, mode: event.mode, sessionPath });
     } else if (event.type === "notification") {
-      broadcast(toNotificationWsMessage(event));
+      broadcast(toNotificationWsMessage(event, sessionPath));
     } else if (event.type === "channel_new_message") {
       broadcast({
         type: "channel_new_message",

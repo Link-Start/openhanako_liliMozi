@@ -44,6 +44,31 @@ describe("NotificationService", () => {
     });
   });
 
+  it("passes the notification sessionPath to the desktop notification boundary", async () => {
+    const emitDesktop = vi.fn();
+    const service = new NotificationService({
+      emitDesktop,
+      getBridgeManager: () => null,
+    });
+
+    await service.notify(
+      {
+        title: "完成",
+        body: "这一轮已经结束",
+        sessionPath: "/tmp/finished.jsonl",
+      },
+      { agentId: "hana" },
+    );
+
+    expect(emitDesktop).toHaveBeenCalledWith({
+      title: "完成",
+      body: "这一轮已经结束",
+      agentId: "hana",
+      desktopFocusPolicy: "always",
+      sessionPath: "/tmp/finished.jsonl",
+    });
+  });
+
   it("skips repeated notifications with the same explicit idempotency key", async () => {
     const emitDesktop = vi.fn();
     const service = new NotificationService({

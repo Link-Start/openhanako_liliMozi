@@ -923,7 +923,8 @@
         "title": "Notifications",
         "turnCompletion": "Turn completion notification",
         "turnCompletionNever": "Never",
-        "turnCompletionWhenUnfocused": "When HanaAgent is unfocused"
+        "turnCompletionWhenUnfocused": "When HanaAgent is unfocused",
+        "turnCompletionWhenSessionUnfocused": "When not focused on the completed Session"
       }
     },
     "about": {
