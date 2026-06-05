@@ -381,6 +381,86 @@ describe('InputArea paste and slash menu behavior', () => {
     });
   });
 
+  it('passes pasted clipboard files with filesystem paths through the drag attachment path', async () => {
+    const { attachFilesFromPaths } = await import('../../MainContent');
+    const file = new File(['report'], 'report.pdf', { type: 'application/pdf' });
+    const getFilePath = vi.fn(() => '/Users/hana/Desktop/report.pdf');
+    window.platform = { getFilePath } as unknown as typeof window.platform;
+    render(React.createElement(InputArea));
+
+    const preventDefault = vi.fn();
+    const handled = tiptapPasteHandler()?.(null, {
+      preventDefault,
+      clipboardData: {
+        items: [{
+          kind: 'file',
+          type: 'application/pdf',
+          getAsFile: () => file,
+        }],
+        getData: () => '',
+      },
+    } as unknown as ClipboardEvent);
+
+    expect(handled).toBe(true);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(attachFilesFromPaths).toHaveBeenCalledWith(['/Users/hana/Desktop/report.pdf'], {
+        '/Users/hana/Desktop/report.pdf': 'report.pdf',
+      });
+    });
+    expect(mocks.hanaFetch).not.toHaveBeenCalledWith('/api/upload-blob', expect.anything());
+  });
+
+  it('registers pasted image blob uploads as path-backed attachments without base64Data', async () => {
+    mocks.hanaFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/upload-blob') {
+        return new Response(JSON.stringify({
+          uploads: [{
+            fileId: 'sf_pasted_image',
+            dest: '/hana/session-files/pasted.png',
+            name: 'pasted.png',
+            isDirectory: false,
+          }],
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const getFilePath = vi.fn(() => null);
+    window.platform = { getFilePath } as unknown as typeof window.platform;
+    render(React.createElement(InputArea));
+
+    const preventDefault = vi.fn();
+    const file = new File([new Uint8Array([1, 2, 3])], 'clipboard.png', { type: 'image/png' });
+    const handled = tiptapPasteHandler()?.(null, {
+      preventDefault,
+      clipboardData: {
+        items: [{
+          kind: 'file',
+          type: 'image/png',
+          getAsFile: () => file,
+        }],
+      },
+    } as unknown as ClipboardEvent);
+
+    expect(handled).toBe(true);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/upload-blob', expect.objectContaining({
+        method: 'POST',
+        body: expect.any(String),
+      }));
+    });
+    await waitFor(() => {
+      expect(useStore.getState().attachedFiles).toEqual([{
+        fileId: 'sf_pasted_image',
+        path: '/hana/session-files/pasted.png',
+        name: 'pasted.png',
+        isDirectory: false,
+      }]);
+    });
+    expect(useStore.getState().attachedFiles[0]).not.toHaveProperty('base64Data');
+  });
+
   it('sends chat quoted selection through the existing prompt quote contract', async () => {
     seedInputState({
       quotedSelections: [
