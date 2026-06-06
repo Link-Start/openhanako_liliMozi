@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tests for Hub session bus handlers.
  *
@@ -11,7 +10,7 @@ import { EventBus } from "../hub/event-bus.ts";
 // ── helpers: register handlers inline (mirrors _setupSessionHandlers logic) ──
 
 vi.mock("../core/message-utils.js", () => ({
-  extractTextContent: (content, opts = {}) => {
+  extractTextContent: (content, opts: any = {}) => {
     if (typeof content === "string") return { text: content, thinking: "", toolUses: [], images: [] };
     if (!Array.isArray(content)) return { text: "", thinking: "", toolUses: [], images: [] };
     const text = content.filter(b => b.type === "text").map(b => b.text).join("");
@@ -50,7 +49,7 @@ function registerHandlers(bus, engine) {
   }));
 
   // session:abort
-  cleanups.push(bus.handle("session:abort", async ({ sessionPath } = {}) => {
+  cleanups.push(bus.handle("session:abort", async ({ sessionPath }: any = {}) => {
     const sp = sessionPath;
     if (!sp) return { aborted: false };
     const result = await engine.abortSession(sp);
@@ -58,7 +57,7 @@ function registerHandlers(bus, engine) {
   }));
 
   // session:history
-  cleanups.push(bus.handle("session:history", async ({ sessionPath, limit: rawLimit } = {}) => {
+  cleanups.push(bus.handle("session:history", async ({ sessionPath, limit: rawLimit }: any = {}) => {
     if (!sessionPath) throw new Error("sessionPath is required");
     if (!isValidSessionPath(sessionPath, engine.agentsDir)) {
       throw new Error("Invalid session path");
@@ -89,7 +88,7 @@ function registerHandlers(bus, engine) {
   }));
 
   // session:list
-  cleanups.push(bus.handle("session:list", async ({ agentId } = {}) => {
+  cleanups.push(bus.handle("session:list", async ({ agentId }: any = {}) => {
     const all = await engine.listSessions();
     const filtered = agentId ? all.filter(s => s.agentId === agentId) : all;
     const sessions = filtered.map(s => ({
@@ -242,7 +241,7 @@ describe("session:history", () => {
   });
 
   it("throws on invalid path (path traversal)", async () => {
-    isValidSessionPath.mockReturnValueOnce(false);
+    (isValidSessionPath as any).mockReturnValueOnce(false);
     await expect(bus.request("session:history", { sessionPath: "/etc/passwd" }))
       .rejects.toThrow("Invalid session path");
   });

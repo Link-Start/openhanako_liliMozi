@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 
 import { submitDesktopSessionMessage } from "../core/desktop-session-submit.ts";
@@ -6,7 +5,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-function makeFakeSession({ replyText = "desktop reply", toolMedia = [], toolMediaDetails = null, settingsUpdate = null } = {}) {
+function makeFakeSession({ replyText = "desktop reply", toolMedia = [], toolMediaDetails = null, settingsUpdate = null }: any = {}) {
   const subs = [];
   return {
     subscribe: (fn) => {
@@ -16,7 +15,7 @@ function makeFakeSession({ replyText = "desktop reply", toolMedia = [], toolMedi
         if (idx >= 0) subs.splice(idx, 1);
       };
     },
-    prompt: vi.fn(async () => {
+    prompt: vi.fn<(...args: any[]) => Promise<any>>(async () => {
       for (const fn of subs) {
         fn({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: replyText } });
         if (toolMediaDetails) {
@@ -53,7 +52,7 @@ function sessionFileMarker({ fileId, sessionPath, label, kind = "attachment" }) 
 describe("submitDesktopSessionMessage", () => {
   it("rejects concurrent submissions for the same session before streaming status is emitted", async () => {
     const session = makeFakeSession();
-    const ready = Promise.withResolvers();
+    const ready = (Promise as any).withResolvers();
     const engine = {
       ensureSessionLoaded: vi.fn(() => ready.promise),
       promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),

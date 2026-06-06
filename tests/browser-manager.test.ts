@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { BrowserManager } from "../lib/browser/browser-manager.ts";
 
@@ -60,7 +59,7 @@ describe("BrowserManager explicit sessionPath", () => {
       provider: "bing_browser",
       query: "hana search",
       maxResults: 3,
-    });
+    } as any);
 
     expect(result.results).toHaveLength(1);
     expect(manager._sendCmd).toHaveBeenCalledWith("browserSearch", {
@@ -183,7 +182,7 @@ describe("BrowserManager explicit sessionPath", () => {
     );
 
     await manager.thumbnail(SP1);
-    manager._sendCmd.mockClear();
+    (manager._sendCmd as any).mockClear();
 
     await expect(manager.snapshot(SP1)).rejects.toThrow(/浏览器实例已不可用|browser instance is unavailable/i);
     expect(manager._sendCmd).not.toHaveBeenCalled();
@@ -197,8 +196,8 @@ describe("BrowserManager explicit sessionPath", () => {
     );
 
     await manager.thumbnail(SP1);
-    manager._sendCmd.mockReset();
-    manager._sendCmd.mockResolvedValue({});
+    (manager._sendCmd as any).mockReset();
+    (manager._sendCmd as any).mockResolvedValue({});
 
     await manager.launch(SP1);
 

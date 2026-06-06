@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DeferredResultCoordinator } from "../lib/deferred-result-coordinator.ts";
@@ -10,7 +9,7 @@ describe("DeferredResultCoordinator", () => {
   let coordinator;
 
   beforeEach(() => {
-    store = new DeferredResultStore();
+    store = new (DeferredResultStore as any)();
     sessionCoordinator = {
       deliverCustomMessage: vi.fn().mockResolvedValue({ ok: true, mode: "triggerTurn" }),
       recordCustomEntry: vi.fn().mockResolvedValue({ ok: true, mode: "customEntry" }),
@@ -19,7 +18,7 @@ describe("DeferredResultCoordinator", () => {
       store,
       sessionCoordinator,
       retryIntervalMs: 0,
-      log: { warn: vi.fn(), error: vi.fn(), log: vi.fn() },
+      log: { warn: vi.fn(), error: vi.fn(), log: vi.fn() } as any,
     });
     coordinator.start();
   });

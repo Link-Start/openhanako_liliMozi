@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * 回归测试：验证 server/bootstrap.js 的 keepalive worker 真的能穿透主线程阻塞。
  *
@@ -88,7 +87,7 @@ describe("bootstrap keepalive worker", () => {
     fs.writeFileSync(fixturePath, BOOTSTRAP_KEEPALIVE_FIXTURE);
 
     try {
-      const events = await spawnAndCollect(fixturePath, 5000);
+      const events: any = await spawnAndCollect(fixturePath, 5000);
 
       const blockStart = parseTaggedTs(events, "BLOCK_START");
       const blockEnd = parseTaggedTs(events, "BLOCK_END");

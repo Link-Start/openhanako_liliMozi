@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { t } from "../../../lib/i18n.ts";
 
 export const name = "list-capabilities";

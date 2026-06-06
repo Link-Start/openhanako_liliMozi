@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import { formatSessionLine, selectSession } from "../cli/chat.ts";
 
@@ -9,7 +8,7 @@ describe("CLI chat session helpers", () => {
   ];
 
   it("selects the latest session by default", () => {
-    expect(selectSession(sessions)).toBe(sessions[0]);
+    expect((selectSession as any)(sessions)).toBe(sessions[0]);
   });
 
   it("selects one-based session indices", () => {

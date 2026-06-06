@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -23,7 +22,7 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function makeInput(overrides = {}) {
+function makeInput( overrides: any = {}) {
   return {
     file: {
       filePath: audioFile,
@@ -79,10 +78,10 @@ describe("speech recognition adapters", () => {
     }));
 
     expect(result.text).toBe("你好");
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(fetchImpl.mock.calls[0][0]).toBe("https://api.xiaomimimo.com/v1/chat/completions");
-    expect(init.headers).toMatchObject({ "api-key": "mimo-key", "Content-Type": "application/json" });
-    expect(JSON.parse(init.body)).toMatchObject({
+    const [, init] = (fetchImpl.mock.calls as any)[0];
+    expect((fetchImpl.mock.calls as any)[0][0]).toBe("https://api.xiaomimimo.com/v1/chat/completions");
+    expect(init!.headers).toMatchObject({ "api-key": "mimo-key", "Content-Type": "application/json" });
+    expect(JSON.parse(init!.body)).toMatchObject({
       model: "mimo-v2.5-asr",
       messages: [{
         role: "user",
@@ -108,10 +107,10 @@ describe("speech recognition adapters", () => {
     }));
 
     expect(result.text).toBe("令牌计划识别成功");
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = (fetchImpl.mock.calls as any)[0];
     expect(url).toBe("https://token-plan-cn.xiaomimimo.com/v1/chat/completions");
     expect(url).not.toContain("/anthropic");
-    expect(init.headers).toMatchObject({ "api-key": "tp-mimo-key", "Content-Type": "application/json" });
+    expect(init!.headers).toMatchObject({ "api-key": "tp-mimo-key", "Content-Type": "application/json" });
   });
 
   it("calls DashScope Qwen ASR through the OpenAI-compatible input_audio shape", async () => {
@@ -126,10 +125,10 @@ describe("speech recognition adapters", () => {
       fetch: fetchImpl,
     }));
 
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(fetchImpl.mock.calls[0][0]).toBe("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
-    expect(init.headers).toMatchObject({ Authorization: "Bearer dashscope-key", "Content-Type": "application/json" });
-    expect(JSON.parse(init.body)).toMatchObject({
+    const [, init] = (fetchImpl.mock.calls as any)[0];
+    expect((fetchImpl.mock.calls as any)[0][0]).toBe("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+    expect(init!.headers).toMatchObject({ Authorization: "Bearer dashscope-key", "Content-Type": "application/json" });
+    expect(JSON.parse(init!.body)).toMatchObject({
       model: "qwen3-asr-flash",
       stream: false,
       messages: [{
@@ -160,15 +159,15 @@ describe("speech recognition adapters", () => {
     }));
 
     expect(result).toMatchObject({ text: "关闭透传。", durationMs: 2499 });
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(fetchImpl.mock.calls[0][0]).toBe("https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash");
-    expect(init.headers).toMatchObject({
+    const [, init] = (fetchImpl.mock.calls as any)[0];
+    expect((fetchImpl.mock.calls as any)[0][0]).toBe("https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash");
+    expect(init!.headers).toMatchObject({
       "X-Api-Key": "volc-key",
       "X-Api-Resource-Id": "volc.bigasr.auc_turbo",
       "X-Api-Sequence": "-1",
       "Content-Type": "application/json",
     });
-    expect(JSON.parse(init.body)).toMatchObject({
+    expect(JSON.parse(init!.body)).toMatchObject({
       user: { uid: "volc-key" },
       audio: { data: "UklGRg==" },
       request: { model_name: "bigmodel" },

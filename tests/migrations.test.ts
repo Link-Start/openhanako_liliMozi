@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * core/migrations.js 单元测试
  */
@@ -443,8 +442,8 @@ describe("migration #12: backfill legacy session files into sidecars", () => {
         status: "available",
       }),
     ]);
-    expect(files[0].filePath).toContain(path.join(tmpDir, "session-files"));
-    expect(fs.existsSync(files[0].filePath)).toBe(true);
+    expect((files[0] as any).filePath).toContain(path.join(tmpDir, "session-files"));
+    expect(fs.existsSync((files[0] as any).filePath)).toBe(true);
   });
 });
 
@@ -1732,7 +1731,7 @@ describe("migration #20: Pi model input schema compatibility", () => {
     });
 
     const { AuthStorage, createModelRegistry } = await import("../lib/pi-sdk/index.ts");
-    const registry = createModelRegistry(new AuthStorage(tmpDir), modelsJsonPath);
+    const registry = createModelRegistry(new (AuthStorage as any)(tmpDir), modelsJsonPath);
     const available = await registry.getAvailable();
     expect(available.map((model) => model.id)).toEqual(["qwen3-vl-plus", "qwen-plus", "custom-video"]);
     expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);

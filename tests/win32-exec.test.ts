@@ -1,12 +1,11 @@
-// @ts-nocheck
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const spawnAndStream = vi.fn(async () => ({ exitCode: 0 }));
+const spawnAndStream = vi.fn<(...args: any[]) => Promise<{ exitCode: number }>>(async () => ({ exitCode: 0 }));
 const classifyWin32Command = vi.fn();
-const prepareSandboxRuntime = vi.fn((runtimeInfo) => runtimeInfo);
-const existsSync = vi.fn(() => false);
+const prepareSandboxRuntime = vi.fn<(...args: any[]) => any>((runtimeInfo) => runtimeInfo);
+const existsSync = vi.fn<(...args: any[]) => boolean>(() => false);
 const mkdirSync = vi.fn();
-const spawnSync = vi.fn(() => ({ status: 1, stdout: "", stderr: "" }));
+const spawnSync = vi.fn<(...args: any[]) => { status: number; stdout: string; stderr: string }>(() => ({ status: 1, stdout: "", stderr: "" }));
 const systemCmdExe = "C:\\Windows\\System32\\cmd.exe";
 
 vi.mock("../lib/sandbox/exec-helper.js", () => ({

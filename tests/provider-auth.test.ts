@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import { MASKED_SECRET } from "../shared/secret-custody.ts";
 import {

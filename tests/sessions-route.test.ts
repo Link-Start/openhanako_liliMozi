@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
@@ -489,7 +488,7 @@ describe("sessions route", () => {
     };
 
     app.use("*", async (c, next) => {
-      c.set("authPrincipal", Object.freeze({
+      (c as any).set("authPrincipal", Object.freeze({
         kind: "device",
         credentialKind: "device_credential",
         connectionKind: "lan",
@@ -683,7 +682,7 @@ describe("sessions route", () => {
     const app = new Hono();
 
     app.use("*", async (c, next) => {
-      c.set("authPrincipal", Object.freeze({
+      (c as any).set("authPrincipal", Object.freeze({
         kind: "device",
         credentialKind: "device_credential",
         connectionKind: "lan",
@@ -954,7 +953,7 @@ describe("sessions route", () => {
       model: "test",
       stopReason: "toolUse",
       timestamp: Date.now(),
-    });
+    } as any);
     manager.appendMessage({
       role: "toolResult",
       toolCallId: "todo-1",

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
 import { McpStdioClient } from "./mcp-stdio-client.ts";
@@ -149,7 +148,7 @@ export function normalizeAgentMcpConfig(agentConfig) {
   };
 }
 
-export function isMcpToolEnabledForAgentConfig(agentConfig, { globalEnabled, serverId, connectorId, toolName } = {}) {
+export function isMcpToolEnabledForAgentConfig(agentConfig, { globalEnabled, serverId, connectorId, toolName }: any = {}) {
   if (globalEnabled !== true) return false;
   const id = connectorId || serverId;
   const mcp = normalizeAgentMcpConfig(agentConfig);
@@ -158,7 +157,7 @@ export function isMcpToolEnabledForAgentConfig(agentConfig, { globalEnabled, ser
   return connector?.tools?.[toolName] === true;
 }
 
-export function mcpToolError(text, details = {}) {
+export function mcpToolError(text, details: any = {}) {
   return {
     isError: true,
     content: [{ type: "text", text }],
@@ -256,7 +255,7 @@ export function createMcpToolDefinition({
       serverId: connectorId,
       toolName,
     }),
-    execute: async (_toolCallId, params, runtimeCtx = {}) => {
+    execute: async (_toolCallId, params, runtimeCtx: any = {}) => {
       if (getGlobalEnabled() !== true) {
         return mcpToolError("MCP is disabled globally. Enable Connectors in Settings before calling this tool.", {
           connectorId,
@@ -292,6 +291,19 @@ export function createMcpToolDefinition({
 }
 
 export class McpRuntime {
+  declare Client: any;
+  declare clientErrors: any;
+  declare clientFactory: any;
+  declare clients: any;
+  declare connectorStatus: any;
+  declare ctx: any;
+  declare desiredStates: any;
+  declare establishing: any;
+  declare fetchImpl: any;
+  declare oauthSessions: any;
+  declare reconnectState: any;
+  declare refreshInFlight: any;
+  declare toolDisposers: any;
   constructor(ctx, { Client = null, clientFactory = null, fetchImpl = globalThis.fetch } = {}) {
     this.ctx = ctx;
     this.Client = Client;
@@ -504,7 +516,7 @@ export class McpRuntime {
   // stdio exit racing a successful reconnect) is harmlessly ignored.
   _createClient(connector) {
     const id = connector.id;
-    const holder = {};
+    const holder: any = {};
     holder.client = this.clientFactory(connector, {
       log: this.ctx.log,
       fetchImpl: this.fetchImpl,
@@ -796,7 +808,7 @@ export class McpRuntime {
     return this.updateAgentMcpConnector(agentId, serverId, patch);
   }
 
-  async handleSettingsAction({ action, payload = {}, agentId = null } = {}) {
+  async handleSettingsAction({ action, payload = {}, agentId = null }: any = {}) {
     const input = isPlainObject(payload) ? payload : {};
     const changes = [];
     let key = action || "mcp";

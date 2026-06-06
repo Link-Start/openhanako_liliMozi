@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
 import YAML from "js-yaml";
@@ -184,7 +183,7 @@ export async function applyMarkdownCoverFromGeneratedFile({
   pixelWidth,
   pixelHeight,
   now = new Date(),
-} = {}) {
+}: any = {}) {
   assertAbsoluteFilePath("markdownFilePath", markdownFilePath);
   assertAbsoluteFilePath("generatedFilePath", generatedFilePath);
   assertSupportedImageFilePath(generatedFilePath);

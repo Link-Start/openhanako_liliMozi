@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import fs from "fs";
@@ -125,7 +124,7 @@ describe("channels route membership contract", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["alice", "bob"],
-    });
+    } as any);
     channelsEnabled = false;
 
     const requests = [
@@ -219,7 +218,7 @@ describe("channels route membership contract", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["alice", "bob"],
-    });
+    } as any);
 
     const setRes = await app.request("/api/conversations/ch_crew/agent-phone-tool-mode", {
       method: "POST",
@@ -241,7 +240,7 @@ describe("channels route membership contract", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["alice", "bob", "carol"],
-    });
+    } as any);
 
     const res = await app.request("/api/channels/ch_crew/members/bob", { method: "DELETE" });
 
@@ -284,7 +283,7 @@ describe("channels route membership contract", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["alice", "bob"],
-    });
+    } as any);
 
     const setRes = await app.request("/api/conversations/ch_crew/agent-phone-settings", {
       method: "POST",
@@ -347,7 +346,7 @@ describe("channels route membership contract", () => {
       id: "ch_legacy",
       name: "Legacy",
       members: ["alice", "bob"],
-    });
+    } as any);
 
     const res = await app.request("/api/conversations/ch_legacy/agent-phone-settings");
     expect(res.status).toBe(200);
@@ -366,7 +365,7 @@ describe("channels route membership contract", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["alice", "bob"],
-    });
+    } as any);
 
     const res = await app.request("/api/channels/ch_crew/members", {
       method: "POST",
@@ -386,7 +385,7 @@ describe("channels route membership contract", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["alice", "bob", "carol"],
-    });
+    } as any);
 
     const removeCarol = await app.request("/api/channels/ch_crew/members/carol", {
       method: "DELETE",
@@ -414,7 +413,7 @@ describe("channels route membership contract", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["alice", "bob", "carol"],
-    });
+    } as any);
 
     const res = await app.request("/api/channels/ch_crew/messages", {
       method: "POST",

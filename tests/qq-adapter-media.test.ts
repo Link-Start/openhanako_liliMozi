@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import crypto from "crypto";
 import fs from "fs";
@@ -107,7 +106,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await expect(
       adapter.sendMediaBuffer("chat-1", Buffer.from("png"), {
@@ -130,7 +129,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendMediaFile("user-openid", filePath, {
       kind: "document",
@@ -139,7 +138,7 @@ describe("createQQAdapter media delivery", () => {
       isGroup: false,
     });
 
-    const prepareCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/users/user-openid/upload_prepare"));
+    const prepareCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/users/user-openid/upload_prepare"));
     expect(prepareCall).toBeTruthy();
     expect(JSON.parse(prepareCall[1].body)).toMatchObject({
       file_type: 4,
@@ -150,12 +149,12 @@ describe("createQQAdapter media delivery", () => {
       md5_10m: md5Hex("helloworld"),
     });
 
-    const putCalls = fetch.mock.calls.filter(([url]) => String(url).includes("cos.example.com"));
+    const putCalls = (fetch as any).mock.calls.filter(([url]: any) => String(url).includes("cos.example.com"));
     expect(putCalls).toHaveLength(2);
     expect(await putCalls[0][1].body.text()).toBe("hello");
     expect(await putCalls[1][1].body.text()).toBe("world");
 
-    const partFinishCalls = fetch.mock.calls.filter(([url]) => String(url).includes("/v2/users/user-openid/upload_part_finish"));
+    const partFinishCalls = (fetch as any).mock.calls.filter(([url]: any) => String(url).includes("/v2/users/user-openid/upload_part_finish"));
     expect(partFinishCalls).toHaveLength(2);
     expect(JSON.parse(partFinishCalls[0][1].body)).toMatchObject({
       upload_id: "upload-1",
@@ -170,14 +169,14 @@ describe("createQQAdapter media delivery", () => {
       md5: md5Hex("world"),
     });
 
-    const completeCall = fetch.mock.calls.find(([url, init = {}]) =>
+    const completeCall = (fetch as any).mock.calls.find(([url, init = {}]: any) =>
       String(url).includes("/v2/users/user-openid/files")
       && init.body
       && JSON.parse(init.body).upload_id === "upload-1"
     );
     expect(completeCall).toBeTruthy();
 
-    const messageCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/users/user-openid/messages"));
+    const messageCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/users/user-openid/messages"));
     expect(JSON.parse(messageCall[1].body)).toMatchObject({
       msg_type: 7,
       media: { file_info: "file-info" },
@@ -191,7 +190,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendReply("group-openid", "first", {
       messageId: "qq-mid-1",
@@ -204,7 +203,7 @@ describe("createQQAdapter media delivery", () => {
       isGroup: true,
     });
 
-    const messageCalls = fetch.mock.calls.filter(([url]) => String(url).includes("/v2/groups/group-openid/messages"));
+    const messageCalls = (fetch as any).mock.calls.filter(([url]: any) => String(url).includes("/v2/groups/group-openid/messages"));
     expect(messageCalls).toHaveLength(2);
     expect(JSON.parse(messageCalls[0][1].body)).toMatchObject({
       content: " ",
@@ -220,7 +219,7 @@ describe("createQQAdapter media delivery", () => {
       msg_id: "qq-mid-1",
       msg_seq: 2,
     });
-    expect(fetch.mock.calls.some(([url]) => String(url).includes("/v2/users/group-openid/messages"))).toBe(false);
+    expect((fetch as any).mock.calls.some(([url]: any) => String(url).includes("/v2/users/group-openid/messages"))).toBe(false);
     adapter.stop();
   });
 
@@ -230,7 +229,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendReply("user-openid", "**bold**\n- item", {
       messageId: "qq-dm-1",
@@ -238,7 +237,7 @@ describe("createQQAdapter media delivery", () => {
       isGroup: false,
     });
 
-    const messageCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/users/user-openid/messages"));
+    const messageCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/users/user-openid/messages"));
     expect(JSON.parse(messageCall[1].body)).toMatchObject({
       content: " ",
       msg_type: 2,
@@ -255,7 +254,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendReply("channel-id", "# Title", {
       messageId: "qq-channel-mid-1",
@@ -263,7 +262,7 @@ describe("createQQAdapter media delivery", () => {
       isGroup: true,
     });
 
-    const messageCall = fetch.mock.calls.find(([url]) => String(url).includes("/channels/channel-id/messages"));
+    const messageCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/channels/channel-id/messages"));
     expect(JSON.parse(messageCall[1].body)).toMatchObject({
       markdown: { content: "# Title" },
       msg_id: "qq-channel-mid-1",
@@ -280,7 +279,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendMediaFile("group-openid", filePath, {
       kind: "image",
@@ -289,12 +288,12 @@ describe("createQQAdapter media delivery", () => {
       isGroup: true,
     });
 
-    const prepareCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/groups/group-openid/upload_prepare"));
+    const prepareCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/groups/group-openid/upload_prepare"));
     expect(prepareCall).toBeTruthy();
     expect(JSON.parse(prepareCall[1].body)).toMatchObject({ file_type: 1 });
-    expect(fetch.mock.calls.some(([url]) => String(url).includes("/v2/users/group-openid/upload_prepare"))).toBe(false);
+    expect((fetch as any).mock.calls.some(([url]: any) => String(url).includes("/v2/users/group-openid/upload_prepare"))).toBe(false);
 
-    const messageCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/groups/group-openid/messages"));
+    const messageCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/groups/group-openid/messages"));
     expect(JSON.parse(messageCall[1].body)).toMatchObject({
       msg_type: 7,
       media: { file_info: "file-info" },
@@ -308,7 +307,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendMedia("group-openid", "https://cdn.example.com/image.png", {
       kind: "image",
@@ -321,7 +320,7 @@ describe("createQQAdapter media delivery", () => {
       },
     });
 
-    const messageCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/groups/group-openid/messages"));
+    const messageCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/groups/group-openid/messages"));
     expect(JSON.parse(messageCall[1].body)).toMatchObject({
       msg_type: 7,
       media: { file_info: "file-info" },
@@ -338,7 +337,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await expect(adapter.sendMediaFile("group-openid", filePath, {
       kind: "document",
@@ -347,7 +346,7 @@ describe("createQQAdapter media delivery", () => {
       isGroup: true,
     })).rejects.toThrow(/群聊.*暂不开放文件类型/);
 
-    expect(fetch.mock.calls.some(([url]) => String(url).includes("/upload_prepare"))).toBe(false);
+    expect((fetch as any).mock.calls.some(([url]: any) => String(url).includes("/upload_prepare"))).toBe(false);
     adapter.stop();
   });
 
@@ -357,7 +356,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendMedia("user-openid", "https://hana.example.com/api/bridge/media/token_123", {
       kind: "image",
@@ -365,14 +364,14 @@ describe("createQQAdapter media delivery", () => {
       filename: "image.png",
     });
 
-    const uploadCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/users/user-openid/files"));
+    const uploadCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/users/user-openid/files"));
     expect(uploadCall).toBeTruthy();
     expect(JSON.parse(uploadCall[1].body)).toMatchObject({
       file_type: 1,
       url: "https://hana.example.com/api/bridge/media/token_123",
       srv_send_msg: false,
     });
-    const messageCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/users/user-openid/messages"));
+    const messageCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/users/user-openid/messages"));
     expect(JSON.parse(messageCall[1].body)).toMatchObject({
       msg_type: 7,
       media: { file_info: "file-info" },
@@ -386,7 +385,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendMedia("user-openid", "https://cdn.example.com/note.txt", {
       kind: "document",
@@ -394,7 +393,7 @@ describe("createQQAdapter media delivery", () => {
       filename: "note.txt",
     });
 
-    const uploadCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/users/user-openid/files"));
+    const uploadCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/users/user-openid/files"));
     expect(uploadCall).toBeTruthy();
     expect(JSON.parse(uploadCall[1].body)).toMatchObject({
       file_type: 4,
@@ -410,7 +409,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await adapter.sendMedia("group-openid", "https://cdn.example.com/image.png", {
       kind: "image",
@@ -419,8 +418,8 @@ describe("createQQAdapter media delivery", () => {
       isGroup: true,
     });
 
-    expect(fetch.mock.calls.some(([url]) => String(url).includes("/v2/users/group-openid/files"))).toBe(false);
-    const uploadCall = fetch.mock.calls.find(([url]) => String(url).includes("/v2/groups/group-openid/files"));
+    expect((fetch as any).mock.calls.some(([url]: any) => String(url).includes("/v2/users/group-openid/files"))).toBe(false);
+    const uploadCall = (fetch as any).mock.calls.find(([url]: any) => String(url).includes("/v2/groups/group-openid/files"));
     expect(uploadCall).toBeTruthy();
     expect(JSON.parse(uploadCall[1].body)).toMatchObject({ file_type: 1 });
     adapter.stop();
@@ -432,7 +431,7 @@ describe("createQQAdapter media delivery", () => {
       appSecret: "app-secret",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
 
     await expect(adapter.sendMedia("group-openid", "https://cdn.example.com/note.txt", {
       kind: "document",
@@ -441,7 +440,7 @@ describe("createQQAdapter media delivery", () => {
       isGroup: true,
     })).rejects.toThrow(/群聊.*暂不开放文件类型/);
 
-    expect(fetch.mock.calls.some(([url]) => String(url).includes("/v2/groups/group-openid/files"))).toBe(false);
+    expect((fetch as any).mock.calls.some(([url]: any) => String(url).includes("/v2/groups/group-openid/files"))).toBe(false);
     adapter.stop();
   });
 });

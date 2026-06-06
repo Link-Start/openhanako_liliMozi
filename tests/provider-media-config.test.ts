@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import { normalizeProviderMediaConfigMap } from "../core/provider-media-config.ts";
 
@@ -29,8 +28,8 @@ describe("provider media config migration", () => {
     });
 
     expect(changed).toBe(true);
-    expect(providers.openai.models).toEqual(["gpt-5.5"]);
-    expect(providers.openai.media.image_generation.models).toEqual([
+    expect((providers as any).openai.models).toEqual(["gpt-5.5"]);
+    expect((providers as any).openai.media.image_generation.models).toEqual([
       { id: "gpt-image-1.5", protocolId: "openai-images" },
     ]);
   });

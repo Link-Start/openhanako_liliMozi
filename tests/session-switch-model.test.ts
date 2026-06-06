@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -124,8 +123,8 @@ describe("SessionCoordinator.switchSessionModel", () => {
     };
     coord.sessions.set(sessionPath, entry);
 
-    const compactSpy = vi.spyOn(coord, "_compactWithModel").mockResolvedValue();
-    const truncateSpy = vi.spyOn(coord, "_hardTruncate").mockResolvedValue();
+    const compactSpy = (vi.spyOn(coord, "_compactWithModel").mockResolvedValue as any)();
+    const truncateSpy = (vi.spyOn(coord, "_hardTruncate").mockResolvedValue as any)();
 
     const result = await coord.switchSessionModel(sessionPath, {
       id: "new-model",
@@ -310,7 +309,7 @@ describe("SessionCoordinator.switchSessionModel", () => {
       getAgentById: () => null,
       listAgents: () => [],
     });
-    vi.spyOn(coord, "writeSessionMeta").mockResolvedValue();
+    (vi.spyOn(coord, "writeSessionMeta").mockResolvedValue as any)();
 
     const setModel = vi.fn(async () => {});
     const setThinkingLevel = vi.fn();

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import { MCP_PROTOCOL_VERSION } from "../plugins/mcp/lib/mcp-stdio-client.ts";
 import {
@@ -208,7 +207,7 @@ describe("MCP HTTP clients", () => {
       url: "https://mcp.example.com/mcp",
       env: { HTTPS_PROXY: "http://connector-env-proxy.example:8080" },
     }, {
-      proxyConfig: { mode: "direct" },
+      proxyConfig: { mode: "direct" } as any,
       env: { HTTPS_PROXY: "http://system-proxy.example:8080" },
     })).toMatchObject({
       applicable: true,
@@ -223,7 +222,7 @@ describe("MCP HTTP clients", () => {
       url: "https://mcp.example.com/mcp",
       env: { HTTPS_PROXY: "http://connector-env-proxy.example:8080" },
     }, {
-      proxyConfig: { mode: "manual", httpsProxy: "http://app-proxy.example:8080", noProxy: "" },
+      proxyConfig: { mode: "manual", httpsProxy: "http://app-proxy.example:8080", noProxy: "" } as any,
       env: {},
     })).toMatchObject({
       applicable: true,
@@ -394,7 +393,7 @@ describe("MCP HTTP clients", () => {
   it("does not let a legacy SSE server ping with the same id satisfy a tool response", async () => {
     const encoder = new TextEncoder();
     let streamController;
-    const fetchImpl = vi.fn(async (url, init = {}) => {
+    const fetchImpl = vi.fn(async (url, init: any = {}) => {
       const body = requestBody(init);
       if (init.method === "POST" && body?.method === "tools/call") {
         queueMicrotask(() => {
@@ -617,7 +616,7 @@ describe("MCP HTTP clients", () => {
       sseController.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
     }
 
-    const fetchImpl = vi.fn(async (url, init = {}) => {
+    const fetchImpl = vi.fn(async (url, init: any = {}) => {
       const body = requestBody(init);
       requests.push({ url: String(url), init, body });
       if (init.method === "GET") {
@@ -899,7 +898,7 @@ describe("MCP legacy SSE OAuth self-heal", () => {
   it("uses the injected getAuthToken for the Authorization header on posted messages", async () => {
     const posts = [];
     const getAuthToken = vi.fn(async () => "fresh-token");
-    const fetchImpl = vi.fn(async (url, init = {}) => {
+    const fetchImpl = vi.fn(async (url, init: any = {}) => {
       const body = requestBody(init);
       if (init.method === "POST") {
         posts.push({ body, init });
@@ -936,7 +935,7 @@ describe("MCP legacy SSE OAuth self-heal", () => {
     const encoder = new TextEncoder();
     let streamController;
     const stream = new ReadableStream({ start(controller) { streamController = controller; } });
-    const fetchImpl = vi.fn(async (url, init = {}) => {
+    const fetchImpl = vi.fn(async (url, init: any = {}) => {
       const body = requestBody(init);
       if (init.method === "POST") {
         seenAuth.push(headerValue(init.headers, "Authorization"));

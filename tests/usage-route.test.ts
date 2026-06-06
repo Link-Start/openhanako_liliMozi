@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { createUsageRoute } from "../server/routes/usage.ts";
@@ -13,7 +12,7 @@ describe("usage route", () => {
     const app = new Hono();
     const engine = {
       usageLedger: {
-        list: (filter = {}) => ({
+        list: ( filter: any = {}) => ({
           entries: filter.limit ? entries.slice(-filter.limit) : entries,
           nextCursor: null,
         }),
@@ -34,7 +33,7 @@ describe("usage route", () => {
     const app = new Hono();
     const engine = {
       usageLedger: {
-        list: (filter = {}) => ({
+        list: ( filter: any = {}) => ({
           entries: filter.limit ? entries.slice(-filter.limit) : entries,
           nextCursor: null,
         }),

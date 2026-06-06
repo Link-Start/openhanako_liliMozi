@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import {
   filterAgentPhoneTools,
@@ -56,7 +55,7 @@ describe("agent phone session policy", () => {
       ],
     };
 
-    const filtered = filterAgentPhoneTools(built, { toolMode: "write" });
+    const filtered = (filterAgentPhoneTools as any)(built, { toolMode: "write" });
     expect(filtered.tools.map((tool) => tool.name)).toEqual(["read", "write"]);
     expect(filtered.customTools.map((tool) => tool.name)).toEqual(["search_memory", "web_search"]);
   });
@@ -77,7 +76,7 @@ describe("agent phone session policy", () => {
       ],
     };
 
-    const filtered = filterAgentPhoneTools(built, { toolMode: "read_only" });
+    const filtered = (filterAgentPhoneTools as any)(built, { toolMode: "read_only" });
     expect(filtered.tools.map((tool) => tool.name)).toEqual(["read", "write", "grep"]);
     expect(filtered.customTools.map((tool) => tool.name)).toEqual([
       "search_memory",

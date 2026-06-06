@@ -1,10 +1,19 @@
-// @ts-nocheck
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const botInstances = [];
 
 vi.mock("node-telegram-bot-api", () => {
   class MockTelegramBot {
+    declare _request: any;
+    declare getMe: any;
+    declare on: any;
+    declare removeAllListeners: any;
+    declare sendAudio: any;
+    declare sendDocument: any;
+    declare sendMessage: any;
+    declare sendPhoto: any;
+    declare sendVideo: any;
+    declare stopPolling: any;
     constructor() {
       this.on = vi.fn();
       this.removeAllListeners = vi.fn();
@@ -39,7 +48,7 @@ describe("createTelegramAdapter media delivery", () => {
       token: "tg-token",
       agentId: "hana",
       onMessage: vi.fn(),
-    });
+    } as any);
     return { adapter, bot: botInstances[0] };
   }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_NETWORK_PROXY_CONFIG,
@@ -12,7 +11,7 @@ import {
 
 describe("network proxy config", () => {
   it("defaults to system mode with local bypasses", () => {
-    expect(normalizeNetworkProxyConfig()).toEqual(DEFAULT_NETWORK_PROXY_CONFIG);
+    expect((normalizeNetworkProxyConfig as any)()).toEqual(DEFAULT_NETWORK_PROXY_CONFIG);
   });
 
   it("normalizes manual proxy URLs and reuses HTTP for HTTPS when needed", () => {

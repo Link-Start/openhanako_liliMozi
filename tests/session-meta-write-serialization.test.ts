@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SessionCoordinator.writeSessionMeta 序列化回归测试
  *
@@ -34,7 +33,7 @@ vi.mock("../lib/debug-log.js", () => ({
 import { SessionCoordinator } from "../core/session-coordinator.ts";
 import { SessionManager } from "../lib/pi-sdk/index.ts";
 
-function makeCoordinatorDeps(overrides = {}) {
+function makeCoordinatorDeps( overrides: any = {}) {
   return {
     agentsDir: "/tmp/agents",
     getAgent: () => ({

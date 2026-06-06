@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,7 +6,7 @@ import {
   validateStudioConnectionTrust,
 } from "../shared/studio-access-contract.ts";
 
-function localConnection(patch = {}) {
+function localConnection( patch: any = {}) {
   return {
     connectionId: "local",
     kind: "local",

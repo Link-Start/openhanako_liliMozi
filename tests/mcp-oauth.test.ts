@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import {
   createMcpOAuthAuthorization,
@@ -55,7 +54,7 @@ describe("MCP OAuth helpers", () => {
     const metadata = await discoverMcpOAuth({
       connectorUrl: "https://mcp.example.com/mcp",
       fetchImpl,
-    });
+    } as any);
 
     expect(metadata.resourceMetadataUrl).toBe("https://mcp.example.com/.well-known/oauth-protected-resource");
     expect(metadata.authorizationEndpoint).toBe("https://auth.example.com/authorize");
@@ -89,7 +88,7 @@ describe("MCP OAuth helpers", () => {
     const metadata = await discoverMcpOAuth({
       connectorUrl: "https://mcp.example.com/public/mcp",
       fetchImpl,
-    });
+    } as any);
 
     expect(metadata.resourceMetadataUrl).toBe("https://mcp.example.com/.well-known/oauth-protected-resource/public/mcp");
     expect(metadata.authorizationEndpoint).toBe("https://auth.example.com/tenant/authorize");
@@ -226,7 +225,7 @@ describe("MCP OAuth dynamic client registration (RFC 7591)", () => {
     const metadata = await discoverMcpOAuth({
       connectorUrl: "https://mcp.example.com/mcp",
       fetchImpl,
-    });
+    } as any);
 
     expect(metadata.registrationEndpoint).toBe("https://auth.example.com/register");
     expect(metadata.scopesSupported).toEqual(["files:read", "offline_access"]);

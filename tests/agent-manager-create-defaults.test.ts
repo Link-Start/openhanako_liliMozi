@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -52,12 +51,12 @@ vi.mock("../lib/desk/activity-store.js", () => ({
 }));
 
 vi.mock("../lib/memory/config-loader.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal() as any;
   return { ...actual, clearConfigCache: vi.fn() };
 });
 
 vi.mock("../core/llm-utils.js", () => ({
-  generateAgentId: vi.fn().mockImplementation(async (_u, name) => `agent-${name.toLowerCase()}`),
+  generateAgentId: vi.fn().mockImplementation(async (_u: any, name: any) => `agent-${name.toLowerCase()}`),
   generateDescription: vi.fn(),
 }));
 

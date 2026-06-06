@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * compile.js fingerprint 陷阱修复测试
  *
@@ -171,7 +170,7 @@ describe("compiled section formatting", () => {
   });
 
   it("strips model-emitted headings before writing today.md", async () => {
-    callText.mockResolvedValueOnce("# 今日概要\n\n用户关注记忆系统。");
+    (callText as any).mockResolvedValueOnce("# 今日概要\n\n用户关注记忆系统。");
     const todayPath = path.join(tmpDir, "today.md");
     const mgr = makeFakeSummaryManager([
       { session_id: "s1", updated_at: "2026-04-29T08:30:00.000Z", summary: "用户关注记忆系统。" },
@@ -183,7 +182,7 @@ describe("compiled section formatting", () => {
   });
 
   it("strips closed think and thinking tags before writing compiled memory sections", async () => {
-    callText
+    (callText as any)
       .mockResolvedValueOnce("<think>先整理内部推理</think>\n用户关注记忆系统。")
       .mockResolvedValueOnce("<thinking>先整理内部推理</thinking>\n用户关注长期记忆。");
     const todayPath = path.join(tmpDir, "today.md");
@@ -200,7 +199,7 @@ describe("compiled section formatting", () => {
   });
 
   it("rejects dangling leading thinking blocks without overwriting memory or fingerprinting the bad output", async () => {
-    callText.mockResolvedValueOnce("<thinking>未闭合的内部推理\n这些内容不应进入记忆");
+    (callText as any).mockResolvedValueOnce("<thinking>未闭合的内部推理\n这些内容不应进入记忆");
     const todayPath = path.join(tmpDir, "today.md");
     const fpPath = `${todayPath}.fingerprint`;
     fs.writeFileSync(todayPath, "已有记忆", "utf-8");
@@ -217,7 +216,7 @@ describe("compiled section formatting", () => {
   });
 
   it("compiles short facts updates instead of directly appending them", async () => {
-    callText.mockResolvedValueOnce("用户长期关注记忆系统。");
+    (callText as any).mockResolvedValueOnce("用户长期关注记忆系统。");
     const factsPath = path.join(tmpDir, "facts.md");
     fs.writeFileSync(factsPath, "用户喜欢清晰边界。", "utf-8");
     const mgr = makeFakeSummaryManager([
@@ -231,7 +230,7 @@ describe("compiled section formatting", () => {
     await compileFacts(mgr, factsPath, RESOLVED_MODEL);
 
     expect(callText).toHaveBeenCalledOnce();
-    const request = callText.mock.calls[0][0];
+    const request = (callText as any).mock.calls[0][0];
     expect(request.messages[0].content).toContain("用户喜欢清晰边界。");
     expect(request.messages[0].content).toContain("用户长期关注记忆系统。");
     expect(request.systemPrompt).toContain("200字以内");
@@ -239,7 +238,7 @@ describe("compiled section formatting", () => {
   });
 
   it("extracts facts from third-level rolling summary headings", async () => {
-    callText.mockResolvedValueOnce("用户长期关注记忆系统。");
+    (callText as any).mockResolvedValueOnce("用户长期关注记忆系统。");
     const factsPath = path.join(tmpDir, "facts.md");
     const mgr = makeFakeSummaryManager([
       {
@@ -252,13 +251,13 @@ describe("compiled section formatting", () => {
     await compileFacts(mgr, factsPath, RESOLVED_MODEL);
 
     expect(callText).toHaveBeenCalledOnce();
-    const request = callText.mock.calls[0][0];
+    const request = (callText as any).mock.calls[0][0];
     expect(request.messages[0].content).toContain("用户长期关注记忆系统。");
     expect(fs.readFileSync(factsPath, "utf-8")).toBe("用户长期关注记忆系统。");
   });
 
   it("extracts facts from English rolling summary headings", async () => {
-    callText.mockResolvedValueOnce("The user is focused on memory systems.");
+    (callText as any).mockResolvedValueOnce("The user is focused on memory systems.");
     const factsPath = path.join(tmpDir, "facts.md");
     const mgr = makeFakeSummaryManager([
       {
@@ -271,7 +270,7 @@ describe("compiled section formatting", () => {
     await compileFacts(mgr, factsPath, RESOLVED_MODEL);
 
     expect(callText).toHaveBeenCalledOnce();
-    const request = callText.mock.calls[0][0];
+    const request = (callText as any).mock.calls[0][0];
     expect(request.messages[0].content).toContain("The user is focused on memory systems.");
     expect(fs.readFileSync(factsPath, "utf-8")).toBe("The user is focused on memory systems.");
   });

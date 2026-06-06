@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Session 并发集成测试
  *
@@ -47,7 +46,7 @@ vi.mock("../lib/debug-log.js", () => ({
 
 import { SessionCoordinator } from "../core/session-coordinator.ts";
 
-function makeCoordinatorDeps(overrides = {}) {
+function makeCoordinatorDeps( overrides: any = {}) {
   return {
     agentsDir: "/tmp/agents",
     getAgent: () => ({
@@ -151,7 +150,7 @@ const mockCtx = (sp = "/test/session.jsonl") => ({
   sessionManager: { getSessionFile: () => sp },
 });
 
-function makeSubagentDeps(overrides = {}) {
+function makeSubagentDeps( overrides: any = {}) {
   const threadStore = {
     beginRun: vi.fn(),
     attachSession: vi.fn(),
@@ -201,7 +200,7 @@ describe("subagent 并发配额释放与复用", () => {
     // 填满 10 个 slot（per-session limit）
     for (let i = 0; i < 10; i++) {
       const r = await tool.execute(`call_${i}`, { task: `任务 ${i}` }, null, null, mockCtx());
-      expect(r.details.streamStatus).toBe("running");
+      expect((r.details as any).streamStatus).toBe("running");
     }
 
     // 第 11 个被拒
@@ -217,7 +216,7 @@ describe("subagent 并发配额释放与复用", () => {
 
     // 现在应该能发新任务了
     const resumed = await tool.execute("call_6", { task: "新任务" }, null, null, mockCtx());
-    expect(resumed.details.streamStatus).toBe("running");
+    expect((resumed.details as any).streamStatus).toBe("running");
 
     // 清理剩余 pending
     for (let i = 1; i < pending.length; i++) {
@@ -232,7 +231,7 @@ import { DeferredResultStore } from "../lib/deferred-result-store.ts";
 
 describe("DeferredResultStore cleanup", () => {
   it("cleans up delivered tasks older than 7 days", () => {
-    const store = new DeferredResultStore();
+    const store = new (DeferredResultStore as any)();
 
     // 手动注入一个 delivered + 8 天前的任务
     const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
@@ -254,7 +253,7 @@ describe("DeferredResultStore cleanup", () => {
   });
 
   it("preserves delivered tasks younger than 7 days", () => {
-    const store = new DeferredResultStore();
+    const store = new (DeferredResultStore as any)();
 
     const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000;
     store._tasks.set("recent-delivered", {
@@ -274,7 +273,7 @@ describe("DeferredResultStore cleanup", () => {
   });
 
   it("preserves non-delivered tasks regardless of age", () => {
-    const store = new DeferredResultStore();
+    const store = new (DeferredResultStore as any)();
 
     const tenDaysAgo = Date.now() - 10 * 24 * 60 * 60 * 1000;
     store._tasks.set("old-pending", {
@@ -305,12 +304,12 @@ describe("DeferredResultStore cleanup", () => {
   });
 
   it("constructor triggers initial cleanup", () => {
-    const store = new DeferredResultStore();
+    const store = new (DeferredResultStore as any)();
     // 在构造后手动插入一个早已过期 + delivered 的任务
     // 由于构造时 cleanup 已执行过（此时 Map 为空），需要验证行为本身
     const spy = vi.spyOn(store, "cleanup");
     // 构造新 store 验证 cleanup 被调用
-    const store2 = new DeferredResultStore();
+    const store2 = new (DeferredResultStore as any)();
     // cleanup 在构造函数中被调用，spy 绑定在 store 上，改用直接断言
     // 验证方式：通过 _cleanupTimer 存在来间接证明
     expect(store2._cleanupTimer).toBeDefined();

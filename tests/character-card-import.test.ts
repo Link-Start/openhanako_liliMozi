@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -401,7 +400,7 @@ describe("character-card import service", () => {
       skills: { count: 1 },
       assets: { avatar: true, cardBack: true },
     });
-    expect(preview.token).toBeUndefined();
+    expect((preview as any).token).toBeUndefined();
     expect(fs.existsSync(path.join(tempDir, ".ephemeral", "character-card-imports"))).toBe(false);
 
     fs.writeFileSync(path.join(agentDir, "memory", "today.md"), "今天导出前更新过。", "utf-8");

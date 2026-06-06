@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -79,7 +78,7 @@ function writeAgentConfig(agentsDir, agentId, name) {
   );
 }
 
-function makeRouter(paths, options = {}) {
+function makeRouter(paths, options: any = {}) {
   return new ChannelRouter({
     hub: {
       engine: {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -291,7 +290,7 @@ describe("readPackageJsonWithRetry errno contract", () => {
     spy.mockImplementation((...args) => {
       callCount++;
       // Let the real implementation run — it will throw ENOENT
-      return fs.readFileSync.wrappedImplementation?.(...args)
+      return (fs.readFileSync as any).wrappedImplementation?.(...args)
         ?? (() => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); })();
     });
 

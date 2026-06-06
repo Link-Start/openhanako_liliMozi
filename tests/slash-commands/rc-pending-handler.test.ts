@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -13,7 +12,7 @@ import { summarizeSessionForRc } from "../../core/slash-commands/rc-summary.ts";
 import { handleRcPendingInput } from "../../core/slash-commands/rc-pending-handler.ts";
 import { RcStateStore } from "../../core/slash-commands/rc-state.ts";
 
-function makeEngine({ isStreaming = () => false, agents = {}, sessions = [] } = {}) {
+function makeEngine({ isStreaming = () => false, agents = {} as any, sessions = [] } = {}) {
   const rcState = new RcStateStore();
   return {
     rcState,
@@ -41,7 +40,7 @@ function createLiveSessionPath() {
 }
 
 beforeEach(() => {
-  summarizeSessionForRc.mockReset();
+  (summarizeSessionForRc as any).mockReset();
 });
 
 describe("handleRcPendingInput — parsing", () => {
@@ -106,7 +105,7 @@ describe("handleRcPendingInput — parsing", () => {
   it("leading/trailing whitespace is tolerated", async () => {
     const engine = makeEngine();
     prime(engine, "k", [{ path: "/a.jsonl", title: "A" }]);
-    summarizeSessionForRc.mockResolvedValueOnce("sum");
+    (summarizeSessionForRc as any).mockResolvedValueOnce("sum");
     const reply = vi.fn();
     const r = await handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "k", text: "  1  ", reply,
@@ -125,7 +124,7 @@ describe("handleRcPendingInput — selection success flow", () => {
       { path: sessionA, title: "讨论架构" },
       { path: sessionB, title: "周报" },
     ]);
-    summarizeSessionForRc.mockResolvedValueOnce("聊了 Bridge 路由设计");
+    (summarizeSessionForRc as any).mockResolvedValueOnce("聊了 Bridge 路由设计");
     const reply = vi.fn();
     const r = await handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "k", text: "1", reply,
@@ -145,7 +144,7 @@ describe("handleRcPendingInput — selection success flow", () => {
     const engine = makeEngine();
     const sessionPath = createLiveSessionPath();
     prime(engine, "k", [{ path: sessionPath, title: "架构设计" }]);
-    summarizeSessionForRc.mockResolvedValueOnce(null);
+    (summarizeSessionForRc as any).mockResolvedValueOnce(null);
     const reply = vi.fn();
     await handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "k", text: "1", reply,
@@ -157,7 +156,7 @@ describe("handleRcPendingInput — selection success flow", () => {
     const engine = makeEngine();
     const sessionPath = createLiveSessionPath();
     prime(engine, "k", [{ path: sessionPath, title: "bug fix" }]);
-    summarizeSessionForRc.mockRejectedValueOnce(new Error("boom"));
+    (summarizeSessionForRc as any).mockRejectedValueOnce(new Error("boom"));
     const reply = vi.fn();
     await handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "k", text: "1", reply,
@@ -170,7 +169,7 @@ describe("handleRcPendingInput — selection success flow", () => {
     const engine = makeEngine();
     const sessionPath = createLiveSessionPath();
     prime(engine, "k", [{ path: sessionPath, title: null }]);
-    summarizeSessionForRc.mockResolvedValueOnce(null);
+    (summarizeSessionForRc as any).mockResolvedValueOnce(null);
     const reply = vi.fn();
     await handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "k", text: "1", reply,
@@ -183,7 +182,7 @@ describe("handleRcPendingInput — selection success flow", () => {
     const engine = makeEngine();
     const sessionPath = createLiveSessionPath();
     prime(engine, "tg_dm_user123@a1", [{ path: sessionPath, title: "架构" }]);
-    summarizeSessionForRc.mockResolvedValueOnce("sum");
+    (summarizeSessionForRc as any).mockResolvedValueOnce("sum");
     const reply = vi.fn();
     await handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "tg_dm_user123@a1", text: "1", reply,
@@ -206,7 +205,7 @@ describe("handleRcPendingInput — selection success flow", () => {
     engine.emitEvent = vi.fn(() => { throw new Error("bus down"); });
     const sessionPath = createLiveSessionPath();
     prime(engine, "k", [{ path: sessionPath, title: "x" }]);
-    summarizeSessionForRc.mockResolvedValueOnce("s");
+    (summarizeSessionForRc as any).mockResolvedValueOnce("s");
     const reply = vi.fn();
     const r = await handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "k", text: "1", reply,
@@ -219,7 +218,7 @@ describe("handleRcPendingInput — selection success flow", () => {
 describe("handleRcPendingInput — streaming wait", () => {
   it("target session is streaming → polls; cancels after 30s deadline", async () => {
     vi.useFakeTimers();
-    const engine = makeEngine({ isStreaming: () => true });
+    const engine = makeEngine({ isStreaming: () => true } as any);
     const sessionPath = createLiveSessionPath();
     prime(engine, "k", [{ path: sessionPath, title: "busy" }]);
     const reply = vi.fn();
@@ -239,10 +238,10 @@ describe("handleRcPendingInput — streaming wait", () => {
   it("session becomes idle mid-wait → proceeds to attach", async () => {
     vi.useFakeTimers();
     let streaming = true;
-    const engine = makeEngine({ isStreaming: () => streaming });
+    const engine = makeEngine({ isStreaming: () => streaming } as any);
     const sessionPath = createLiveSessionPath();
     prime(engine, "k", [{ path: sessionPath, title: "biz" }]);
-    summarizeSessionForRc.mockResolvedValueOnce("done");
+    (summarizeSessionForRc as any).mockResolvedValueOnce("done");
     const reply = vi.fn();
     const promise = handleRcPendingInput({
       engine, agentId: "a1", sessionKey: "k", text: "1", reply,

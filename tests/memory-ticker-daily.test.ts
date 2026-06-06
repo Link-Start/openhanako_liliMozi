@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * memory-ticker _doDaily 步骤编排测试
  *
@@ -56,7 +55,7 @@ function makeTicker(tmpDir) {
 
   return createMemoryTicker({
     summaryManager: {
-      rollingSummary: vi.fn().mockResolvedValue(),
+      rollingSummary: (vi.fn().mockResolvedValue as any)(),
       getSummary: vi.fn().mockReturnValue(null),
       listSummaries: vi.fn().mockReturnValue([]),
     },
@@ -104,7 +103,7 @@ describe("_doDaily step orchestration", () => {
   });
 
   it("skips compileLongterm when compileWeek fails (dependency)", async () => {
-    compileWeek.mockRejectedValueOnce(new Error("LLM timeout"));
+    (compileWeek as any).mockRejectedValueOnce(new Error("LLM timeout"));
 
     await ticker.tick();
 
@@ -118,7 +117,7 @@ describe("_doDaily step orchestration", () => {
 
   it("retries only failed steps on second tick (checkpoint resume)", async () => {
     // First tick: compileWeek fails
-    compileWeek.mockRejectedValueOnce(new Error("network error"));
+    (compileWeek as any).mockRejectedValueOnce(new Error("network error"));
     await ticker.tick();
 
     vi.clearAllMocks();
@@ -150,7 +149,7 @@ describe("_doDaily step orchestration", () => {
   });
 
   it("compileFacts failure does not block other steps", async () => {
-    compileFacts.mockRejectedValueOnce(new Error("facts error"));
+    (compileFacts as any).mockRejectedValueOnce(new Error("facts error"));
 
     await ticker.tick();
 
@@ -161,7 +160,7 @@ describe("_doDaily step orchestration", () => {
   });
 
   it("deepMemory failure retries on next tick", async () => {
-    processDirtySessions.mockRejectedValueOnce(new Error("db locked"));
+    (processDirtySessions as any).mockRejectedValueOnce(new Error("db locked"));
     await ticker.tick();
 
     vi.clearAllMocks();
@@ -175,8 +174,8 @@ describe("_doDaily step orchestration", () => {
   });
 
   it("multiple failures: both compileWeek and compileFacts retry together", async () => {
-    compileWeek.mockRejectedValueOnce(new Error("fail1"));
-    compileFacts.mockRejectedValueOnce(new Error("fail2"));
+    (compileWeek as any).mockRejectedValueOnce(new Error("fail1"));
+    (compileFacts as any).mockRejectedValueOnce(new Error("fail2"));
     await ticker.tick();
 
     vi.clearAllMocks();
@@ -192,9 +191,9 @@ describe("_doDaily step orchestration", () => {
   });
 
   it("assemble runs even when all LLM steps fail", async () => {
-    compileWeek.mockRejectedValueOnce(new Error("fail"));
-    compileFacts.mockRejectedValueOnce(new Error("fail"));
-    processDirtySessions.mockRejectedValueOnce(new Error("fail"));
+    (compileWeek as any).mockRejectedValueOnce(new Error("fail"));
+    (compileFacts as any).mockRejectedValueOnce(new Error("fail"));
+    (processDirtySessions as any).mockRejectedValueOnce(new Error("fail"));
 
     await ticker.tick();
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -27,7 +26,7 @@ describe("heartbeat workspace output directories", () => {
       onBeat,
       intervalMinutes: 31,
       locale: "zh-CN",
-    });
+    } as any);
 
     await heartbeat.beat();
 
@@ -54,7 +53,7 @@ describe("heartbeat workspace output directories", () => {
       onBeat,
       intervalMinutes: 31,
       locale: "zh-CN",
-    });
+    } as any);
 
     await heartbeat.beat();
 
@@ -95,7 +94,7 @@ describe("heartbeat workspace output directories", () => {
       onBeat,
       intervalMinutes: 31,
       locale: "zh-CN",
-    });
+    } as any);
 
     await heartbeat.beat();
 
@@ -129,7 +128,7 @@ describe("heartbeat workspace output directories", () => {
       onJianBeat,
       intervalMinutes: 31,
       locale: "zh-CN",
-    });
+    } as any);
 
     await heartbeat.beat();
 

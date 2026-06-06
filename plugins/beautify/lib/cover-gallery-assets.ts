@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
 import { fromRoot } from "../../../shared/hana-root.ts";
@@ -14,7 +13,7 @@ function assertInsideDirectory(filePath, baseDir) {
   }
 }
 
-export function resolveCoverGalleryPresetImagePath(presetId, { rootDir } = {}) {
+export function resolveCoverGalleryPresetImagePath(presetId, { rootDir }: any = {}) {
   const preset = getCoverGalleryPreset(presetId);
   if (!preset) {
     throw new Error("unknown cover gallery preset");

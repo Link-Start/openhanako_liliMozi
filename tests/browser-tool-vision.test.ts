@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -65,7 +64,7 @@ describe("browser screenshot vision adaptation", () => {
 
     const result = await tool.execute("call-1", { action: "screenshot" }, null, null, makeCtx());
 
-    expect(tool.parameters.properties.action.enum).not.toContain("screenshot");
+    expect((tool.parameters as any).properties.action.enum).not.toContain("screenshot");
     expect(screenshotMock).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
     expect(result.content).toEqual([
@@ -115,14 +114,14 @@ describe("browser screenshot vision adaptation", () => {
     expect(result.content).toEqual([
       { type: "image", data: "SCREENSHOT_BASE64", mimeType: "image/png" },
     ]);
-    expect(result.details.screenshotFile).toMatchObject({
+    expect((result.details as any).screenshotFile).toMatchObject({
       fileId: "sf_browser_shot",
       filePath: registered.filePath,
       label: registered.label,
       kind: "image",
       status: "available",
     });
-    expect(result.details.media.items).toEqual([
+    expect((result.details as any).media.items).toEqual([
       expect.objectContaining({ type: "session_file", fileId: "sf_browser_shot", kind: "image" }),
     ]);
     expect(extractBlocks("browser", result.details, result)).toEqual([
@@ -159,8 +158,8 @@ describe("browser screenshot vision adaptation", () => {
 
   it("returns browser status details when a session becomes unavailable", async () => {
     const fatalError = new Error("这个会话的浏览器实例已不可用: Object has been destroyed。请重新启动浏览器后再继续。");
-    fatalError.browserFatal = true;
-    fatalError.code = "BROWSER_SESSION_UNAVAILABLE";
+    (fatalError as any).browserFatal = true;
+    (fatalError as any).code = "BROWSER_SESSION_UNAVAILABLE";
     snapshotMock.mockRejectedValueOnce(fatalError);
     isRunningMock.mockReturnValue(false);
     const tool = createBrowserTool(() => "/tmp/session.jsonl");
@@ -209,7 +208,7 @@ describe("browser screenshot vision adaptation", () => {
     expect(result.content).toEqual([
       { type: "image", data: "SCREENSHOT_BASE64", mimeType: "image/png" },
     ]);
-    expect(result.details.media.items).toEqual([
+    expect((result.details as any).media.items).toEqual([
       expect.objectContaining({ type: "session_file", fileId: "sf_text_only_browser_shot", kind: "image" }),
     ]);
   });
@@ -220,7 +219,7 @@ describe("browser screenshot vision adaptation", () => {
       agentsDir: tmpDir,
       productDir: tmpDir,
       userDir: tmpDir,
-    });
+    } as any);
     const fullBrowserTool = {
       name: "browser",
       parameters: { properties: { action: { enum: ["snapshot", "screenshot"] } } },
@@ -229,8 +228,8 @@ describe("browser screenshot vision adaptation", () => {
       name: "browser",
       parameters: { properties: { action: { enum: ["snapshot"] } } },
     };
-    agent._browserTool = fullBrowserTool;
-    agent._browserToolNoScreenshot = noScreenshotBrowserTool;
+    (agent as any)._browserTool = fullBrowserTool;
+    (agent as any)._browserToolNoScreenshot = noScreenshotBrowserTool;
     agent._cb = {
       getEngine: () => ({
         isVisionAuxiliaryEnabled: () => false,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * image-gen/tests/poller.test.js
  *
@@ -46,7 +45,7 @@ describe("shouldCheckThisTick", () => {
 
 // ── Poller class ─────────────────────────────────────────────────────────────
 
-function makeAdapter(overrides = {}) {
+function makeAdapter( overrides: any = {}) {
   return {
     id: "test-adapter",
     types: ["image"],
@@ -55,7 +54,7 @@ function makeAdapter(overrides = {}) {
   };
 }
 
-function makePoller(overrides = {}) {
+function makePoller( overrides: any = {}) {
   const mockAdapter = overrides.adapter ?? makeAdapter();
 
   const mockStore = {

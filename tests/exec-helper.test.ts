@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 
@@ -25,12 +24,12 @@ describe("spawnAndStream", () => {
     const result = await spawnAndStream(process.execPath, ["-e", fixture], {
       cwd: process.cwd(),
       env: process.env,
-      onData: (data) => chunks.push(Buffer.from(data).toString("utf8")),
+      onData: (data: any) => chunks.push(Buffer.from(data).toString("utf8")),
       timeout: 5,
-    });
+    } as any);
     const elapsedMs = performance.now() - startedAt;
 
-    expect(result.exitCode).toBe(0);
+    expect((result as any).exitCode).toBe(0);
     expect(chunks.join("")).toContain("parent-exit");
     expect(elapsedMs).toBeLessThan(900);
   }, 7000);

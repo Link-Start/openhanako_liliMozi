@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -7,8 +6,8 @@ import archiver from "archiver";
 
 import { extractZip } from "../lib/extract-zip.ts";
 
-function buildZipWithSymlink(zipPath, { symlinkName, symlinkTarget, fileEntries = [] }) {
-  return new Promise((resolve, reject) => {
+function buildZipWithSymlink(zipPath: any, { symlinkName, symlinkTarget, fileEntries = [] }: any) {
+  return new Promise<void>((resolve, reject) => {
     const output = fs.createWriteStream(zipPath);
     const archive = archiver("zip", { zlib: { level: 1 } });
     output.on("close", resolve);

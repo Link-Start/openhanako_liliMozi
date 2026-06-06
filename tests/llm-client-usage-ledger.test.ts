@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { callText } from "../core/llm-client.ts";
 import { createUsageLedger } from "../lib/llm/usage-ledger.ts";
@@ -36,7 +35,7 @@ describe("callText usage ledger integration", () => {
           prompt_tokens_details: { cached_tokens: 60 },
         },
       }),
-    });
+    } as any);
 
     const text = await callText({
       api: "openai-completions",
@@ -45,7 +44,7 @@ describe("callText usage ledger integration", () => {
       messages: [{ role: "user", content: "name this" }],
       usageContext,
       usageLedger: ledger,
-    });
+    } as any);
 
     expect(text).toBe("Title");
     expect(ledger.list({}).entries[0]).toMatchObject({
@@ -66,7 +65,7 @@ describe("callText usage ledger integration", () => {
       ok: false,
       status: 500,
       text: async () => JSON.stringify({ error: { message: "provider down" } }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-completions",
@@ -75,7 +74,7 @@ describe("callText usage ledger integration", () => {
       messages: [{ role: "user", content: "private prompt should not be stored" }],
       usageContext,
       usageLedger: ledger,
-    })).rejects.toThrow("provider down");
+    } as any)).rejects.toThrow("provider down");
 
     const entry = ledger.list({}).entries[0];
     expect(entry).toMatchObject({
@@ -100,7 +99,7 @@ describe("callText usage ledger integration", () => {
           prompt_tokens_details: { cached_tokens: 12 },
         },
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-completions",
@@ -109,7 +108,7 @@ describe("callText usage ledger integration", () => {
       messages: [{ role: "user", content: "private prompt should not be stored" }],
       usageContext,
       usageLedger: ledger,
-    })).rejects.toMatchObject({ code: "LLM_EMPTY_RESPONSE" });
+    } as any)).rejects.toMatchObject({ code: "LLM_EMPTY_RESPONSE" });
 
     const entry = ledger.list({}).entries[0];
     expect(entry).toMatchObject({

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -58,8 +57,8 @@ describe("BridgeManager session_file media delivery", () => {
     const bm = makeManager(sessionFile);
     const adapter = {
       mediaCapabilities: TELEGRAM_CAPS,
-      sendMediaBuffer: vi.fn().mockResolvedValue(),
-      sendMedia: vi.fn().mockResolvedValue(),
+      sendMediaBuffer: (vi.fn().mockResolvedValue as any)(),
+      sendMedia: (vi.fn().mockResolvedValue as any)(),
     };
 
     await bm._sendMediaItem(adapter, "chat-1", { type: "session_file", fileId: "sf_image" }, { platform: "telegram" });
@@ -88,8 +87,8 @@ describe("BridgeManager session_file media delivery", () => {
     });
     const adapter = {
       mediaCapabilities: QQ_CAPS,
-      sendMediaFile: vi.fn().mockResolvedValue(),
-      sendMedia: vi.fn().mockResolvedValue(),
+      sendMediaFile: (vi.fn().mockResolvedValue as any)(),
+      sendMedia: (vi.fn().mockResolvedValue as any)(),
     };
 
     await bm._sendMediaItem(adapter, "chat-1", { type: "session_file", fileId: "sf_image" }, { platform: "qq" });
@@ -112,8 +111,8 @@ describe("BridgeManager session_file media delivery", () => {
     });
     const adapter = {
       mediaCapabilities: QQ_CAPS,
-      sendMediaBuffer: vi.fn().mockResolvedValue(),
-      sendMedia: vi.fn().mockResolvedValue(),
+      sendMediaBuffer: (vi.fn().mockResolvedValue as any)(),
+      sendMedia: (vi.fn().mockResolvedValue as any)(),
     };
 
     await bm._sendMediaItem(adapter, "chat-1", { type: "session_file", fileId: "sf_public" }, { platform: "qq" });
@@ -169,8 +168,8 @@ describe("BridgeManager session_file media delivery", () => {
     const bm = new BridgeManager({ engine, hub });
     const adapter = {
       mediaCapabilities: TELEGRAM_CAPS,
-      sendMediaBuffer: vi.fn().mockResolvedValue(),
-      sendMedia: vi.fn().mockResolvedValue(),
+      sendMediaBuffer: (vi.fn().mockResolvedValue as any)(),
+      sendMedia: (vi.fn().mockResolvedValue as any)(),
     };
     bm._platforms.set("telegram:agent-a", {
       platform: "telegram",
@@ -243,8 +242,8 @@ describe("BridgeManager session_file media delivery", () => {
     const bm = new BridgeManager({ engine, hub });
     const adapter = {
       mediaCapabilities: TELEGRAM_CAPS,
-      sendMediaBuffer: vi.fn().mockResolvedValue(),
-      sendMedia: vi.fn().mockResolvedValue(),
+      sendMediaBuffer: (vi.fn().mockResolvedValue as any)(),
+      sendMedia: (vi.fn().mockResolvedValue as any)(),
     };
     bm._platforms.set("telegram:agent-a", {
       platform: "telegram",
@@ -297,7 +296,7 @@ describe("BridgeManager session_file media delivery", () => {
     };
     const bm = new BridgeManager({ engine, hub });
     const adapter = {
-      sendReply: vi.fn().mockResolvedValue(),
+      sendReply: (vi.fn().mockResolvedValue as any)(),
     };
     bm._platforms.set("qq:agent-a", {
       platform: "qq",
@@ -376,8 +375,8 @@ describe("BridgeManager session_file media delivery", () => {
     const bm = new BridgeManager({ engine, hub });
     const adapter = {
       mediaCapabilities: TELEGRAM_CAPS,
-      sendMediaBuffer: vi.fn().mockResolvedValue(),
-      sendMedia: vi.fn().mockResolvedValue(),
+      sendMediaBuffer: (vi.fn().mockResolvedValue as any)(),
+      sendMedia: (vi.fn().mockResolvedValue as any)(),
     };
     bm._platforms.set("telegram:agent-a", {
       platform: "telegram",

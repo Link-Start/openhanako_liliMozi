@@ -1,9 +1,8 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 
 import { SessionCoordinator } from "../core/session-coordinator.ts";
 
-function makeCoordinator(overrides = {}) {
+function makeCoordinator( overrides: any = {}) {
   return new SessionCoordinator({
     agentsDir: "/tmp/fake/agents",
     getAgent: () => ({ id: "test-agent" }),
@@ -155,7 +154,7 @@ describe("SessionCoordinator deferred custom delivery", () => {
   it("records non-context custom entries on a live session manager without sending a custom message", () => {
     const coord = makeCoordinator();
     const session = makeSession({ isStreaming: false });
-    session.sessionManager = {
+    (session as any).sessionManager = {
       appendCustomEntry: vi.fn(),
     };
     const sessionPath = "/tmp/fake/agents/test-agent/sessions/a.jsonl";
@@ -170,7 +169,7 @@ describe("SessionCoordinator deferred custom delivery", () => {
     });
 
     expect(result).toMatchObject({ ok: true, mode: "live" });
-    expect(session.sessionManager.appendCustomEntry).toHaveBeenCalledWith(
+    expect((session as any).sessionManager.appendCustomEntry).toHaveBeenCalledWith(
       "hana-deferred-result",
       { taskId: "task-img" },
     );

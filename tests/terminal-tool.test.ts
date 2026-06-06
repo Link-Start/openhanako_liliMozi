@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import { createTerminalTool } from "../lib/tools/terminal-tool.ts";
 
@@ -70,7 +69,7 @@ describe("terminal tool", () => {
       getCwd: () => "/tmp/workspace",
     });
 
-    const result = await tool.execute("call_1", { action: "list" });
+    const result = await (tool.execute as any)("call_1", { action: "list" });
 
     expect(result.content[0].text).toContain("current session is required");
   });

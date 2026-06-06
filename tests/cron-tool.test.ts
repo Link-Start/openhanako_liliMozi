@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { createCronTool } from "../lib/tools/cron-tool.ts";
 

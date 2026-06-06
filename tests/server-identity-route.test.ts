@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Hono } from "hono";
 import { describe, expect, it, afterEach } from "vitest";
 import fs from "fs";
@@ -212,7 +211,7 @@ describe("server identity route", () => {
     const { createServerIdentityRoute } = await import("../server/routes/server-identity.ts");
     const app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("authPrincipal", Object.freeze({
+      (c as any).set("authPrincipal", Object.freeze({
         kind: "device",
         credentialKind: "device_credential",
         connectionKind: "lan",

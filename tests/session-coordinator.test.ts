@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -395,7 +394,7 @@ describe("SessionCoordinator", () => {
 
     const noDescriptionSessionPath = path.join(sessionDir, "deepseek-experiment-no-description.jsonl");
     fs.rmSync(path.join(agentDir, "description.md"), { force: true });
-    agent.config.agent = { description: "不应替代花名册简介" };
+    (agent.config as any).agent = { description: "不应替代花名册简介" };
     prefs.getExperimentValue.mockImplementation((id) => (
       id === DEEPSEEK_ROLEPLAY_REASONING_PATCH_EXPERIMENT_ID ? true : undefined
     ));
@@ -515,10 +514,10 @@ describe("SessionCoordinator", () => {
       authorizedFolders: [authorizedFolder],
     });
 
-    const buildOpts = buildTools.mock.calls[0][2];
-    expect(buildOpts.workspaceFolders).toEqual([workspaceFolder]);
-    expect(buildOpts.authorizedFolders).toEqual([authorizedFolder]);
-    expect(buildOpts.getAuthorizedFolders()).toEqual([authorizedFolder]);
+    const buildOpts = (buildTools.mock.calls as any)[0][2];
+    expect(buildOpts!.workspaceFolders).toEqual([workspaceFolder]);
+    expect(buildOpts!.authorizedFolders).toEqual([authorizedFolder]);
+    expect(buildOpts!.getAuthorizedFolders()).toEqual([authorizedFolder]);
     expect(coordinator.getSessionAuthorizedFolders(sessionPath)).toEqual([authorizedFolder]);
     expect(coordinator.getSessionFolderScope(sessionPath)).toMatchObject({
       cwd,
@@ -1345,7 +1344,7 @@ describe("SessionCoordinator", () => {
       experienceEnabled: false,
       setMemoryEnabled: vi.fn(),
       buildSystemPrompt: () => "BASE",
-      getToolsSnapshot: vi.fn((options = {}) => [
+      getToolsSnapshot: vi.fn(( options: any = {}) => [
         { name: "stage_files" },
         ...(options.includeLegacyArtifactTool ? [{ name: "create_artifact" }] : []),
       ]),
@@ -2386,13 +2385,13 @@ describe("SessionCoordinator", () => {
       setMemoryEnabled: vi.fn((enabled) => {
         sessionMemoryEnabled = !!enabled;
       }),
-      getToolsSnapshot: vi.fn(({ forceMemoryEnabled } = {}) =>
+      getToolsSnapshot: vi.fn(({ forceMemoryEnabled }: any = {}) =>
         forceMemoryEnabled ? [{ name: "search_memory" }] : [{ name: "todo_write" }],
       ),
-      buildSystemPrompt: vi.fn(({ forceMemoryEnabled } = {}) =>
+      buildSystemPrompt: vi.fn(({ forceMemoryEnabled }: any = {}) =>
         forceMemoryEnabled ? "MEMORY ON" : "MEMORY OFF",
       ),
-      buildMemoryReflectionSnapshot: vi.fn(({ forceMemoryEnabled } = {}) => ({
+      buildMemoryReflectionSnapshot: vi.fn(({ forceMemoryEnabled }: any = {}) => ({
         version: 1,
         agentName: "Hana",
         userName: "测试用户",
@@ -2536,13 +2535,13 @@ describe("SessionCoordinator", () => {
 
     await coordinator.createSession(null, "/tmp/workspace", true);
 
-    await expect(session.agent.streamFn(model, {
+    await expect((session.agent.streamFn as any)(model, {
       systemPrompt: "FINAL CACHE PREFIX",
       tools: [readTool, bashTool],
       messages: [{ role: "user", content: "hello" }],
     }, {})).resolves.toBe("ok");
 
-    await expect(session.agent.streamFn(model, {
+    await expect((session.agent.streamFn as any)(model, {
       systemPrompt: "MUTATED CACHE PREFIX",
       tools: [readTool, bashTool],
       messages: [
@@ -2635,7 +2634,7 @@ describe("SessionCoordinator", () => {
     await coordinator.createSession(null, "/tmp/workspace", true);
     await coordinator.switchSessionModel(sessionFile, nextModel);
 
-    await expect(session.agent.streamFn(nextModel, {
+    await expect((session.agent.streamFn as any)(nextModel, {
       systemPrompt: "FINAL CACHE PREFIX",
       tools: [readTool],
       messages: [{ role: "user", content: "hello" }],
@@ -2769,7 +2768,7 @@ describe("SessionCoordinator", () => {
     const resumeFile = path.join(tempDir, "reuse-instance.jsonl");
     fs.writeFileSync(resumeFile, '{"type":"user","content":"hi"}\n');
     const piSdk = await import("../lib/pi-sdk/index.ts");
-    piSdk.SessionManager.open.mockReturnValue({ getCwd: () => tempDir, getSessionFile: () => resumeFile });
+    (piSdk.SessionManager.open as any).mockReturnValue({ getCwd: () => tempDir, getSessionFile: () => resumeFile });
     createAgentSessionMock.mockResolvedValue({
       session: { sessionManager: { getSessionFile: () => resumeFile }, subscribe: vi.fn(() => vi.fn()), abort: vi.fn() },
     });
@@ -2785,7 +2784,7 @@ describe("SessionCoordinator", () => {
     const resumeFile = path.join(tempDir, "reuse-keep.jsonl");
     fs.writeFileSync(resumeFile, '{"type":"user","content":"hi"}\n');
     const piSdk = await import("../lib/pi-sdk/index.ts");
-    piSdk.SessionManager.open.mockReturnValue({ getCwd: () => tempDir, getSessionFile: () => resumeFile });
+    (piSdk.SessionManager.open as any).mockReturnValue({ getCwd: () => tempDir, getSessionFile: () => resumeFile });
     const controller = new AbortController();
     createAgentSessionMock.mockImplementation(async () => {
       controller.abort();
@@ -2865,7 +2864,7 @@ describe("SessionCoordinator", () => {
     const builtinTool = { name: "read" };
     const plainTool = { name: "plain_custom" };
     const memoryTool = { name: "search_memory" };
-    const getToolsSnapshot = vi.fn(({ forceMemoryEnabled } = {}) => (
+    const getToolsSnapshot = vi.fn(({ forceMemoryEnabled }: any = {}) => (
       forceMemoryEnabled ? [plainTool, memoryTool] : [plainTool]
     ));
     const buildTools = vi.fn((_cwd, customTools) => ({
@@ -2945,7 +2944,7 @@ describe("SessionCoordinator", () => {
     const hasAnyRunningSpy = vi.spyOn(bm, "hasAnyRunning", "get").mockReturnValue(true);
     const isRunningSpy = vi.spyOn(bm, "isRunning").mockImplementation((sp) => sp === sessionFile);
     const setHeadlessSpy = vi.spyOn(bm, "setHeadless").mockImplementation(() => {});
-    const closeBrowserSpy = vi.spyOn(bm, "closeBrowserForSession").mockResolvedValue();
+    const closeBrowserSpy = (vi.spyOn(bm, "closeBrowserForSession").mockResolvedValue as any)();
 
     const agent = {
       id: "hana",
@@ -3451,7 +3450,7 @@ describe("SessionCoordinator", () => {
       memoryMasterEnabled: true,
       config: { models: { chat: { id: "default-model", provider: "test" } } },
       tools: [{ name: "write" }],
-      buildSystemPrompt: vi.fn(({ cwdOverride } = {}) => `SUBAGENT PROMPT ${cwdOverride || "missing"}`),
+      buildSystemPrompt: vi.fn(({ cwdOverride }: any = {}) => `SUBAGENT PROMPT ${cwdOverride || "missing"}`),
     };
 
     sessionManagerCreateMock.mockReturnValue({

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -15,14 +14,14 @@ describe("bridge send-media route", () => {
     tmpDir = null;
   });
 
-  function makeApp({ agentOverrides = {}, engineOverrides = {}, bridgeManagerOverrides = {} } = {}) {
+  function makeApp({ agentOverrides = {}, engineOverrides = {} as any, bridgeManagerOverrides = {} } = {}) {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-bridge-route-"));
     const hanakoHome = path.join(tmpDir, "hana-home");
     const sessionDir = path.join(tmpDir, "sessions");
     fs.mkdirSync(hanakoHome, { recursive: true });
     fs.mkdirSync(sessionDir, { recursive: true });
 
-    const agent = {
+    const agent: any = {
       id: "hana",
       sessionDir,
       config: { bridge: {} },

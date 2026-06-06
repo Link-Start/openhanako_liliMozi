@@ -1,4 +1,3 @@
-// @ts-nocheck
 // tests/workflow-tool.test.js
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkflowTool } from "../lib/tools/workflow-tool.ts";
@@ -38,7 +37,7 @@ describe("workflow tool", () => {
       "c1",
       { script: META + `const o=[]; while(o.length<2){o.push(await agent('x'))} return o` },
       undefined, undefined, makeCtx()
-    );
+    ) as any;
     // 立即返回 taskId（不阻塞、不含同步 result）
     expect(res.details.taskId).toMatch(/^workflow-/);
     expect(res.details.streamStatus).toBe("running");
@@ -64,11 +63,11 @@ describe("workflow tool", () => {
       "c1",
       { script: META + `const o=[]; while(o.length<2){o.push(await agent('x'))} return o` },
       undefined, undefined, makeCtx()
-    );
+    ) as any;
     await flush();
     expect(store.resolve).toHaveBeenCalledWith(res.details.taskId, JSON.stringify(["bug", "bug"], null, 2));
     // 脚本内 agent() 派出的子 session 关联到这个 workflow task
-    expect(exec.mock.calls[0][1]).toMatchObject({
+    expect((exec.mock.calls[0] as any)[1]).toMatchObject({
       agentId: "a1", parentSessionPath: "/s.jsonl", cwd: "/w",
       subagentContext: true, subagentTaskId: res.details.taskId, emitEvents: true,
     });
@@ -80,7 +79,7 @@ describe("workflow tool", () => {
       executeIsolated: async () => ({}), emitEvent: () => {},
       getDeferredStore: () => store, getSubagentRunStore: () => makeRunStore(),
     });
-    const res = await tool.execute("c1", { script: `return 1` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: `return 1` }, undefined, undefined, makeCtx()) as any;
     expect(res.details.error).toMatch(/脚本非法/);
     expect(store.defer).not.toHaveBeenCalled();
   });
@@ -92,7 +91,7 @@ describe("workflow tool", () => {
       executeIsolated: async () => ({ replyText: "", error: "boom" }), emitEvent: () => {},
       getDeferredStore: () => store, getSubagentRunStore: () => runStore,
     });
-    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx()) as any;
     await flush();
     expect(res.details.taskId).toBeTruthy();
     expect(store.fail).toHaveBeenCalledWith(res.details.taskId, expect.stringMatching(/boom|agent 失败/));
@@ -109,7 +108,7 @@ describe("workflow tool", () => {
       "c1",
       { script: META + `return await agent('x')` },
       undefined, undefined, makeCtx()
-    );
+    ) as any;
     expect(res.details.result).toBe("bug");
     expect(res.details.agentsSpawned).toBe(1);
   });
@@ -126,7 +125,7 @@ describe("workflow tool", () => {
       "c1",
       { script: META + `phase('Find'); log('hi'); return await agent('x')` },
       undefined, undefined, makeCtx()
-    );
+    ) as any;
     await flush();
     expect(evts.map((x) => x.e.type)).toContain("workflow_progress");
     expect(evts.find((x) => x.e.title === "Find")).toBeTruthy();
@@ -139,7 +138,7 @@ describe("workflow tool", () => {
       executeIsolated: async () => ({ replyText: "ok", error: null }), emitEvent: () => {},
       getDeferredStore: () => store, getSubagentRunStore: () => makeRunStore(),
     });
-    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx()) as any;
     expect(typeof res.details.startedAt).toBe("number");
   });
 
@@ -151,7 +150,7 @@ describe("workflow tool", () => {
       emitEvent: (e, sp) => evts.push({ e, sp }),
       getDeferredStore: () => store, getSubagentRunStore: () => makeRunStore(),
     });
-    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx()) as any;
     await flush();
     const bu = evts.find((x) => x.e.type === "block_update" && x.e.taskId === res.details.taskId);
     expect(bu).toBeTruthy();
@@ -168,7 +167,7 @@ describe("workflow tool", () => {
       emitEvent: (e) => evts.push(e),
       getDeferredStore: () => store, getSubagentRunStore: () => makeRunStore(),
     });
-    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx()) as any;
     await flush();
     const bu = evts.find((e) => e.type === "block_update" && e.patch?.streamStatus === "failed");
     expect(bu).toBeTruthy();
@@ -185,7 +184,7 @@ describe("workflow tool", () => {
       getSubagentRunStore: () => makeRunStore(),
     });
 
-    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx()) as any;
     expect(res.details.streamStatus).toBe("running");
 
     await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
@@ -210,7 +209,7 @@ describe("workflow tool", () => {
       getDeferredStore: () => store, getSubagentRunStore: () => makeRunStore(),
       getActivityHub: () => hub,
     });
-    const res = await tool.execute("c1", { script: META + `return await agent('x', { label: '探索' })` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x', { label: '探索' })` }, undefined, undefined, makeCtx()) as any;
     await flush();
     const childId = `${res.details.taskId}::node-1`;
     const running = upserts.find((e) => e.id === childId && e.status === "running");
@@ -234,7 +233,7 @@ describe("workflow tool", () => {
       getSubagentThreadStore: () => threadStore,
     });
 
-    const res = await tool.execute("c1", { script: META + `return await agent('x', { label: '探索' })` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x', { label: '探索' })` }, undefined, undefined, makeCtx()) as any;
     await flush();
     const threadId = `${res.details.taskId}::node-1`;
 
@@ -261,7 +260,7 @@ describe("workflow tool", () => {
     const hub = {
       upsert: (e) => { upserts.push({ ...e }); return e; },
       get: (id) => {
-        const merged = {};
+        const merged: any = {};
         for (const u of upserts) if (u.id === id) Object.assign(merged, u);
         return merged.id ? merged : null;
       },
@@ -279,7 +278,7 @@ describe("workflow tool", () => {
       getDeferredStore: () => store, getSubagentRunStore: () => makeRunStore(),
       getActivityHub: () => hub, getUsageLedger: () => ledger,
     });
-    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx());
+    const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx()) as any;
     await flush();
     const childId = `${res.details.taskId}::node-1`;
     const done = upserts.find((e) => e.id === childId && e.status === "done");

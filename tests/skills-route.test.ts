@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -663,7 +662,7 @@ describe("DELETE /skills/:name — per-agent target selection", () => {
    * 构造一个带 skillsDir / agentsDir / 多 agent 的完整 engine mock。
    * 每个 agent 在 agentsDir/<id>/config.yaml 有实际的配置文件,便于验证 enabled 列表清理。
    */
-  function buildEngine({ agents = [], currentAgentId = null } = {}) {
+  function buildEngine({ agents = [], currentAgentId = null }: any = {}) {
     const agentMap = new Map();
     for (const id of agents) {
       const agentDir = path.join(agentsDir, id);
@@ -816,7 +815,7 @@ describe("DELETE /skills/:name — per-agent target selection", () => {
       agents: ["agent-a"],
       currentAgentId: "agent-a",
     });
-    engine.hanakoHome = tempRoot;
+    (engine as any).hanakoHome = tempRoot;
     writeUserSkill("bundled-skill");
     fs.writeFileSync(path.join(tempRoot, "skill-bundles.json"), JSON.stringify({
       schemaVersion: 1,

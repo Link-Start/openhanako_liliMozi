@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/sandbox/platform.js", () => ({
@@ -25,7 +24,7 @@ vi.mock("../lib/pi-sdk/index.js", () => {
     createReadTool: vi.fn(() => makeTool("read")),
     createWriteTool: vi.fn(() => makeTool("write")),
     createEditTool: vi.fn(() => makeTool("edit")),
-    createBashTool: vi.fn((cwd, opts = {}) => ({
+    createBashTool: vi.fn((cwd, opts: any = {}) => ({
       name: "bash",
       execute: vi.fn(async (_toolCallId, params) => {
         if (opts.operations?.exec) {
@@ -54,7 +53,7 @@ describe("createSandboxedTools on Linux", () => {
       workspaceFolders: [],
       hanakoHome: "/hana",
       getSandboxEnabled: () => true,
-    });
+    } as any);
 
     const bash = result.tools.find((tool) => tool.name === "bash");
     const output = await bash.execute("call-1", { command: "pwd" });
@@ -71,7 +70,7 @@ describe("createSandboxedTools on Linux", () => {
       workspaceFolders: [],
       hanakoHome: "/hana",
       getSandboxEnabled: () => false,
-    });
+    } as any);
 
     const bash = result.tools.find((tool) => tool.name === "bash");
     const output = await bash.execute("call-2", { command: "pwd" });
@@ -88,7 +87,7 @@ describe("createSandboxedTools on Linux", () => {
       hanakoHome: "/hana",
       getSandboxEnabled: () => true,
       getSessionPath: () => "/hana/agents/hana/sessions/main.jsonl",
-      resolveSessionFile: vi.fn((fileId, options) => {
+      resolveSessionFile: vi.fn((fileId: any, options: any) => {
         expect(fileId).toBe("sf_cjk_digits");
         expect(options).toEqual({ sessionPath: "/hana/agents/hana/sessions/main.jsonl" });
         return {
@@ -98,7 +97,7 @@ describe("createSandboxedTools on Linux", () => {
           status: "available",
         };
       }),
-    });
+    } as any);
 
     const read = result.tools.find((tool) => tool.name === "read");
     expect(read.parameters.required).not.toContain("path");

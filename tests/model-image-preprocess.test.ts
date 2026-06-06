@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import {
   normalizeModelImageInput,
@@ -82,7 +81,7 @@ describe("prepareModelImageInputsForPrompt", () => {
     });
 
     expect(resizeImage).toHaveBeenCalledTimes(3);
-    expect(resizeImage.mock.calls.map(([, options]) => options.maxBytes)).toEqual([12, 12, 12]);
+    expect(resizeImage.mock.calls.map(([, options]: any) => options.maxBytes)).toEqual([12, 12, 12]);
   });
 
   it("fails closed when an image cannot be normalized", async () => {

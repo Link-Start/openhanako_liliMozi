@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -49,7 +48,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     for (let i = 1; i <= 25; i += 1) {
       await appendMessage(channelFile, "user", `message ${i}`);
@@ -81,7 +80,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     for (let i = 1; i <= 23; i += 1) {
       await appendMessage(channelFile, "user", `message ${i}`);
@@ -94,7 +93,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana"],
       executeCheck,
       onMemorySummarize: vi.fn(),
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -104,10 +103,10 @@ describe("channel-ticker membership source", () => {
     }
 
     expect(executeCheck).toHaveBeenCalledOnce();
-    expect(executeCheck.mock.calls[0][2].map((message) => message.body)).toEqual(
+    expect((executeCheck.mock.calls as any)[0][2].map((message: any) => message.body)).toEqual(
       Array.from({ length: 20 }, (_, idx) => `message ${idx + 4}`),
     );
-    expect(executeCheck.mock.calls[0][4]).toMatchObject({
+    expect((executeCheck.mock.calls as any)[0][4]).toMatchObject({
       deliveryWindow: {
         totalUnreadCount: 23,
         droppedUnreadCount: 3,
@@ -128,7 +127,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     await appendMessage(path.join(channelsDir, `${channelId}.md`), "user", "ping");
 
     const started = deferred();
@@ -143,7 +142,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana"],
       executeCheck,
       onMemorySummarize: vi.fn(),
-    });
+    } as any);
 
     ticker.start();
     const delivery = ticker.triggerImmediate(channelId);
@@ -175,7 +174,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "first");
 
@@ -195,7 +194,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana"],
       executeCheck,
       onMemorySummarize: vi.fn(),
-    });
+    } as any);
 
     ticker.start();
     const firstDelivery = ticker.triggerImmediate(channelId);
@@ -231,7 +230,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     await appendMessage(path.join(channelsDir, `${channelId}.md`), "user", "@Hana hello");
 
     const executeCheck = vi.fn(async () => ({ replied: false, passed: true }));
@@ -242,7 +241,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana"],
       executeCheck,
       onMemorySummarize,
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -252,8 +251,8 @@ describe("channel-ticker membership source", () => {
     }
 
     expect(executeCheck).toHaveBeenCalledOnce();
-    expect(executeCheck.mock.calls[0][0]).toBe("hana");
-    expect(executeCheck.mock.calls[0][1]).toBe(channelId);
+    expect((executeCheck.mock.calls as any)[0][0]).toBe("hana");
+    expect((executeCheck.mock.calls as any)[0][1]).toBe(channelId);
     expect(onMemorySummarize).toHaveBeenCalledWith(
       "hana",
       channelId,
@@ -277,7 +276,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "这条消息不该再投给被移出的成员");
 
@@ -296,7 +295,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana", "yui"],
       executeCheck,
       onMemorySummarize: vi.fn(),
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -323,7 +322,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui", "ming"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "谁想接一下这个话题？");
 
@@ -348,7 +347,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana", "yui", "ming"],
       executeCheck,
       onMemorySummarize: vi.fn(),
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -376,7 +375,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "这条消息不应该无限重投");
 
@@ -388,7 +387,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana"],
       executeCheck,
       onMemorySummarize,
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -418,7 +417,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     vi.setSystemTime(new Date("2026-05-30T00:00:00Z"));
     const first = await appendMessage(channelFile, "user", "投递窗口里的消息");
@@ -434,7 +433,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana"],
       executeCheck,
       onMemorySummarize: vi.fn(),
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -461,7 +460,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui", "ming"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "@Yui 可以先看一下吗？");
 
@@ -480,7 +479,7 @@ describe("channel-ticker membership source", () => {
       getAgentOrder: () => ["hana", "yui", "ming"],
       executeCheck,
       onMemorySummarize: vi.fn(),
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -510,7 +509,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui", "ming"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "频道最近的事实");
 
@@ -522,7 +521,7 @@ describe("channel-ticker membership source", () => {
       executeCheck,
       onMemorySummarize: vi.fn(),
       random: () => 0.6,
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -532,10 +531,10 @@ describe("channel-ticker membership source", () => {
     }
 
     expect(executeCheck).toHaveBeenCalledOnce();
-    expect(executeCheck.mock.calls[0][0]).toBe("yui");
-    expect(executeCheck.mock.calls[0][1]).toBe(channelId);
-    expect(executeCheck.mock.calls[0][2].map((message) => message.body)).toEqual(["频道最近的事实"]);
-    expect(executeCheck.mock.calls[0][4]).toMatchObject({ proactive: true });
+    expect((executeCheck.mock.calls as any)[0][0]).toBe("yui");
+    expect((executeCheck.mock.calls as any)[0][1]).toBe(channelId);
+    expect((executeCheck.mock.calls as any)[0][2].map((message: any) => message.body)).toEqual(["频道最近的事实"]);
+    expect((executeCheck.mock.calls as any)[0][4]).toMatchObject({ proactive: true });
   });
 
   it("does not proactively remind channel members when proactive initiation is disabled", async () => {
@@ -552,7 +551,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui", "ming"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await updateChannelMeta(channelFile, { agentPhoneProactiveEnabled: "false" });
     await appendMessage(channelFile, "user", "频道最近的事实");
@@ -565,7 +564,7 @@ describe("channel-ticker membership source", () => {
       executeCheck,
       onMemorySummarize: vi.fn(),
       random: () => 0.6,
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -591,7 +590,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "ping");
 
@@ -603,7 +602,7 @@ describe("channel-ticker membership source", () => {
       executeCheck,
       onMemorySummarize: vi.fn(),
       isEnabled: () => false,
-    });
+    } as any);
 
     ticker.start();
     try {
@@ -630,7 +629,7 @@ describe("channel-ticker membership source", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui", "ming"],
-    });
+    } as any);
     const channelFile = path.join(channelsDir, `${channelId}.md`);
     await appendMessage(channelFile, "user", "频道最近的事实");
 
@@ -654,7 +653,7 @@ describe("channel-ticker membership source", () => {
       executeCheck,
       onMemorySummarize: vi.fn(),
       random: () => 0.6,
-    });
+    } as any);
 
     ticker.start();
     try {

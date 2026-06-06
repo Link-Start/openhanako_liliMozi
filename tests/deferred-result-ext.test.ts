@@ -1,10 +1,9 @@
-// @ts-nocheck
 import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
 import { createDeferredResultExtension } from "../lib/extensions/deferred-result-ext.ts";
 import { DeferredResultStore } from "../lib/deferred-result-store.ts";
 
 function createMockPi() {
-  const handlers = {};
+  const handlers: any = {};
   return {
     on: vi.fn((event, handler) => {
       handlers[event] = handler;
@@ -21,7 +20,7 @@ describe("DeferredResultExtension", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    store = new DeferredResultStore();
+    store = new (DeferredResultStore as any)();
     factory = createDeferredResultExtension(store);
     pi = createMockPi();
     factory(pi);

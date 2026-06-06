@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -39,7 +38,7 @@ function parseJsonPath(value, pathExpr) {
   return cur;
 }
 
-export async function runLocalCliMedia(spec, bindings = {}, options = {}) {
+export async function runLocalCliMedia(spec, bindings: any = {}, options: any = {}) {
   validateCliCommandSpec(spec);
   const outputDir = bindings.outputDir || options.outputDir;
   if (!outputDir) throw new Error("CLI media wrapper requires outputDir");

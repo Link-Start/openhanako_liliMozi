@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import { ComputerLeaseRegistry } from "../core/computer-use/lease-registry.ts";
 import { COMPUTER_USE_ERRORS } from "../core/computer-use/errors.ts";
@@ -7,7 +6,7 @@ const ctx = { sessionPath: "/tmp/a.jsonl", agentId: "hana" };
 
 describe("ComputerLeaseRegistry", () => {
   it("creates leases keyed by sessionPath and agentId", () => {
-    const registry = new ComputerLeaseRegistry({ now: () => 1000, idFactory: () => "lease-1" });
+    const registry = new ComputerLeaseRegistry({ now: () => 1000, idFactory: () => "lease-1" as any });
     const lease = registry.createLease(ctx, {
       providerId: "mock",
       appId: "app.notes",
@@ -31,7 +30,7 @@ describe("ComputerLeaseRegistry", () => {
   });
 
   it("does not let another session read a lease", () => {
-    const registry = new ComputerLeaseRegistry({ idFactory: () => "lease-1" });
+    const registry = new ComputerLeaseRegistry({ idFactory: () => "lease-1" as any });
     registry.createLease(ctx, { providerId: "mock", appId: "app.notes" });
 
     expect(() => registry.requireActiveLease({
@@ -42,8 +41,8 @@ describe("ComputerLeaseRegistry", () => {
 
   it("records snapshot ownership and rejects stale snapshot ids", () => {
     const registry = new ComputerLeaseRegistry({
-      idFactory: () => "lease-1",
-      snapshotIdFactory: () => "snapshot-1",
+      idFactory: () => "lease-1" as any,
+      snapshotIdFactory: () => "snapshot-1" as any,
     });
     registry.createLease(ctx, { providerId: "mock", appId: "app.notes" });
     const snapshot = registry.recordSnapshot(ctx, "lease-1", { appId: "app.notes" });
@@ -54,7 +53,7 @@ describe("ComputerLeaseRegistry", () => {
   });
 
   it("releases a lease and rejects later active access", () => {
-    const registry = new ComputerLeaseRegistry({ idFactory: () => "lease-1" });
+    const registry = new ComputerLeaseRegistry({ idFactory: () => "lease-1" as any });
     registry.createLease(ctx, { providerId: "mock", appId: "app.notes" });
     registry.releaseLease(ctx, "lease-1");
 

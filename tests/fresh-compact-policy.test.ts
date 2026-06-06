@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import {
   buildFreshCompactMetaPatch,
@@ -27,7 +26,7 @@ describe("fresh compact policy", () => {
       },
       snapshot,
       now: new Date("2026-05-15T09:00:00"),
-    })).toEqual({ run: true, reason: "daily" });
+    } as any)).toEqual({ run: true, reason: "daily" });
   });
 
   it("does not treat phone lastRefreshedDate as a fresh-compact completion marker", () => {
@@ -59,7 +58,7 @@ describe("fresh compact policy", () => {
       },
       snapshot: newPromptSnapshot,
       now: new Date("2026-05-15T09:00:00"),
-    })).toEqual({ run: false, reason: null });
+    } as any)).toEqual({ run: false, reason: null });
 
     expect(shouldRunFreshCompact({
       meta: {
@@ -69,7 +68,7 @@ describe("fresh compact policy", () => {
       },
       snapshot: newStateSnapshot,
       now: new Date("2026-05-15T09:00:00"),
-    })).toEqual({ run: false, reason: null });
+    } as any)).toEqual({ run: false, reason: null });
   });
 
   it("does not request fresh compact when date, prompt, and state are current", () => {
@@ -86,7 +85,7 @@ describe("fresh compact policy", () => {
       },
       snapshot,
       now: new Date("2026-05-15T09:00:00"),
-    })).toEqual({ run: false, reason: null });
+    } as any)).toEqual({ run: false, reason: null });
   });
 
   it("builds a flat metadata patch suitable for bridge index and phone projection stores", () => {

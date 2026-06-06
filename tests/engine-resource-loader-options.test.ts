@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it, vi } from "vitest";
 import path from "path";
 import { HanaEngine } from "../core/engine.ts";
@@ -11,7 +10,7 @@ describe("HanaEngine resource loader options", () => {
 
   it("uses explicit Hana-owned Pi SDK cwd, agentDir, and in-memory Pi settings", () => {
     const settings = { kind: "in-memory-settings" };
-    const inMemory = vi.spyOn(SettingsManager, "inMemory").mockReturnValue(settings);
+    const inMemory = vi.spyOn(SettingsManager, "inMemory").mockReturnValue(settings as any);
     const engine = Object.create(HanaEngine.prototype);
     engine.hanakoHome = "/hanako-home";
     engine._agentMgr = {

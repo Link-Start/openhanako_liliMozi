@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
@@ -32,7 +31,7 @@ describe("generateDescription", () => {
   });
 
   it("strips internal mood tags from generated descriptions", async () => {
-    callText.mockResolvedValueOnce("<mood>\nVibe: 平静专注\nSparks: 纸页、灯光、长句\n</mood>\n沉静细腻的写作型助手，适合文本整理和创意协作。");
+    (callText as any).mockResolvedValueOnce("<mood>\nVibe: 平静专注\nSparks: 纸页、灯光、长句\n</mood>\n沉静细腻的写作型助手，适合文本整理和创意协作。");
 
     const result = await generateDescription(
       { utility: "test-model", api_key: "key", base_url: "http://test", api: "openai" },
@@ -50,7 +49,7 @@ describe("generateDescription", () => {
       "zh",
     );
 
-    const call = callText.mock.calls.at(-1)?.[0];
+    const call = (callText as any).mock.calls.at(-1)?.[0];
     const prompt = call?.messages?.[0]?.content || "";
     expect(prompt).toContain("第三方编辑");
     expect(prompt).toContain("第三人称简介");

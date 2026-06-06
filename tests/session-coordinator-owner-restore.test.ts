@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -37,10 +36,10 @@ vi.mock("../lib/debug-log.js", () => ({
 }));
 
 vi.mock("../core/session-inline-media-prune.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal() as any;
   return {
     ...actual,
-    repairSessionInlineMediaEntriesInFile: (...args) => repairInlineMediaMock(...args),
+    repairSessionInlineMediaEntriesInFile: (...args: any[]) => repairInlineMediaMock(...args),
   };
 });
 
@@ -64,12 +63,12 @@ function makeAgent({ id, sessionDir, locale = "en", initialMemoryEnabled = true,
     setMemoryEnabled: vi.fn((val) => {
       sessionMemoryEnabled = !!val;
     }),
-    getToolsSnapshot: vi.fn(({ forceMemoryEnabled } = {}) => (
+    getToolsSnapshot: vi.fn(({ forceMemoryEnabled }: any = {}) => (
       (typeof forceMemoryEnabled === "boolean" ? forceMemoryEnabled : (memoryMasterEnabled && sessionMemoryEnabled))
         ? [makeTool(`${id}-tool`), makeTool(`search_memory-${id}`)]
         : [makeTool(`${id}-tool`)]
     )),
-    buildSystemPrompt: vi.fn(({ forceMemoryEnabled } = {}) => {
+    buildSystemPrompt: vi.fn(({ forceMemoryEnabled }: any = {}) => {
       const enabled = typeof forceMemoryEnabled === "boolean"
         ? forceMemoryEnabled
         : (memoryMasterEnabled && sessionMemoryEnabled);

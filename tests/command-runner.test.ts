@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { createCommandRunner } from "../lib/shell/command-runner.ts";
 
@@ -79,7 +78,7 @@ describe("createCommandRunner", () => {
 
     expect(result).toEqual({ exitCode: 42 });
     expect(spawnCommand).toHaveBeenCalledTimes(1);
-    expect(spawnCommand.mock.calls[0][0].profile.family).toBe("posix");
+    expect((spawnCommand.mock.calls[0] as any)[0].profile.family).toBe("posix");
   });
 
   it("passes an explicit profile to the resolver", async () => {

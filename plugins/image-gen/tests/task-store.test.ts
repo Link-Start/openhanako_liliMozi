@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * image-gen/tests/task-store.test.js
  *
@@ -24,11 +23,11 @@ function makeTmpDir() {
   return dir;
 }
 
-function makeStore(dir) {
+function makeStore(dir?: string) {
   return new TaskStore(dir ?? makeTmpDir());
 }
 
-function makeTask(overrides = {}) {
+function makeTask( overrides: any = {}) {
   return {
     taskId: "tid-1",
     adapterId: "dreamina",

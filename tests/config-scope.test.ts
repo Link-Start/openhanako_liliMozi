@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * config-scope.js + migrate-config-scope.js 单元测试
  *
@@ -20,7 +19,7 @@ import { migrateConfigScope } from "../shared/migrate-config-scope.ts";
 describe("splitByScope", () => {
   it("extracts top-level global fields while keeping agent fields (models)", () => {
     const partial = { locale: "zh-CN", sandbox: false, sandbox_network: true, hardware_acceleration: false, models: ["gpt-4"] };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "locale", value: "zh-CN" }),
@@ -39,7 +38,7 @@ describe("splitByScope", () => {
     const partial = {
       capabilities: { learn_skills: true, other_cap: "keep" },
     };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "capabilities.learn_skills", value: true }),
@@ -51,7 +50,7 @@ describe("splitByScope", () => {
 
   it("removes empty parent after extracting the only nested global child", () => {
     const partial = { capabilities: { learn_skills: false } };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "capabilities.learn_skills", value: false }),
@@ -63,7 +62,7 @@ describe("splitByScope", () => {
     const partial = {
       desk: { home_folder: "/home/user", heartbeat_interval: 30 },
     };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     // home_folder is now agent scope — NOT extracted as global
     expect(g).not.toEqual(expect.arrayContaining([
@@ -77,7 +76,7 @@ describe("splitByScope", () => {
     const partial = {
       desk: { heartbeat_master: false, heartbeat_interval: 20 },
     };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "desk.heartbeat_master", value: false }),
@@ -95,7 +94,7 @@ describe("splitByScope", () => {
         telegram: { token: "tg-token" },
       },
     };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "bridge.permissionMode", value: "auto" }),
@@ -110,7 +109,7 @@ describe("splitByScope", () => {
 
   it("returns empty global array when no global fields present", () => {
     const partial = { models: ["qwen-plus"], name: "Alice" };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toHaveLength(0);
     expect(agent.models).toEqual(["qwen-plus"]);
@@ -122,7 +121,7 @@ describe("splitByScope", () => {
       tools: { disabled: ["browser", "cron"] },
       locale: "zh-CN",
     };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "locale", value: "zh-CN" }),
@@ -149,7 +148,7 @@ describe("splitByScope", () => {
       network_proxy: { mode: "manual", httpProxy: "http://127.0.0.1:7890" },
       models: { chat: { id: "gpt-4.1", provider: "openai" } },
     };
-    const { global: g, agent } = splitByScope(partial);
+    const { global: g, agent }: any = splitByScope(partial);
 
     expect(g).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "network_proxy", value: partial.network_proxy }),
@@ -198,7 +197,7 @@ describe("injectGlobalFields", () => {
       getNetworkProxy: () => ({ mode: "direct" }),
       getKeepAwake: () => true,
     };
-    const config = {};
+    const config: any = {};
     injectGlobalFields(config, engine);
 
     expect(config.locale).toBe("ja");
@@ -222,7 +221,7 @@ describe("injectGlobalFields", () => {
     const engine = {
       getLocale: () => "en",
     };
-    const config = {};
+    const config: any = {};
     expect(() => injectGlobalFields(config, engine)).not.toThrow();
     expect(config.locale).toBe("en");
     // Fields whose getters are absent should not appear
@@ -237,7 +236,7 @@ describe("injectGlobalFields", () => {
       getBridgeReadOnly: () => false,
       getBridgeReceiptEnabled: () => true,
     };
-    const config = {};
+    const config: any = {};
     injectGlobalFields(config, engine);
 
     expect(config.capabilities).toBeDefined();
@@ -265,7 +264,7 @@ function writeAgentConfig(agentsDir, agentId, cfgObj) {
   fs.writeFileSync(path.join(dir, "config.yaml"), YAML.dump(cfgObj, { lineWidth: -1 }), "utf-8");
 }
 
-function makeMockPrefs(initial = {}) {
+function makeMockPrefs( initial: any = {}) {
   let store = { ...initial };
   return {
     getPreferences: () => store,

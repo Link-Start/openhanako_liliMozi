@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { vi } from "vitest";
 import fs from "fs";
@@ -38,7 +37,7 @@ describe("channel tool membership contract", () => {
       agentId: "alice",
       listAgents: () => [],
       isEnabled: () => true,
-    });
+    } as any);
 
     const result = await tool.execute("call-1", {
       action: "create",
@@ -60,7 +59,7 @@ describe("channel tool membership contract", () => {
       agentId: "alice",
       listAgents: () => [],
       isEnabled: () => true,
-    });
+    } as any);
 
     const result = await tool.execute("call-missing-member", {
       action: "create",
@@ -87,7 +86,7 @@ describe("channel tool membership contract", () => {
       listAgents: () => [],
       isEnabled: () => true,
       createChannelEntry,
-    });
+    } as any);
 
     const result = await tool.execute("call-delegated-create", {
       action: "create",
@@ -114,7 +113,7 @@ describe("channel tool membership contract", () => {
       id: "team",
       name: "Team",
       members: ["bob", "charlie"],
-    });
+    } as any);
     await appendMessage(path.join(channelsDir, `${id}.md`), "bob", "secret");
 
     const tool = createChannelTool({
@@ -123,7 +122,7 @@ describe("channel tool membership contract", () => {
       agentId: "alice",
       listAgents: () => [],
       isEnabled: () => true,
-    });
+    } as any);
 
     const result = await tool.execute("call-2", {
       action: "read",
@@ -142,7 +141,7 @@ describe("channel tool membership contract", () => {
       id: "team",
       name: "工作群",
       members: ["alice", "bob"],
-    });
+    } as any);
 
     const tool = createChannelTool({
       channelsDir,
@@ -150,7 +149,7 @@ describe("channel tool membership contract", () => {
       agentId: "alice",
       listAgents: () => [],
       isEnabled: () => true,
-    });
+    } as any);
 
     const result = await tool.execute("call-3", { action: "list" });
 
@@ -170,7 +169,7 @@ describe("channel tool membership contract", () => {
       id: "team",
       name: "工作群",
       members: ["alice", "bob"],
-    });
+    } as any);
     await appendMessage(path.join(channelsDir, `${id}.md`), "bob", "hello by name");
 
     const tool = createChannelTool({
@@ -179,7 +178,7 @@ describe("channel tool membership contract", () => {
       agentId: "alice",
       listAgents: () => [],
       isEnabled: () => true,
-    });
+    } as any);
 
     const readResult = await tool.execute("call-4", {
       action: "read",
@@ -207,12 +206,12 @@ describe("channel tool membership contract", () => {
       id: "team-a",
       name: "工作群",
       members: ["alice", "bob"],
-    });
+    } as any);
     await createChannel(channelsDir, {
       id: "team-b",
       name: "工作群",
       members: ["alice", "charlie"],
-    });
+    } as any);
 
     const tool = createChannelTool({
       channelsDir,
@@ -220,7 +219,7 @@ describe("channel tool membership contract", () => {
       agentId: "alice",
       listAgents: () => [],
       isEnabled: () => true,
-    });
+    } as any);
 
     const result = await tool.execute("call-7", {
       action: "read",

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -54,7 +53,7 @@ describe("MediaDeliveryService", () => {
     return { outsidePath, outsideRoot };
   }
 
-  function makeService(sessionFile, extra = {}) {
+  function makeService(sessionFile, extra: any = {}) {
     return new MediaDeliveryService({
       engine: {
         getSessionFile: vi.fn((id) => id === sessionFile?.id ? sessionFile : null),
@@ -64,7 +63,7 @@ describe("MediaDeliveryService", () => {
   }
 
   it("delivers Telegram-like session files through buffer upload", async () => {
-    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]) as any);
     const service = makeService({
       id: "sf_image",
       filePath,
@@ -87,9 +86,9 @@ describe("MediaDeliveryService", () => {
     });
 
     expect(adapter.sendMediaBuffer).toHaveBeenCalledOnce();
-    expect(adapter.sendMediaBuffer.mock.calls[0][0]).toBe("chat-1");
-    expect(Buffer.isBuffer(adapter.sendMediaBuffer.mock.calls[0][1])).toBe(true);
-    expect(adapter.sendMediaBuffer.mock.calls[0][2]).toEqual({
+    expect((adapter.sendMediaBuffer.mock.calls as any)[0][0]).toBe("chat-1");
+    expect(Buffer.isBuffer((adapter.sendMediaBuffer.mock.calls as any)[0][1])).toBe(true);
+    expect((adapter.sendMediaBuffer.mock.calls as any)[0][2]).toEqual({
       mime: "image/png",
       filename: "image.png",
     });
@@ -155,7 +154,7 @@ describe("MediaDeliveryService", () => {
   });
 
   it("resolves session files with sessionPath so persisted sidecars can be hydrated", async () => {
-    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]) as any);
     const getSessionFile = vi.fn((id, options) => {
       if (id !== "sf_image" || options?.sessionPath !== "/sessions/main.jsonl") return null;
       return {
@@ -314,7 +313,7 @@ describe("MediaDeliveryService", () => {
   });
 
   it("delivers QQ local images through direct local file upload", async () => {
-    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]) as any);
     const service = makeService({
       id: "sf_image",
       filePath,
@@ -376,7 +375,7 @@ describe("MediaDeliveryService", () => {
   });
 
   it("publishes local files before sending them to URL-only adapters", async () => {
-    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]) as any);
     const mediaPublisher = {
       setBaseUrl: vi.fn(),
       publish: vi.fn(() => ({
@@ -426,7 +425,7 @@ describe("MediaDeliveryService", () => {
   });
 
   it("explains URL-only fallback without implying every platform needs public URLs", async () => {
-    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]) as any);
     const service = makeService({
       id: "sf_image",
       filePath,
@@ -454,7 +453,7 @@ describe("MediaDeliveryService", () => {
   });
 
   it("refreshes the publisher base URL from preferences before publishing local files for URL-only adapters", async () => {
-    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    const filePath = makeTempFile("image.png", Buffer.from([0x89, 0x50, 0x4E, 0x47]) as any);
     const mediaPublisher = {
       setBaseUrl: vi.fn(),
       publish: vi.fn(() => ({

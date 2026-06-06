@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import {
   McpRuntime,
@@ -23,7 +22,7 @@ describe("MCP runtime policy", () => {
       getGlobalEnabled: () => true,
       getAgentConfig: vi.fn(async () => ({})),
       callTool: vi.fn(),
-    });
+    } as any);
 
     expect(tool.invocationStyle).toBe("pi_tool");
   });
@@ -337,7 +336,7 @@ describe("MCP runtime policy", () => {
         authorizationToken: "secret-token",
         enableGlobal: true,
       },
-    });
+    } as any);
 
     expect(stored.enabled).toBe(true);
     expect(stored.connectors[0]).toMatchObject({
@@ -593,7 +592,7 @@ describe("MCP connectors status tool", () => {
     expect(tool.name).toBe(MCP_CONNECTORS_STATUS_TOOL_NAME);
     expect(tool.metadata).not.toHaveProperty("connectorId");
 
-    const result = await tool.execute("call-1", {}, {});
+    const result = await (tool.execute as any)("call-1", {}, {});
     const payload = JSON.parse(result.content[0].text);
     expect(payload.connectors[0]).toMatchObject({
       id: "github",
@@ -610,7 +609,7 @@ describe("MCP connectors status tool", () => {
 // dedup, persistence of DCR products, and the two distinct write-back paths
 // (refresh keeps the live client; full re-auth stops it).
 describe("MCP runtime OAuth token refresh", () => {
-  function makeRefreshRuntime(connector, { fetchImpl } = {}) {
+  function makeRefreshRuntime(connector, { fetchImpl }: any = {}) {
     let current = { enabled: true, connectors: [connector] };
     const setSpy = vi.fn((_key, value) => { current = { ...current, ...value }; });
     const runtime = new McpRuntime({
@@ -876,9 +875,9 @@ describe("MCP runtime OAuth persistence", () => {
       token_type: "Bearer",
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
 
-    await runtime.completeOAuth({ state: "state-1", code: "code-1" });
+    await runtime.completeOAuth({ state: "state-1", code: "code-1" } as any);
 
-    const saved = current.connectors[0];
+    const saved = current.connectors[0] as any;
     expect(saved.oauthClientId).toBe("dcr-client");
     expect(saved.oauthClientSecret).toBe("dcr-secret");
     expect(saved.clientIdSource).toBe("dcr");

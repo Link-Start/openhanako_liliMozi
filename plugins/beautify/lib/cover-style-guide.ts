@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { t } from "../../../lib/i18n.ts";
 
 export const COVER_STYLE_GUIDE_VERSION = "2026-05-26";

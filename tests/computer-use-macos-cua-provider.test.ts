@@ -1,9 +1,8 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { createMacosCuaProvider, resolveCuaDriverCommand } from "../core/computer-use/providers/macos-cua-provider.ts";
 import { COMPUTER_USE_ERRORS } from "../core/computer-use/errors.ts";
 
-function rawResult(structuredContent, content = [{ type: "text", text: "ok" }]) {
+function rawResult(structuredContent: any, content: any[] = [{ type: "text", text: "ok" }]) {
   return {
     stdout: JSON.stringify({ content, structuredContent }),
     stderr: "",
@@ -11,20 +10,20 @@ function rawResult(structuredContent, content = [{ type: "text", text: "ok" }]) 
   };
 }
 
-function makeRunner(handler) {
-  const calls = [];
+function makeRunner(handler: any) {
+  const calls: any[] = [];
   return {
     calls,
     runner: {
-      run: vi.fn(async (command, args, options = {}) => {
+      run: vi.fn(async (command: any, args: any, options: any = {}) => {
         calls.push({ command, args, options });
         return handler(command, args, options);
       }),
-      spawn: vi.fn((command, args, options = {}) => {
+      spawn: vi.fn((command: any, args: any, options: any = {}) => {
         calls.push({ command, args, options, spawned: true });
         return { unref: vi.fn() };
       }),
-    },
+    } as any,
   };
 }
 
@@ -233,7 +232,7 @@ describe("macos Cua provider", () => {
           { tree_markdown: "- [14] AXButton \"Three\"" },
           [
             { type: "text", text: '✅ Calculator\n- [14] AXButton "Three"' },
-            { type: "image", mimeType: "image/png", data: "abc" },
+            { type: "image", mimeType: "image/png", data: "abc" } as any,
           ],
         );
       }
@@ -350,7 +349,7 @@ describe("macos Cua provider", () => {
     });
     const lease = await provider.createLease({}, { appId: "com.apple.calculator" });
 
-    await provider.stop({}, lease);
+    await (provider.stop as any)({}, lease);
 
     expect(calls.map((call) => call.args[0])).toContain("stop");
     const stopCall = calls.find((call) => call.args[0] === "stop");
@@ -364,7 +363,7 @@ describe("macos Cua provider", () => {
     const { runner, calls } = makeRunner(() => rawResult({ ok: true }));
     const provider = createMacosCuaProvider({ platform: "darwin", command: "/tmp/cua-driver", runner });
 
-    await provider.stop({}, { leaseId: "lease-1" });
+    await (provider.stop as any)({}, { leaseId: "lease-1" });
 
     expect(calls.map((call) => call.args[0])).not.toContain("stop");
   });
@@ -468,7 +467,7 @@ describe("macos Cua provider", () => {
         },
         [
           { type: "text", text: '✅ Calculator\n- [14] AXButton "Three"' },
-          { type: "image", mimeType: "image/png", data: "abc" },
+          { type: "image", mimeType: "image/png", data: "abc" } as any,
         ],
       );
     });
@@ -640,7 +639,7 @@ describe("macos Cua provider", () => {
           },
           [
             { type: "text", text: "ok" },
-            { type: "image", mimeType: "image/png", data: "abc" },
+            { type: "image", mimeType: "image/png", data: "abc" } as any,
           ],
         );
       }

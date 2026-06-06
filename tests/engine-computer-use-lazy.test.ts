@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -19,7 +18,7 @@ describe("HanaEngine Computer Use lazy runtime", () => {
       hanakoHome: tmpDir,
       productDir: tmpDir,
       agentId: "hana",
-    });
+    } as any);
   }
 
   it("does not construct the Computer Use runtime during engine construction", () => {
@@ -71,7 +70,7 @@ describe("HanaEngine Computer Use lazy runtime", () => {
       hanakoHome: tmpDir,
       productDir: tmpDir,
       agentId: "hana",
-    });
+    } as any);
 
     expect(restarted.usageLedger.list({}).entries).toMatchObject([
       {

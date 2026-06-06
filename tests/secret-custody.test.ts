@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 
 describe("secret custody helpers", () => {
@@ -26,7 +25,7 @@ describe("secret custody helpers", () => {
     expect(resolveSecretPatch({
       patch: { api_key: MASKED_SECRET, base_url: "https://api.example/v1" },
       existing: { api_key: "sk-saved", base_url: "https://old.example/v1" },
-      secretKeys: ["api_key"],
+      secretKeys: ["api_key"] as any,
     })).toEqual({
       api_key: "sk-saved",
       base_url: "https://api.example/v1",
@@ -35,7 +34,7 @@ describe("secret custody helpers", () => {
     expect(resolveSecretPatch({
       patch: { api_key: "", base_url: "https://api.example/v1" },
       existing: { api_key: "sk-saved" },
-      secretKeys: ["api_key"],
+      secretKeys: ["api_key"] as any,
     })).toEqual({
       api_key: "",
       base_url: "https://api.example/v1",

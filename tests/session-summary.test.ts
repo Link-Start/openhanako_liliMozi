@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import os from "os";
 import fs from "fs";
@@ -105,7 +104,7 @@ describe("SessionSummaryManager.rollingSummary prompt contract", () => {
   }
 
   it("asks the model to emit summary fields as third-level headings", async () => {
-    callText.mockResolvedValueOnce("### 重要事实\n无\n\n### 事情经过\n[10:00] 用户在讨论记忆系统。");
+    (callText as any).mockResolvedValueOnce("### 重要事实\n无\n\n### 事情经过\n[10:00] 用户在讨论记忆系统。");
     const { manager, cleanup } = createManager();
     try {
       await manager.rollingSummary(
@@ -114,7 +113,7 @@ describe("SessionSummaryManager.rollingSummary prompt contract", () => {
         { model: "m", api: "openai-completions", api_key: "k", base_url: "http://x" },
       );
 
-      const prompt = callText.mock.calls[0][0].systemPrompt;
+      const prompt = (callText as any).mock.calls[0][0].systemPrompt;
       expect(prompt).toContain("### 重要事实");
       expect(prompt).toContain("### 事情经过");
       expect(prompt).toContain("直接以 ### 重要事实 开头输出");
@@ -133,7 +132,7 @@ describe("SessionSummaryManager.rollingSummary prompt contract", () => {
   });
 
   it("frames rolling summary as the agent reviewing its own existing memory snapshot", async () => {
-    callText.mockResolvedValueOnce("### 重要事实\n- 无\n\n### 事情经过\n- [2026-04-15 10:00] 用户在讨论记忆系统。");
+    (callText as any).mockResolvedValueOnce("### 重要事实\n- 无\n\n### 事情经过\n- [2026-04-15 10:00] 用户在讨论记忆系统。");
     const { manager, cleanup } = createManager();
     try {
       await manager.rollingSummary(
@@ -154,7 +153,7 @@ describe("SessionSummaryManager.rollingSummary prompt contract", () => {
         },
       );
 
-      const request = callText.mock.calls.at(-1)[0];
+      const request = (callText as any).mock.calls.at(-1)[0];
       expect(request.systemPrompt).toContain("你是 Hana");
       expect(request.systemPrompt).toContain("你正在整理自己刚刚经历的一段对话");
       expect(request.systemPrompt).toContain("## 你的身份与人格");

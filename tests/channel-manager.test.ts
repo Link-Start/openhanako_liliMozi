@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ChannelManager 单元测试
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -40,7 +39,7 @@ describe("Hana runtime path contracts", () => {
 
   it("can install the Pi SDK agent directory into a process env object", () => {
     const hanakoHome = path.join(os.tmpdir(), "hana-runtime-process", ".hanako");
-    const env = {};
+    const env: any = {};
 
     expect(configureProcessPiSdkEnv(hanakoHome, env)).toBe(path.join(hanakoHome, ".pi", "agent"));
     expect(env.PI_CODING_AGENT_DIR).toBe(path.join(hanakoHome, ".pi", "agent"));

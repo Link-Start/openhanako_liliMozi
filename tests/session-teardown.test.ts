@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SessionCoordinator._teardownSessionEntry — 统一 session 释放入口
  *
@@ -14,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionCoordinator } from "../core/session-coordinator.ts";
 
-function makeMockEntry({ hasShutdownHandlers = true } = {}) {
+function makeMockEntry({ hasShutdownHandlers = true }: any = {}) {
   const emit = vi.fn(async () => {});
   const dispose = vi.fn();
   const unsub = vi.fn();
@@ -33,7 +32,7 @@ function makeMockEntry({ hasShutdownHandlers = true } = {}) {
   };
 }
 
-function makeCoordinator(overrides = {}) {
+function makeCoordinator( overrides: any = {}) {
   // _teardownSessionEntry 只依赖 entry + log, 无需真实 deps
   // 通过最小 stub 构造实例
   return new SessionCoordinator({
@@ -150,7 +149,7 @@ describe("SessionCoordinator._teardownSessionEntry", () => {
     });
     const sessionPath = "/tmp/fake/session.jsonl";
     const { entry } = makeMockEntry();
-    entry.session.isStreaming = false;
+    (entry.session as any).isStreaming = false;
     coord.sessions.set(sessionPath, entry);
 
     await coord.closeAllSessions();

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // plugins/image-gen/adapters/volcengine.js
 import fs from "fs";
 import path from "path";
@@ -126,7 +125,7 @@ export const volcengineImageAdapter = {
 
     // 4. Translate params → API body
     const modelCapabilities = getModelCapabilities(modelId);
-    const body = {
+    const body: any = {
       model: modelId,
       prompt: params.prompt,
       response_format: "b64_json",

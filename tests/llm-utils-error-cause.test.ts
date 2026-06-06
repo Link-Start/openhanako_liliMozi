@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * tests/llm-utils-error-cause.test.js
  *
@@ -15,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { summarizeTitle } from "../core/llm-utils.ts";
 
 function makeProxyCauseError() {
-  const cause = new Error("connect ECONNREFUSED 127.0.0.1:7890");
+  const cause: any = new Error("connect ECONNREFUSED 127.0.0.1:7890");
   cause.code = "ECONNREFUSED";
   cause.address = "127.0.0.1";
   cause.port = 7890;

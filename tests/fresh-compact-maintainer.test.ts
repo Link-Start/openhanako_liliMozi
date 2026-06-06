@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -14,7 +13,7 @@ function makeAgent(id = "agent-a") {
   const sessionDir = path.join(rootDir, "sessions", id);
   fs.mkdirSync(agentDir, { recursive: true });
   fs.mkdirSync(sessionDir, { recursive: true });
-  return { id, agentDir, sessionDir };
+  return { id, agentDir, sessionDir } as any;
 }
 
 describe("FreshCompactMaintainer", () => {

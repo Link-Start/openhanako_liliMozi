@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -87,7 +86,7 @@ describe("create_artifact session file ownership", () => {
       registerSessionFile,
     });
 
-    const result = await tool.execute("call-1", {
+    const result = await (tool.execute as any)("call-1", {
       type: "code",
       title: "Snippet",
       content: "console.log(1)",

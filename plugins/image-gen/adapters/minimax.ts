@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   createLocalTaskId,
   downloadImageUrls,
@@ -17,7 +16,7 @@ function resolveMiniMaxBaseUrl(baseUrl) {
   return `${base}/v1`;
 }
 
-async function getCredentials(ctx, params = {}) {
+async function getCredentials(ctx, params: any = {}) {
   const providerId = params.credentialProviderId || params.providerId || "minimax";
   const creds = await ctx.bus.request("provider:credentials", { providerId });
   if (creds.error || !creds.apiKey) {
@@ -84,7 +83,7 @@ export const minimaxImageAdapter = {
 
     const images = normalizeImageInput(params.image);
     if (images.length > 0) {
-      body.subject_reference = images.map((image) => ({
+      (body as any).subject_reference = images.map((image) => ({
         type: "character",
         image_file: image,
       }));

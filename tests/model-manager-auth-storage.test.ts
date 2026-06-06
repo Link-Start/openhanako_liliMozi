@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -46,7 +45,7 @@ function deepseekProvider(apiKey) {
     api: "openai-completions",
     models: ["deepseek-v4-pro"],
   };
-  if (apiKey !== undefined) provider.api_key = apiKey;
+  if (apiKey !== undefined) (provider as any).api_key = apiKey;
   return provider;
 }
 

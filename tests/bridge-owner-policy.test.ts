@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import {
   isBridgeOwner,
@@ -9,7 +8,7 @@ describe("bridge owner policy", () => {
   it("preserves exact string owner matching for non-QQ platforms", () => {
     const agent = { config: { bridge: { telegram: { owner: "tg-owner" } } } };
 
-    expect(isBridgeOwner({ platform: "telegram", userId: "tg-owner", agent })).toBe(true);
+    expect(isBridgeOwner({ platform: "telegram", userId: "tg-owner", agent } as any)).toBe(true);
     expect(isBridgeOwner({
       platform: "telegram",
       userId: "tg-alias",

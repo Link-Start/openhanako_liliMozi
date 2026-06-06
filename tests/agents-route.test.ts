@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -96,7 +95,7 @@ describe("agents route", () => {
   it("returns create validation status codes without emitting agent-created", async () => {
     const { createAgentsRoute } = await import("../server/routes/agents.ts");
     const app = new Hono();
-    const err = new Error('Invalid yuan "caikangyong": template not found in lib/yuan');
+    const err: any = new Error('Invalid yuan "caikangyong": template not found in lib/yuan');
     err.code = "INVALID_YUAN";
     err.statusCode = 400;
     const engine = {

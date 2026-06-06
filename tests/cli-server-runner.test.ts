@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it } from "vitest";
 import fs from "fs";
 import os from "os";

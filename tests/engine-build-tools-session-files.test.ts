@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -58,8 +57,8 @@ describe("HanaEngine.buildTools session external sandbox grants", () => {
       getSessionPath: () => sessionPath,
     });
 
-    const sandboxOpts = createSandboxedTools.mock.calls[0][2];
-    expect(sandboxOpts.getExternalReadPaths()).toEqual([fs.realpathSync(externalFile)]);
+    const sandboxOpts = (createSandboxedTools.mock.calls as any)[0][2];
+    expect(sandboxOpts!.getExternalReadPaths()).toEqual([fs.realpathSync(externalFile)]);
   });
 
   it("passes the sandbox network preference as a dynamic sandbox option", () => {
@@ -89,10 +88,10 @@ describe("HanaEngine.buildTools session external sandbox grants", () => {
       getSessionPath: () => path.join(agentDir, "sessions", "one.jsonl"),
     });
 
-    const sandboxOpts = createSandboxedTools.mock.calls[0][2];
-    expect(sandboxOpts.getSandboxNetworkEnabled()).toBe(true);
+    const sandboxOpts = (createSandboxedTools.mock.calls as any)[0][2];
+    expect(sandboxOpts!.getSandboxNetworkEnabled()).toBe(true);
     prefs = { sandbox: true, sandbox_network: false };
-    expect(sandboxOpts.getSandboxNetworkEnabled()).toBe(false);
+    expect(sandboxOpts!.getSandboxNetworkEnabled()).toBe(false);
   });
 
   it("keeps Windows restricted-token command sandbox networking enabled at the tool boundary", () => {
@@ -125,8 +124,8 @@ describe("HanaEngine.buildTools session external sandbox grants", () => {
         getSessionPath: () => path.join(agentDir, "sessions", "one.jsonl"),
       });
 
-      const sandboxOpts = createSandboxedTools.mock.calls[0][2];
-      expect(sandboxOpts.getSandboxNetworkEnabled()).toBe(true);
+      const sandboxOpts = (createSandboxedTools.mock.calls as any)[0][2];
+      expect(sandboxOpts!.getSandboxNetworkEnabled()).toBe(true);
     } finally {
       Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     }
@@ -179,8 +178,8 @@ describe("HanaEngine.buildTools session external sandbox grants", () => {
       getSessionPath: () => path.join(agentDir, "sessions", "one.jsonl"),
     });
 
-    const sandboxOpts = createSandboxedTools.mock.calls[0][2];
-    expect(sandboxOpts.getSandboxNetworkEnabled()).toBe(true);
+    const sandboxOpts = (createSandboxedTools.mock.calls as any)[0][2];
+    expect(sandboxOpts!.getSandboxNetworkEnabled()).toBe(true);
   });
 
   it("includes inherited parent session files in read-only sandbox inputs", () => {
@@ -231,8 +230,8 @@ describe("HanaEngine.buildTools session external sandbox grants", () => {
       fileReadSessionPaths: [parentSessionPath],
     });
 
-    const sandboxOpts = createSandboxedTools.mock.calls[0][2];
-    expect(sandboxOpts.getExternalReadPaths()).toEqual([
+    const sandboxOpts = (createSandboxedTools.mock.calls as any)[0][2];
+    expect(sandboxOpts!.getExternalReadPaths()).toEqual([
       fs.realpathSync(childExternal),
       fs.realpathSync(parentExternal),
     ]);

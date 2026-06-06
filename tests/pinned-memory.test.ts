@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -31,12 +30,12 @@ describe("pinned memory tools", () => {
     const content = "first line\nsecond line";
 
     const pinResult = await pin.execute("pin-1", { content });
-    expect(pinResult.details.item).toMatchObject({ content });
+    expect((pinResult.details as any).item).toMatchObject({ content });
 
     const unpinResult = await unpin.execute("unpin-1", { keyword: "first line" });
 
-    expect(unpinResult.details.removedCount).toBe(1);
-    expect(unpinResult.details.removedItems).toEqual([
+    expect((unpinResult.details as any).removedCount).toBe(1);
+    expect((unpinResult.details as any).removedItems).toEqual([
       expect.objectContaining({ content }),
     ]);
     expect(fs.readFileSync(path.join(agentDir, "pinned.md"), "utf-8")).not.toContain("second line");
@@ -53,8 +52,8 @@ describe("pinned memory tools", () => {
 
     const result = await unpin.execute("unpin-legacy", { keyword: "continued" });
 
-    expect(result.details.removedCount).toBe(1);
-    expect(result.details.removedItems).toEqual([
+    expect((result.details as any).removedCount).toBe(1);
+    expect((result.details as any).removedItems).toEqual([
       expect.objectContaining({ content: "alpha line\ncontinued line" }),
     ]);
     expect(fs.readFileSync(path.join(agentDir, "pinned.md"), "utf-8")).toBe("- beta line\n");
@@ -67,8 +66,8 @@ describe("pinned memory tools", () => {
 
     const result = await unpin.execute("unpin-single", { keyword: "alpha" });
 
-    expect(result.details.removedCount).toBe(1);
-    expect(result.details.removedItems).toEqual([
+    expect((result.details as any).removedCount).toBe(1);
+    expect((result.details as any).removedItems).toEqual([
       expect.objectContaining({ content: "alpha line" }),
     ]);
     expect(fs.readFileSync(path.join(agentDir, "pinned.md"), "utf-8")).toBe("- beta line\n");
@@ -78,11 +77,11 @@ describe("pinned memory tools", () => {
     const agentDir = makeAgentDir();
     const { pin, unpin } = getTools(agentDir);
     const pinResult = await pin.execute("pin-id", { content: "remove by id\nwith continuation" });
-    const id = pinResult.details.item.id;
+    const id = (pinResult.details as any).item.id;
 
     const result = await unpin.execute("unpin-id", { id });
 
-    expect(result.details.removedCount).toBe(1);
+    expect((result.details as any).removedCount).toBe(1);
     expect(fs.readFileSync(path.join(agentDir, "pinned.md"), "utf-8")).toBe("");
   });
 });

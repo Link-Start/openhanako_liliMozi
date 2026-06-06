@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -69,7 +68,7 @@ describe("current_status tool", () => {
       getSessionModel: () => ({ id: "claude-sonnet-4-5", provider: "anthropic", name: "Claude Sonnet 4.5" }),
     });
 
-    const payload = textPayload(await tool.execute("call_1", { action: "list" }));
+    const payload = textPayload(await (tool.execute as any)("call_1", { action: "list" }));
 
     expect(payload.available.map((item) => item.key)).toEqual([
       "time",
@@ -149,7 +148,7 @@ describe("current_status tool", () => {
       getTimezone: () => "Asia/Shanghai",
     });
 
-    const payload = textPayload(await tool.execute("call_1", { action: "get", key: "logical_date" }));
+    const payload = textPayload(await (tool.execute as any)("call_1", { action: "get", key: "logical_date" }));
 
     expect(payload).toEqual({
       logical_date: {
@@ -166,7 +165,7 @@ describe("current_status tool", () => {
       now: () => new Date("2026-05-03T19:30:00.000Z"),
     });
 
-    const payload = textPayload(await tool.execute("call_1", { action: "get", key: "agent" }));
+    const payload = textPayload(await (tool.execute as any)("call_1", { action: "get", key: "agent" }));
 
     expect(payload).toEqual({
       agent: {
@@ -579,7 +578,7 @@ describe("current_status tool", () => {
   it("returns a clear error for unknown keys", async () => {
     const tool = createCurrentStatusTool();
 
-    const result = await tool.execute("call_1", { action: "get", key: "session_path" });
+    const result = await (tool.execute as any)("call_1", { action: "get", key: "session_path" });
 
     expect(result.content[0].text).toContain("Unknown status key");
     expect(result.details.errorCode).toBe("UNKNOWN_STATUS_KEY");

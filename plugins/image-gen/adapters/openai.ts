@@ -1,4 +1,3 @@
-// @ts-nocheck
 // plugins/image-gen/adapters/openai.js
 import fs from "fs";
 import path from "path";
@@ -96,7 +95,7 @@ export const openaiImageAdapter = {
     // 4. Translate params → API body
     const outputFormat = params.format || providerDefaults?.format || "jpeg";
     const effectiveRatio = params.aspect_ratio || params.aspectRatio || params.ratio || providerDefaults?.aspect_ratio;
-    const body = {
+    const body: any = {
       model: modelId,
       prompt: params.prompt,
       n: 1,

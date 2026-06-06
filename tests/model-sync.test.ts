@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * model-sync.js 单元测试
  *
@@ -904,7 +903,7 @@ describe("syncModels", () => {
 
     syncModels(providers, { modelsJsonPath });
 
-    const registry = createModelRegistry(new AuthStorage(tmpDir), modelsJsonPath);
+    const registry = createModelRegistry(new (AuthStorage as any)(tmpDir), modelsJsonPath);
     const available = await registry.getAvailable();
     expect(available).toHaveLength(1);
     expect(available[0]).toMatchObject({

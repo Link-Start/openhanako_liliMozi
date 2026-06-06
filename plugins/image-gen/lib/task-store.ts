@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * image-gen/lib/task-store.js
  *
@@ -47,6 +46,10 @@ function normalizeLoadedTask(task) {
 }
 
 export class TaskStore {
+  declare _dataDir: any;
+  declare _debounceTimer: any;
+  declare _filePath: any;
+  declare _tasks: any;
   /**
    * @param {string} dataDir  Directory where tasks.json lives (created if absent)
    */

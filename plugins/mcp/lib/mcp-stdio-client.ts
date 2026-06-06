@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -11,6 +10,15 @@ const STDIO_GRACEFUL_MS = 2_000;
 const STDIO_FORCE_MS = 3_000;
 
 export class McpStdioClient {
+  declare _closed: any;
+  declare _nextId: any;
+  declare _pending: any;
+  declare _stdoutBuffer: any;
+  declare _stopping: any;
+  declare log: any;
+  declare onClose: any;
+  declare process: any;
+  declare server: any;
   constructor(server, { log = console, onClose = null } = {}) {
     this.server = server;
     this.log = log;
@@ -88,7 +96,7 @@ export class McpStdioClient {
   }
 
   async listTools() {
-    const result = await this.request("tools/list", {}, { timeout: requestTimeoutMs(this.server) });
+    const result: any = await this.request("tools/list", {}, { timeout: requestTimeoutMs(this.server) });
     return Array.isArray(result?.tools) ? result.tools : [];
   }
 
@@ -99,7 +107,7 @@ export class McpStdioClient {
     }, { timeout: requestTimeoutMs(this.server) });
   }
 
-  request(method, params = {}, { timeout = 30_000 } = {}) {
+  request(method, params: any = {}, { timeout = 30_000 } = {}) {
     if (!this.running) throw new Error("MCP server is not running");
     const id = this._nextId++;
     const payload = { jsonrpc: "2.0", id, method, params };
@@ -122,7 +130,7 @@ export class McpStdioClient {
     });
   }
 
-  notify(method, params = {}) {
+  notify(method, params: any = {}) {
     if (!this.running) return;
     this._send({ jsonrpc: "2.0", method, params });
   }
@@ -139,7 +147,7 @@ export class McpStdioClient {
     this.process = null;
     this._closed = true;
     try { proc.stdin.end(); } catch {}
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       let settled = false;
       const finish = () => {
         if (settled) return;

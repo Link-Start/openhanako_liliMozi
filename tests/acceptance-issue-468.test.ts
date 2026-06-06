@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * 验收测试 — Provider 兼容层架构统一 plan 收尾
  *
@@ -217,7 +216,7 @@ describe("issue #468 验收 — DeepSeek 思考模式协议铁律", () => {
       };
       const payload = {
         model: "deepseek-v4-flash",
-        messages: convertMessages(sdkModel, context, {}),
+        messages: convertMessages(sdkModel as any, context as any, {} as any),
         tools: [{ type: "function", function: { name: "search" } }],
       };
       const result = normalizeProviderPayload(payload, v4FlashModel, {

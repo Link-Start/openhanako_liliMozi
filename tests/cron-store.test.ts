@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CronStore } from "../lib/desk/cron-store.ts";
 import fs from "fs";
@@ -264,7 +263,7 @@ describe("Automation job read model", () => {
       actorAgentId: "hana",
       executionContext,
       model,
-    });
+    } as any);
 
     expect(job.schemaVersion).toBe(2);
     expect(job.trigger).toEqual({ kind: "cron", expression: "0 9 * * *" });
@@ -303,7 +302,7 @@ describe("Automation job read model", () => {
       prompt: "morning summary",
       actorAgentId: "hana",
       model: { id: "gpt-4o", provider: "openai" },
-    });
+    } as any);
 
     const updated = store.updateJob(job.id, {
       schedule: "30 18 * * *",
@@ -374,7 +373,7 @@ describe("Automation job read model", () => {
         },
       },
       createdBy: { kind: "agent", agentId: "hana", sourceSessionPath: "/sessions/source.jsonl" },
-    });
+    } as any);
 
     expect(job.prompt).toBe("");
     expect(job.label).toBe("Drink Water");
@@ -411,7 +410,7 @@ describe("Automation job read model", () => {
         actionId: "create_note",
         params: { folder: "daily" },
       },
-    });
+    } as any);
 
     expect(job.label).toBe("notes:create_note");
     expect(job.executor).toEqual({
@@ -435,7 +434,7 @@ describe("Automation job read model", () => {
         action: "file.create",
         params: { relativePath: "notes/today.md", content: "# Today\n" },
       },
-    })).toThrow(/unsupported direct automation action: file\.create/);
+    } as any)).toThrow(/unsupported direct automation action: file\.create/);
   });
 });
 
@@ -454,7 +453,7 @@ describe("CronStore updateJob 字段白名单", () => {
       schedule: 3600000,
       prompt: "test",
       model: firstModel,
-    });
+    } as any);
 
     expect(job.model).toEqual(firstModel);
 

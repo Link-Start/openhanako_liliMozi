@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -35,7 +34,7 @@ describe("memory prompt boundaries", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    callText.mockResolvedValue("[]");
+    (callText as any).mockResolvedValue("[]");
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-memory-prompts-"));
   });
 
@@ -57,7 +56,7 @@ describe("memory prompt boundaries", () => {
       },
     });
 
-    const prompt = callText.mock.calls[0][0].systemPrompt;
+    const prompt = (callText as any).mock.calls[0][0].systemPrompt;
     expect(prompt).toContain("你是 Hana");
     expect(prompt).toContain("从自己的视角审视本次对话");
     expect(prompt).toContain("这是你在本次对话开始前已经拥有的记忆");
@@ -75,7 +74,7 @@ describe("memory prompt boundaries", () => {
 
     await manager._callRollingLLM("【用户】我最近在关注记忆系统。", "", reasoningModel, 2);
 
-    const request = callText.mock.calls[0][0];
+    const request = (callText as any).mock.calls[0][0];
     expect(request.messages[0].content).toContain("重要事实最多24字。事情经过最多56字。");
     expect(request.maxTokens).toBeGreaterThan(150);
   });
@@ -93,8 +92,8 @@ describe("memory prompt boundaries", () => {
     await compileToday(manager, path.join(tmpDir, "today.md"), RESOLVED_MODEL);
     await compileWeek(manager, path.join(tmpDir, "week.md"), RESOLVED_MODEL);
 
-    const todayPrompt = callText.mock.calls[0][0].systemPrompt;
-    const weekPrompt = callText.mock.calls[1][0].systemPrompt;
+    const todayPrompt = (callText as any).mock.calls[0][0].systemPrompt;
+    const weekPrompt = (callText as any).mock.calls[1][0].systemPrompt;
     for (const prompt of [todayPrompt, weekPrompt]) {
       expect(prompt).toContain("工作相关内容只允许保留到大主题层级");
       expect(prompt).toContain("领域/项目/主题");
@@ -119,7 +118,7 @@ describe("memory prompt boundaries", () => {
 
     await compileToday(manager, path.join(tmpDir, "today.md"), reasoningModel);
 
-    const request = callText.mock.calls[0][0];
+    const request = (callText as any).mock.calls[0][0];
     expect(request.systemPrompt).toContain("最多 300 字");
     expect(request.maxTokens).toBeGreaterThan(450);
   });
@@ -131,7 +130,7 @@ describe("memory prompt boundaries", () => {
 
     await compileLongterm(weekPath, longtermPath, RESOLVED_MODEL);
 
-    const prompt = callText.mock.calls[0][0].systemPrompt;
+    const prompt = (callText as any).mock.calls[0][0].systemPrompt;
     expect(prompt).toContain("记忆不是工作日志");
     expect(prompt).toContain("用户画像");
     expect(prompt).toContain("长期关注方向");
@@ -155,7 +154,7 @@ describe("memory prompt boundaries", () => {
 
     await processDirtySessions(summaryManager, factStore, RESOLVED_MODEL);
 
-    const prompt = callText.mock.calls[0][0].systemPrompt;
+    const prompt = (callText as any).mock.calls[0][0].systemPrompt;
     expect(prompt).toContain("只提取用户画像和粗颗粒近况");
     expect(prompt).toContain("禁止提取工作方式偏好");
     expect(prompt).toContain("如果一条事实描述的是“以后遇到类似任务应该怎么做”");
@@ -163,7 +162,7 @@ describe("memory prompt boundaries", () => {
   });
 
   it("corrects example-anchored fact dates when a legacy summary has a single source day", async () => {
-    callText.mockResolvedValue(JSON.stringify([
+    (callText as any).mockResolvedValue(JSON.stringify([
       {
         fact: "用户最近在关注记忆系统",
         tags: ["记忆系统", "近况"],
@@ -202,7 +201,7 @@ describe("memory prompt boundaries", () => {
   });
 
   it("nulls legacy HH:mm fact dates for cross-day summaries instead of guessing one date", async () => {
-    callText.mockResolvedValue(JSON.stringify([
+    (callText as any).mockResolvedValue(JSON.stringify([
       {
         fact: "用户最近在关注记忆系统",
         tags: ["记忆系统", "近况"],
@@ -241,7 +240,7 @@ describe("memory prompt boundaries", () => {
   });
 
   it("rejects fact times that do not appear in the summary timeline", async () => {
-    callText.mockResolvedValue(JSON.stringify([
+    (callText as any).mockResolvedValue(JSON.stringify([
       {
         fact: "用户最近在关注记忆系统",
         tags: ["记忆系统", "近况"],
@@ -280,7 +279,7 @@ describe("memory prompt boundaries", () => {
   });
 
   it("does not trust full summary dates outside the source session range", async () => {
-    callText.mockResolvedValue(JSON.stringify([
+    (callText as any).mockResolvedValue(JSON.stringify([
       {
         fact: "用户最近在关注记忆系统",
         tags: ["记忆系统", "近况"],
@@ -319,7 +318,7 @@ describe("memory prompt boundaries", () => {
   });
 
   it("uses caller-provided source time ranges for old summaries without persisted time metadata", async () => {
-    callText.mockResolvedValue(JSON.stringify([
+    (callText as any).mockResolvedValue(JSON.stringify([
       {
         fact: "用户最近在关注记忆系统",
         tags: ["记忆系统", "近况"],

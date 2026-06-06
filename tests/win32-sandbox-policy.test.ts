@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -63,7 +62,7 @@ describe("Windows sandbox policy projection", () => {
       cwd: workspace,
       externalReadPaths: [externalFile],
       systemReadRoots: [externalDir],
-    });
+    } as any);
 
     expect(grants.writePaths).toEqual([real(workspace)]);
     expect(grants.optionalWritePaths).toEqual(expect.arrayContaining([
@@ -114,7 +113,7 @@ describe("Windows sandbox policy projection", () => {
       policy,
       cwd: workspace,
       systemReadRoots: [externalDir],
-    });
+    } as any);
 
     expect(grants.readPaths).toEqual([]);
     expect(grants.optionalReadPaths).toEqual([]);
@@ -183,7 +182,7 @@ describe("Windows sandbox policy projection", () => {
       policy,
       cwd: workspace,
       externalReadPaths: [externalFile],
-    });
+    } as any);
 
     expect(grants.readPaths).toEqual([]);
     expect(grants.readPaths).not.toContain(real(optionalPrompt));

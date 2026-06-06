@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { ComputerHost } from "../core/computer-use/computer-host.ts";
 import { ComputerProviderRegistry } from "../core/computer-use/provider-registry.ts";
@@ -42,7 +41,7 @@ function makeForegroundTool() {
     windowId: target?.windowId || "123",
     allowedActions: ["click_point", "stop"],
     providerState: {},
-  });
+  } as any);
   const providers = new ComputerProviderRegistry();
   providers.register(provider);
   const host = new ComputerHost({
@@ -68,7 +67,7 @@ function makeForegroundTool() {
 
 function makeNativeCursorTool() {
   const provider = createMockComputerProvider({ providerId: "macos:cua" });
-  provider.capabilities.nativeCursor = true;
+  (provider.capabilities as any).nativeCursor = true;
   const providers = new ComputerProviderRegistry();
   providers.register(provider);
   const host = new ComputerHost({
@@ -101,7 +100,7 @@ function makeCoordinateOnlyTool() {
     windowId: target?.windowId || "win-1",
     allowedActions: ["click_point", "double_click", "type_text", "press_key", "scroll", "drag", "stop"],
     providerState: {},
-  });
+  } as any);
   const providers = new ComputerProviderRegistry();
   providers.register(provider);
   const host = new ComputerHost({
@@ -134,7 +133,7 @@ function makeHybridCoordinateTool() {
     windowId: target?.windowId || "win-1",
     allowedActions: ["click_element", "double_click", "type_text", "press_key", "scroll", "perform_secondary_action", "click_point", "stop"],
     providerState: {},
-  });
+  } as any);
   const providers = new ComputerProviderRegistry();
   providers.register(provider);
   const host = new ComputerHost({
@@ -169,7 +168,7 @@ function makeCleanElementOnlyTool() {
     windowId: target?.windowId || "win-1",
     allowedActions: ["click_element", "type_text", "press_key", "scroll", "perform_secondary_action", "stop"],
     providerState: {},
-  });
+  } as any);
   const providers = new ComputerProviderRegistry();
   providers.register(provider);
   const host = new ComputerHost({
@@ -243,7 +242,7 @@ function makeApprovalTool(confirmAction = "confirmed", {
 describe("computer tool", () => {
   it("does not expose provider-disabled input-injection actions in the model schema", () => {
     const { tool } = makeTool();
-    const actions = tool.parameters.properties.action.enum;
+    const actions = (tool.parameters.properties.action as any).enum;
 
     expect(actions).toContain("click_element");
     expect(actions).toContain("perform_secondary_action");
@@ -262,7 +261,7 @@ describe("computer tool", () => {
     const result = await tool.execute("call-disabled", { action: "status" }, null, null, ctx);
 
     expect(result.content[0].text).toContain("Computer Use is disabled for this agent");
-    expect(result.details.errorCode).toBe(COMPUTER_USE_ERRORS.DISABLED);
+    expect((result.details as any).errorCode).toBe(COMPUTER_USE_ERRORS.DISABLED);
   });
 
   it("creates a lease and reads app state", async () => {
@@ -273,16 +272,16 @@ describe("computer tool", () => {
       windowId: "win-1",
     }, null, null, ctx);
 
-    expect(started.details.leaseId).toBeTruthy();
+    expect((started.details as any).leaseId).toBeTruthy();
     const state = await tool.execute("call-2", {
       action: "get_app_state",
-      leaseId: started.details.leaseId,
+      leaseId: (started.details as any).leaseId,
     }, null, null, ctx);
 
     expect(state.content[0].type).toBe("text");
     expect(state.content[1].type).toBe("image");
-    expect(state.details.snapshotId).toBeTruthy();
-    expect(state.details.elements[0].elementId).toBe("mock-button");
+    expect((state.details as any).snapshotId).toBeTruthy();
+    expect((state.details as any).elements[0].elementId).toBe("mock-button");
   });
 
   it("includes a concise element summary in app state results", async () => {
@@ -323,8 +322,8 @@ describe("computer tool", () => {
     expect(state.content[0].text).not.toContain("click_point");
     expect(state.content[0].text).not.toContain("double_click");
     expect(state.content[0].text).not.toContain("drag");
-    expect(state.details.actionCapabilities).not.toHaveProperty("pointClick");
-    expect(state.details.allowedActions).toEqual(["type_text", "press_key", "scroll", "stop"]);
+    expect((state.details as any).actionCapabilities).not.toHaveProperty("pointClick");
+    expect((state.details as any).allowedActions).toEqual(["type_text", "press_key", "scroll", "stop"]);
   });
 
   it("does not advertise foreground-only coordinate clicks", async () => {
@@ -342,7 +341,7 @@ describe("computer tool", () => {
     expect(state.content[0].text).toContain("no clean element action");
     expect(state.content[0].text).not.toContain("Use screenshot coordinates");
     expect(state.content[0].text).not.toContain("click_point");
-    expect(state.details.actionCapabilities).not.toHaveProperty("pointClick");
+    expect((state.details as any).actionCapabilities).not.toHaveProperty("pointClick");
   });
 
   it("keeps guidance element-only even when a provider reports hidden point-click support", async () => {
@@ -399,10 +398,10 @@ describe("computer tool", () => {
       action: "stop",
     }, null, null, ctx);
 
-    expect(state.details.leaseId).toBe(started.details.leaseId);
-    expect(action.details.errorCode).toBeUndefined();
-    expect(action.details.result.action).toBe("click_element");
-    expect(stopped.details.leaseId).toBe(started.details.leaseId);
+    expect((state.details as any).leaseId).toBe((started.details as any).leaseId);
+    expect((action.details as any).errorCode).toBeUndefined();
+    expect((action.details as any).result.action).toBe("click_element");
+    expect((stopped.details as any).leaseId).toBe((started.details as any).leaseId);
   });
 
   it("returns the current lease when start is repeated for the same app", async () => {
@@ -418,8 +417,8 @@ describe("computer tool", () => {
       windowId: "win-1",
     }, null, null, ctx);
 
-    expect(second.details.errorCode).toBeUndefined();
-    expect(second.details.leaseId).toBe(first.details.leaseId);
+    expect((second.details as any).errorCode).toBeUndefined();
+    expect((second.details as any).leaseId).toBe((first.details as any).leaseId);
   });
 
   it("lets a newer session take over the active computer lease", async () => {
@@ -443,17 +442,17 @@ describe("computer tool", () => {
       action: "get_app_state",
     }, null, null, ctx);
 
-    expect(second.details.errorCode).toBeUndefined();
-    expect(second.details.leaseId).not.toBe(first.details.leaseId);
-    expect(second.details.sessionPath).toBe("/tmp/other-session.jsonl");
-    expect(oldState.details.errorCode).toBe(COMPUTER_USE_ERRORS.LEASE_RELEASED);
+    expect((second.details as any).errorCode).toBeUndefined();
+    expect((second.details as any).leaseId).not.toBe((first.details as any).leaseId);
+    expect((second.details as any).sessionPath).toBe("/tmp/other-session.jsonl");
+    expect((oldState.details as any).errorCode).toBe(COMPUTER_USE_ERRORS.LEASE_RELEASED);
   });
 
   it("returns a typed error for text-only models", async () => {
     const { tool, ctx } = makeTool({ id: "deepseek-v4-pro", provider: "deepseek", input: ["text"] });
     const result = await tool.execute("call-1", { action: "list_apps" }, null, null, ctx);
 
-    expect(result.details.errorCode).toBe(COMPUTER_USE_ERRORS.REQUIRES_VISION_MODEL);
+    expect((result.details as any).errorCode).toBe(COMPUTER_USE_ERRORS.REQUIRES_VISION_MODEL);
     expect(result.content[0].text).toContain("Computer Use requires a model with image input support");
   });
 
@@ -461,7 +460,7 @@ describe("computer tool", () => {
     const { tool, ctx } = makeTool(undefined, { enabled: false });
     const result = await tool.execute("call-1", { action: "list_apps" }, null, null, ctx);
 
-    expect(result.details.errorCode).toBe(COMPUTER_USE_ERRORS.DISABLED);
+    expect((result.details as any).errorCode).toBe(COMPUTER_USE_ERRORS.DISABLED);
     expect(result.content[0].text).toContain("Computer Use is disabled for this agent");
   });
 
@@ -474,13 +473,13 @@ describe("computer tool", () => {
     }, null, null, ctx);
     const state = await tool.execute("call-2", {
       action: "get_app_state",
-      leaseId: started.details.leaseId,
+      leaseId: (started.details as any).leaseId,
     }, null, null, ctx);
 
     await tool.execute("call-3", {
       action: "click_element",
-      leaseId: started.details.leaseId,
-      snapshotId: state.details.snapshotId,
+      leaseId: (started.details as any).leaseId,
+      snapshotId: (state.details as any).snapshotId,
       elementId: "mock-button",
     }, null, null, ctx);
 
@@ -497,8 +496,8 @@ describe("computer tool", () => {
     expect(overlayEvents.every((event) => event.agentId === "hana")).toBe(true);
     expect(overlayEvents.at(-1)).toMatchObject({
       action: "click_element",
-      leaseId: started.details.leaseId,
-      snapshotId: state.details.snapshotId,
+      leaseId: (started.details as any).leaseId,
+      snapshotId: (state.details as any).snapshotId,
       target: { coordinateSpace: "element", elementId: "mock-button" },
     });
   });
@@ -524,13 +523,13 @@ describe("computer tool", () => {
     }, null, null, ctx);
     const state = await tool.execute("call-2", {
       action: "get_app_state",
-      leaseId: started.details.leaseId,
+      leaseId: (started.details as any).leaseId,
     }, null, null, ctx);
 
     await tool.execute("call-3", {
       action: "click_element",
-      leaseId: started.details.leaseId,
-      snapshotId: state.details.snapshotId,
+      leaseId: (started.details as any).leaseId,
+      snapshotId: (state.details as any).snapshotId,
       elementId: "mock-button",
     }, null, null, ctx);
 
@@ -549,26 +548,26 @@ describe("computer tool", () => {
     }, null, null, ctx);
     const state = await tool.execute("call-2", {
       action: "get_app_state",
-      leaseId: started.details.leaseId,
+      leaseId: (started.details as any).leaseId,
     }, null, null, ctx);
 
     const result = await tool.execute("call-3", {
       action: "perform_secondary_action",
-      leaseId: started.details.leaseId,
-      snapshotId: state.details.snapshotId,
+      leaseId: (started.details as any).leaseId,
+      snapshotId: (state.details as any).snapshotId,
       elementId: "mock-button",
     }, null, null, ctx);
 
-    expect(result.details.errorCode).toBeUndefined();
-    expect(result.details.action).toBe("perform_secondary_action");
+    expect((result.details as any).errorCode).toBeUndefined();
+    expect((result.details as any).action).toBe("perform_secondary_action");
   });
 
   it("does not expose double click as a model action", async () => {
     const { tool, ctx } = makeTool();
     const result = await tool.execute("call-hidden", { action: "double_click" }, null, null, ctx);
 
-    expect(result.details.errorCode).toBe(COMPUTER_USE_ERRORS.CAPABILITY_UNSUPPORTED);
-    expect(result.details.action).toBe("double_click");
+    expect((result.details as any).errorCode).toBe(COMPUTER_USE_ERRORS.CAPABILITY_UNSUPPORTED);
+    expect((result.details as any).action).toBe("double_click");
   });
 
   it("asks for app approval and retries start after confirmation", async () => {
@@ -581,8 +580,8 @@ describe("computer tool", () => {
       windowId: "win-1",
     }, null, null, ctx);
 
-    expect(result.details.leaseId).toBeTruthy();
-    expect(result.details.confirmation.status).toBe("confirmed");
+    expect((result.details as any).leaseId).toBeTruthy();
+    expect((result.details as any).confirmation.status).toBe("confirmed");
     expect(confirmStore.create).toHaveBeenCalledWith(
       "computer_app_approval",
       expect.objectContaining({
@@ -614,8 +613,8 @@ describe("computer tool", () => {
       appName: "Mock Notes",
     }, null, null, ctx);
 
-    expect(result.details.leaseId).toBeTruthy();
-    expect(result.details.confirmation.status).toBe("confirmed");
+    expect((result.details as any).leaseId).toBeTruthy();
+    expect((result.details as any).confirmation.status).toBe("confirmed");
     expect(confirmStore.create).toHaveBeenCalledWith(
       "computer_app_approval",
       expect.objectContaining({
@@ -665,8 +664,8 @@ describe("computer tool", () => {
       expect.any(Object),
     );
     expect(confirmStore.create).not.toHaveBeenCalled();
-    expect(result.details.leaseId).toBeTruthy();
-    expect(result.details.confirmation).toMatchObject({
+    expect((result.details as any).leaseId).toBeTruthy();
+    expect((result.details as any).confirmation).toMatchObject({
       kind: "computer_app_approval",
       status: "approved",
       reviewer: "large_tool_model",
@@ -710,7 +709,7 @@ describe("computer tool", () => {
       type: "session_confirmation",
       request: { kind: "computer_app_approval" },
     });
-    expect(result.details.confirmation.status).toBe("confirmed");
+    expect((result.details as any).confirmation.status).toBe("confirmed");
     expect(approve).toHaveBeenCalledWith(expect.objectContaining({
       providerId: "mock",
       appId: "app.notes",
@@ -727,9 +726,9 @@ describe("computer tool", () => {
       windowId: "win-1",
     }, null, null, ctx);
 
-    expect(result.details.leaseId).toBeUndefined();
-    expect(result.details.confirmation.status).toBe("rejected");
-    expect(result.details.confirmed).toBe(false);
+    expect((result.details as any).leaseId).toBeUndefined();
+    expect((result.details as any).confirmation.status).toBe("rejected");
+    expect((result.details as any).confirmed).toBe(false);
     expect(approve).not.toHaveBeenCalled();
   });
 });

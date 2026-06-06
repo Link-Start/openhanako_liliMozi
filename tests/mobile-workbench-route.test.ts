@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -297,7 +296,7 @@ describe("mobile workbench route", () => {
       },
       body: stream,
       duplex: "half",
-    });
+    } as any);
 
     const res = await app.request(req);
 
@@ -313,7 +312,7 @@ describe("mobile workbench route", () => {
     const app = new Hono();
     const { createMobileWorkbenchRoute } = await import("../server/routes/mobile-workbench.ts");
     app.use("*", async (c, next) => {
-      c.set("authPrincipal", Object.freeze({
+      (c as any).set("authPrincipal", Object.freeze({
         kind: "device",
         credentialKind: "device_credential",
         connectionKind: "lan",
@@ -404,7 +403,7 @@ describe("mobile workbench route", () => {
     const app = new Hono();
     const { createMobileWorkbenchRoute } = await import("../server/routes/mobile-workbench.ts");
     app.use("*", async (c, next) => {
-      c.set("authPrincipal", Object.freeze({
+      (c as any).set("authPrincipal", Object.freeze({
         kind: "device",
         credentialKind: "device_credential",
         connectionKind: "lan",

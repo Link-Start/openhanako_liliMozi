@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import fsp from "fs/promises";
 import os from "os";
@@ -263,11 +262,11 @@ describe("loadSessionHistoryMessages", () => {
   it("只恢复当前 leaf 所在分支上的消息", async () => {
     const sessionDir = path.join(tmpDir, "sessions");
     const manager = SessionManager.create(tmpDir, sessionDir);
-    const userA = manager.appendMessage({ role: "user", content: [{ type: "text", text: "old prompt" }] });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "old answer" }] });
+    const userA = manager.appendMessage({ role: "user", content: [{ type: "text", text: "old prompt" }] } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "old answer" }] } as any);
     manager.branch(userA);
-    manager.appendMessage({ role: "user", content: [{ type: "text", text: "new prompt" }] });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "new answer" }] });
+    manager.appendMessage({ role: "user", content: [{ type: "text", text: "new prompt" }] } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "new answer" }] } as any);
 
     const result = await loadSessionHistoryMessages({}, manager.getSessionFile());
 
@@ -285,7 +284,7 @@ describe("loadSessionHistoryMessages", () => {
   it("从 Pi session 分支恢复 custom_message 供后台结果重建 UI 块", async () => {
     const sessionDir = path.join(tmpDir, "sessions");
     const manager = SessionManager.create(tmpDir, sessionDir);
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "submitted" }] });
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "submitted" }] } as any);
     manager.appendCustomMessageEntry(
       "hana-background-result",
       "<hana-background-result task-id=\"task-img\" status=\"success\" type=\"image-generation\">{}</hana-background-result>",
@@ -310,7 +309,7 @@ describe("loadSessionHistoryMessages", () => {
   it("从 Pi session 分支恢复 custom entry 供非上下文后台结果重建 UI 块", async () => {
     const sessionDir = path.join(tmpDir, "sessions");
     const manager = SessionManager.create(tmpDir, sessionDir);
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "submitted" }] });
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "submitted" }] } as any);
     manager.appendCustomEntry("hana-deferred-result", {
       schemaVersion: 1,
       taskId: "task-img",

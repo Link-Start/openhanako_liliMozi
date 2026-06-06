@@ -1,7 +1,13 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class FakeElement {
+  declare _listeners: any;
+  declare children: any;
+  declare className: any;
+  declare parentNode: any;
+  declare style: any;
+  declare tagName: any;
+  declare textContent: any;
   constructor(tagName) {
     this.tagName = tagName;
     this.children = [];
@@ -50,6 +56,8 @@ class FakeElement {
 }
 
 class FakeDocument {
+  declare _listeners: any;
+  declare body: any;
   constructor() {
     this.body = new FakeElement("body");
     this._listeners = [];
@@ -95,8 +103,8 @@ function createContextMenuPair() {
   let _cleanup = null;
 
   function hideContextMenu() {
-    const m = globalThis.window.__ctxMenu;
-    if (m) { m.remove(); globalThis.window.__ctxMenu = null; }
+    const m = (globalThis.window as any).__ctxMenu;
+    if (m) { m.remove(); (globalThis.window as any).__ctxMenu = null; }
     if (_cleanup) { _cleanup(); _cleanup = null; }
   }
 
@@ -119,12 +127,12 @@ function createContextMenuPair() {
     if (y + rect.height > globalThis.window.innerHeight) y = globalThis.window.innerHeight - rect.height - 4;
     menu.style.left = x + "px";
     menu.style.top = y + "px";
-    globalThis.window.__ctxMenu = menu;
+    (globalThis.window as any).__ctxMenu = menu;
 
     setTimeout(() => {
-      if (globalThis.window.__ctxMenu !== menu) return;
+      if ((globalThis.window as any).__ctxMenu !== menu) return;
       const close = (ev) => {
-        if (globalThis.window.__ctxMenu?.contains(ev.target)) return;
+        if ((globalThis.window as any).__ctxMenu?.contains(ev.target)) return;
         hideContextMenu();
       };
       doc.addEventListener("click", close, true);
@@ -150,7 +158,7 @@ describe("desk context menu cleanup", () => {
       innerWidth: 320,
       innerHeight: 240,
       __ctxMenu: null,
-    };
+    } as any;
   });
 
   afterEach(() => {

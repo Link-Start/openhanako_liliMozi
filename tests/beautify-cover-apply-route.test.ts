@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +10,7 @@ const PNG_HEADER = Buffer.from([
   0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x04, 0x00,
 ]);
 
-function makeEngine(tmpDir, options = {}) {
+function makeEngine(tmpDir, options: any = {}) {
   const disabled = Array.isArray(options) ? options : (options.disabled || []);
   const agent = {
     id: "agent-1",

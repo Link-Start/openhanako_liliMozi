@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * todo.js todo_write tool unit tests
  *
@@ -65,7 +64,7 @@ describe("todo_write tool", () => {
 
   it("schema exposes the expected shape for todo items", () => {
     const tool = createTodoTool();
-    const todoItemSchema = tool.parameters.properties.todos.items.properties;
+    const todoItemSchema = (tool.parameters as any).properties.todos.items.properties;
     // content and activeForm must be strings with minLength 1
     expect(todoItemSchema.content.type).toBe("string");
     expect(todoItemSchema.content.minLength).toBe(1);

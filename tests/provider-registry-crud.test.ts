@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProviderRegistry — credential read + model CRUD 单元测试
  *

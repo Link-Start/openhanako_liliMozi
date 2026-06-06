@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * BridgeManager._handleMessage 测试
  *
@@ -36,13 +35,13 @@ const tagged = (text) => expect.stringMatching(new RegExp(`^<t>\\d{2}-\\d{2} \\d
 
 function createMocks() {
   const adapter = {
-    sendReply: vi.fn().mockResolvedValue(),
-    sendBlockReply: vi.fn().mockResolvedValue(),
-    sendTypingIndicator: vi.fn().mockResolvedValue(),
+    sendReply: (vi.fn().mockResolvedValue as any)(),
+    sendBlockReply: (vi.fn().mockResolvedValue as any)(),
+    sendTypingIndicator: (vi.fn().mockResolvedValue as any)(),
     stop: vi.fn(),
   };
 
-  const engine = {
+  const engine: any = {
     getAgent: vi.fn().mockImplementation((id) => {
       if (id === "hana") return { agentName: "TestAgent", config: { bridge: { telegram: { owner: "owner123" } } }, sessionDir: os.tmpdir() };
       return null;
@@ -123,9 +122,9 @@ describe("BridgeManager._handleMessage", () => {
     it("carries QQ message ids through group replies as passive reply context", async () => {
       const { bm, hub, adapter: telegramAdapter } = createMocks();
       const qqAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
-        sendTypingIndicator: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
+        sendTypingIndicator: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
       };
       bm._platforms.set("qq:hana", { adapter: qqAdapter, status: "connected", agentId: "hana", platform: "qq" });
@@ -322,9 +321,9 @@ describe("BridgeManager._handleMessage", () => {
     it("uses the latest QQ DM message id for debounced passive replies", async () => {
       const { bm, adapter: telegramAdapter } = createMocks();
       const qqAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
-        sendTypingIndicator: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
+        sendTypingIndicator: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
       };
       bm._platforms.set("qq:hana", { adapter: qqAdapter, status: "connected", agentId: "hana", platform: "qq" });
@@ -435,7 +434,7 @@ describe("BridgeManager._handleMessage", () => {
       const wechatAdapter = {
         capabilities: { proactive: false },
         canReply: vi.fn().mockReturnValue(true),
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       bm._platforms.clear();
       bm._platforms.set("wechat:hana", {
@@ -484,7 +483,7 @@ describe("BridgeManager._handleMessage", () => {
       const wechatAdapter = {
         capabilities: { proactive: false },
         canReply: vi.fn().mockReturnValue(false),
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       bm._platforms.clear();
       bm._platforms.set("wechat:hana", {
@@ -515,10 +514,10 @@ describe("BridgeManager._handleMessage", () => {
     it("does not send proactive replies through a Bridge entry owned by another agent", async () => {
       const { bm } = createMocks();
       const otherAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       const unboundAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       bm._platforms.clear();
       bm._platforms.set("telegram:other", {
@@ -544,7 +543,7 @@ describe("BridgeManager._handleMessage", () => {
     it("sends proactive Feishu replies to the stored DM chatId instead of the owner user id", async () => {
       const { bm, engine } = createMocks();
       const feishuAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       bm._platforms.clear();
       bm._platforms.set("feishu:hana", {
@@ -579,10 +578,10 @@ describe("BridgeManager._handleMessage", () => {
     it("only sends proactive replies through the requested Bridge platform", async () => {
       const { bm, engine } = createMocks();
       const wechatAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       const feishuAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       bm._platforms.clear();
       bm._platforms.set("wechat:hana", {
@@ -643,7 +642,7 @@ describe("BridgeManager._handleMessage", () => {
     it("deduplicates proactive sends with the same explicit idempotency key", async () => {
       const { bm, engine } = createMocks();
       const feishuAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
       };
       bm._platforms.clear();
       bm._platforms.set("feishu:hana", {
@@ -691,8 +690,8 @@ describe("BridgeManager._handleMessage", () => {
     it("passes message_id when downloading feishu image attachments", async () => {
       const { bm, hub } = createMocks();
       const feishuAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
         downloadImage: vi.fn().mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
       };
@@ -733,8 +732,8 @@ describe("BridgeManager._handleMessage", () => {
     it("reads wechat text file attachments through the platform-specific file downloader", async () => {
       const { bm, hub } = createMocks();
       const wechatAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
         downloadFileByRef: vi.fn().mockResolvedValue(Buffer.from("hello from wechat txt", "utf-8")),
       };
@@ -774,8 +773,8 @@ describe("BridgeManager._handleMessage", () => {
     it("persists Feishu chatId in bridge session metadata for later proactive delivery", async () => {
       const { bm, hub } = createMocks();
       const feishuAdapter = {
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
       };
       bm._platforms.set("feishu:hana", { adapter: feishuAdapter, status: "connected", agentId: "hana", platform: "feishu" });
@@ -807,13 +806,13 @@ describe("BridgeManager._handleMessage", () => {
     it("uses Telegram draft streaming for deltas and sends one final message", async () => {
       const { bm, hub, adapter, engine } = createMocks();
       engine.getBridgeReceiptEnabled.mockReturnValue(false);
-      adapter.streamingCapabilities = {
+      (adapter as any).streamingCapabilities = {
         mode: "draft",
         scopes: ["dm"],
         minIntervalMs: 0,
         maxChars: 4096,
       };
-      adapter.sendDraft = vi.fn().mockResolvedValue();
+      (adapter as any).sendDraft = (vi.fn().mockResolvedValue as any)();
       hub.send.mockImplementation(async (_text, opts) => {
         opts.onDelta("Hel", "Hel");
         opts.onDelta("lo", "Hello");
@@ -831,9 +830,9 @@ describe("BridgeManager._handleMessage", () => {
       await vi.advanceTimersByTimeAsync(2100);
       await vi.waitFor(() => expect(adapter.sendReply).toHaveBeenCalledWith("owner123", "Hello"));
 
-      expect(adapter.sendDraft).toHaveBeenCalled();
+      expect((adapter as any).sendDraft).toHaveBeenCalled();
       expect(adapter.sendBlockReply).not.toHaveBeenCalled();
-      const draftIds = adapter.sendDraft.mock.calls.map(call => call[2]?.draftId);
+      const draftIds = (adapter as any).sendDraft.mock.calls.map(call => call[2]?.draftId);
       expect(new Set(draftIds).size).toBe(1);
     });
 
@@ -848,10 +847,10 @@ describe("BridgeManager._handleMessage", () => {
           maxChars: 150_000,
         },
         startStreamReply: vi.fn().mockResolvedValue({ messageId: "om_stream_001" }),
-        updateStreamReply: vi.fn().mockResolvedValue(),
-        finishStreamReply: vi.fn().mockResolvedValue(),
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
+        updateStreamReply: (vi.fn().mockResolvedValue as any)(),
+        finishStreamReply: (vi.fn().mockResolvedValue as any)(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
       };
       bm._platforms.set("feishu:hana", { adapter: feishuAdapter, status: "connected", agentId: "hana", platform: "feishu" });
@@ -900,10 +899,10 @@ describe("BridgeManager._handleMessage", () => {
           receiptMode: "fold_into_stream",
         },
         startStreamReply: vi.fn().mockResolvedValue({ messageId: "om_stream_001" }),
-        updateStreamReply: vi.fn().mockResolvedValue(),
-        finishStreamReply: vi.fn().mockResolvedValue(),
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
+        updateStreamReply: (vi.fn().mockResolvedValue as any)(),
+        finishStreamReply: (vi.fn().mockResolvedValue as any)(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
       };
       bm._platforms.set("feishu:hana", { adapter: feishuAdapter, status: "connected", agentId: "hana", platform: "feishu" });
@@ -956,10 +955,10 @@ describe("BridgeManager._handleMessage", () => {
           receiptMode: "fold_into_stream",
         },
         startStreamReply: vi.fn().mockResolvedValue({ messageId: null, missingMessageId: true }),
-        updateStreamReply: vi.fn().mockResolvedValue(),
-        finishStreamReply: vi.fn().mockResolvedValue(),
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
+        updateStreamReply: (vi.fn().mockResolvedValue as any)(),
+        finishStreamReply: (vi.fn().mockResolvedValue as any)(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
       };
       bm._platforms.set("feishu:hana", { adapter: feishuAdapter, status: "connected", agentId: "hana", platform: "feishu" });
@@ -1110,9 +1109,9 @@ describe("BridgeManager._handleMessage", () => {
       engine.abortBridgeSession.mockResolvedValue(true);
       bm._platforms.set("qq:hana", {
         adapter: {
-          sendReply: vi.fn().mockResolvedValue(),
-          sendBlockReply: vi.fn().mockResolvedValue(),
-          sendTypingIndicator: vi.fn().mockResolvedValue(),
+          sendReply: (vi.fn().mockResolvedValue as any)(),
+          sendBlockReply: (vi.fn().mockResolvedValue as any)(),
+          sendTypingIndicator: (vi.fn().mockResolvedValue as any)(),
           stop: vi.fn(),
         },
         status: "connected",
@@ -1153,9 +1152,9 @@ describe("BridgeManager._handleMessage", () => {
     });
     bm._platforms.set("qq:hana", {
       adapter: {
-        sendReply: vi.fn().mockResolvedValue(),
-        sendBlockReply: vi.fn().mockResolvedValue(),
-        sendTypingIndicator: vi.fn().mockResolvedValue(),
+        sendReply: (vi.fn().mockResolvedValue as any)(),
+        sendBlockReply: (vi.fn().mockResolvedValue as any)(),
+        sendTypingIndicator: (vi.fn().mockResolvedValue as any)(),
         stop: vi.fn(),
       },
       status: "connected",
@@ -1200,7 +1199,7 @@ describe("BridgeManager._handleMessage", () => {
     it("same userId with different agentId produces different sessionKeys", async () => {
       const { bm, hub, engine } = createMocks();
       // Register a second agent adapter
-      const kuroAdapter = { sendReply: vi.fn().mockResolvedValue(), sendBlockReply: vi.fn().mockResolvedValue(), stop: vi.fn() };
+      const kuroAdapter = { sendReply: (vi.fn().mockResolvedValue as any)(), sendBlockReply: (vi.fn().mockResolvedValue as any)(), stop: vi.fn() };
       bm._platforms.set("telegram:kuro", { adapter: kuroAdapter, status: "connected", agentId: "kuro", platform: "telegram" });
       engine.getAgent.mockImplementation((id) => {
         if (id === "hana") return { agentName: "TestAgent", config: { bridge: { telegram: { owner: "owner123" } } } };
@@ -1241,7 +1240,7 @@ describe("BridgeManager._handleMessage", () => {
     it("messages are properly isolated between agents (debounce per sessionKey)", async () => {
       const { bm, hub, engine } = createMocks();
       // Register a second agent adapter
-      const kuroAdapter = { sendReply: vi.fn().mockResolvedValue(), sendBlockReply: vi.fn().mockResolvedValue(), stop: vi.fn() };
+      const kuroAdapter = { sendReply: (vi.fn().mockResolvedValue as any)(), sendBlockReply: (vi.fn().mockResolvedValue as any)(), stop: vi.fn() };
       bm._platforms.set("telegram:kuro", { adapter: kuroAdapter, status: "connected", agentId: "kuro", platform: "telegram" });
       engine.getAgent.mockImplementation((id) => {
         if (id === "hana") return { agentName: "TestAgent", config: { bridge: { telegram: { owner: "owner123" } } } };

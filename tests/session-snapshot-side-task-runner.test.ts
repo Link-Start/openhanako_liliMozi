@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { buildSessionCacheSnapshot } from "../core/session-cache-snapshot.ts";
 import { runSessionSnapshotSideTask } from "../lib/llm/session-snapshot-side-task-runner.ts";
@@ -42,7 +41,7 @@ describe("session snapshot side-task runner", () => {
       strict: true,
       cacheGroup: "memory.reflection",
     });
-    const [, context, options] = streamFn.mock.calls[0];
+    const [, context, options] = streamFn.mock.calls[0] as any;
     expect(context.systemPrompt).toBe("stable system");
     expect(context.tools).toEqual([{ name: "read", description: "Read files", parameters: { type: "object" } }]);
     expect(context.messages).toEqual([
@@ -80,7 +79,7 @@ describe("session snapshot side-task runner", () => {
       templateVersion: "v1",
     });
 
-    const [, , options] = streamFn.mock.calls[0];
+    const [, , options] = streamFn.mock.calls[0] as any;
     expect(options).toEqual({ reasoning: "medium", toolChoice: "none" });
   });
 

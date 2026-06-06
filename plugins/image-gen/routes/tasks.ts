@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * image-gen/routes/tasks.js
  *
@@ -39,14 +38,14 @@ export default function (app, ctx) {
         break;
     }
     // Sort by createdAt descending
-    tasks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    tasks.sort((a, b) => (new Date(b.createdAt) as any) - (new Date(a.createdAt) as any));
     return c.json({ tasks });
   });
 
   // Get single task
   app.post("/tasks/:taskId/retry", async (c) => {
     const taskId = c.req.param("taskId");
-    const result = await retryImageTask({ taskId, ctx });
+    const result = await retryImageTask({ taskId, ctx }) as any;
     if (!result.ok) return c.json({ error: result.error }, result.status || 500);
     return c.json({
       ok: true,

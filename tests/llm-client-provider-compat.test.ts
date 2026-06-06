@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { callText } from "../core/llm-client.ts";
 
@@ -37,7 +36,7 @@ describe("callText provider-compat routing", () => {
         err.name = "AbortError";
         throw err;
       },
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-completions",
@@ -45,7 +44,7 @@ describe("callText provider-compat routing", () => {
       model: "qwen3.5-plus",
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    })).rejects.toMatchObject({ code: "LLM_TIMEOUT" });
+    } as any)).rejects.toMatchObject({ code: "LLM_TIMEOUT" });
   });
 
   it("裸 model id + opts.quirks 仍走 qwen utility 兼容层", async () => {
@@ -55,7 +54,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -64,10 +63,10 @@ describe("callText provider-compat routing", () => {
       quirks: ["enable_thinking"],
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.enable_thinking).toBe(false);
   });
 
@@ -78,7 +77,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -86,10 +85,10 @@ describe("callText provider-compat routing", () => {
       model: { id: "kimi-k2.5", provider: "moonshot", input: ["text", "image"] },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body).not.toHaveProperty("temperature");
   });
 
@@ -100,7 +99,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -109,10 +108,10 @@ describe("callText provider-compat routing", () => {
       messages: [{ role: "user", content: "hi" }],
       temperature: 0,
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.temperature).toBe(0);
   });
 
@@ -123,7 +122,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -144,10 +143,10 @@ describe("callText provider-compat routing", () => {
         ],
       }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.messages[0].content).toEqual([
       { type: "text", text: "听一下" },
       { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav" } },
@@ -161,7 +160,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -185,10 +184,10 @@ describe("callText provider-compat routing", () => {
         ],
       }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.messages[0].content).toEqual([
       { type: "text", text: "listen" },
       { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav" } },
@@ -202,7 +201,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-completions",
@@ -222,7 +221,7 @@ describe("callText provider-compat routing", () => {
         ],
       }],
       timeoutMs: 5_000,
-    })).rejects.toThrow(/unsupported OpenAI input_audio payload.*audio\/ogg/);
+    } as any)).rejects.toThrow(/unsupported OpenAI input_audio payload.*audio\/ogg/);
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -234,7 +233,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -247,10 +246,10 @@ describe("callText provider-compat routing", () => {
       },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body).not.toHaveProperty("max_tokens");
   });
 
@@ -261,7 +260,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -275,10 +274,10 @@ describe("callText provider-compat routing", () => {
       messages: [{ role: "user", content: "hi" }],
       maxTokens: 80,
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.max_tokens).toBe(80);
   });
 
@@ -289,7 +288,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -303,10 +302,10 @@ describe("callText provider-compat routing", () => {
         ],
       }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.messages[0].content).toEqual([
       { type: "text", text: "Describe this image." },
       { type: "image_url", image_url: { url: "data:image/png;base64,BASE64" } },
@@ -320,7 +319,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         content: [{ type: "text", text: "ok" }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "anthropic-messages",
@@ -334,10 +333,10 @@ describe("callText provider-compat routing", () => {
         ],
       }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.messages[0].content).toEqual([
       { type: "text", text: "Describe this image." },
       {
@@ -359,7 +358,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         content: [{ type: "text", text: "ok" }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "anthropic-messages",
@@ -368,10 +367,10 @@ describe("callText provider-compat routing", () => {
       systemPrompt: "Stable writing system prompt",
       messages: [{ role: "user", content: "write" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const body = JSON.parse(init.body as string);
     expect(body.system).toEqual([
       {
         type: "text",
@@ -388,7 +387,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         content: [{ type: "text", text: "ok" }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "anthropic-messages",
@@ -401,7 +400,7 @@ describe("callText provider-compat routing", () => {
       },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers).toMatchObject({
@@ -417,7 +416,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -425,7 +424,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "custom-model", provider: "custom" },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -437,7 +436,7 @@ describe("callText provider-compat routing", () => {
       },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     expect(fetchMock.mock.calls[0][1].headers["User-Agent"]).toBe("HanaAgent/1.0");
     expect(fetchMock.mock.calls[1][1].headers["User-Agent"]).toBe("ExistingClient/2.0");
@@ -450,7 +449,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "ok" } }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "openai-completions",
@@ -463,10 +462,10 @@ describe("callText provider-compat routing", () => {
       },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [, init] = fetchMock.mock.calls[0];
-    expect(init.headers.Authorization).toBe("Gateway gateway-token");
+    expect((init.headers as any).Authorization).toBe("Gateway gateway-token");
   });
 
   it("does not append a duplicate v1 segment for Anthropic-compatible base URLs", async () => {
@@ -476,7 +475,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         content: [{ type: "text", text: "ok" }],
       }),
-    });
+    } as any);
 
     await callText({
       api: "anthropic-messages",
@@ -485,7 +484,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "claude-compatible", provider: "custom" },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     expect(fetchMock.mock.calls[0][0]).toBe("https://anthropic-compatible.example/v1/messages");
   });
@@ -504,7 +503,7 @@ describe("callText provider-compat routing", () => {
             cache_creation_input_tokens: 40,
           },
         }),
-      })
+      } as any)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -517,7 +516,7 @@ describe("callText provider-compat routing", () => {
             cache_creation_input_tokens: 40,
           },
         }),
-      });
+      } as any);
 
     const defaultResult = await callText({
       api: "anthropic-messages",
@@ -525,7 +524,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "claude-opus-4-5", provider: "anthropic" },
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const detailedResult = await callText({
       api: "anthropic-messages",
@@ -534,7 +533,7 @@ describe("callText provider-compat routing", () => {
       messages: [{ role: "user", content: "hi" }],
       timeoutMs: 5_000,
       returnUsage: true,
-    });
+    } as any);
 
     expect(defaultResult).toBe("ok");
     expect(detailedResult).toEqual({
@@ -559,7 +558,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "<think>The user asked for OK.</think>\n\n" } }],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-completions",
@@ -567,7 +566,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "MiniMax-M2.7", provider: "minimax", reasoning: true },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).rejects.toMatchObject({
+    } as any)).rejects.toMatchObject({
       code: "LLM_EMPTY_RESPONSE",
       message: "模型未回复正文，请检查思考内容或稍后重试。",
       context: expect.objectContaining({ reason: "empty_after_thinking" }),
@@ -581,7 +580,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         choices: [{ message: { content: "<think>The user asked for OK.</think>\n\nOK" } }],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-completions",
@@ -589,7 +588,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "MiniMax-M2.7", provider: "minimax", reasoning: true },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).resolves.toBe("OK");
+    } as any)).resolves.toBe("OK");
   });
 
   it("classifies anthropic thinking-only content blocks as empty-after-thinking", async () => {
@@ -599,7 +598,7 @@ describe("callText provider-compat routing", () => {
       text: async () => JSON.stringify({
         content: [{ type: "thinking", thinking: "The answer is OK." }],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "anthropic-messages",
@@ -612,7 +611,7 @@ describe("callText provider-compat routing", () => {
       },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).rejects.toMatchObject({
+    } as any)).rejects.toMatchObject({
       code: "LLM_EMPTY_RESPONSE",
       message: "模型未回复正文，请检查思考内容或稍后重试。",
       context: expect.objectContaining({ reason: "empty_after_thinking" }),
@@ -629,7 +628,7 @@ describe("callText provider-compat routing", () => {
           { type: "text", text: "OK" },
         ],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "anthropic-messages",
@@ -642,7 +641,7 @@ describe("callText provider-compat routing", () => {
       },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).resolves.toBe("OK");
+    } as any)).resolves.toBe("OK");
   });
 
   it("extracts Responses output_text content from message items without relying on role", async () => {
@@ -655,7 +654,7 @@ describe("callText provider-compat routing", () => {
           content: [{ type: "output_text", text: "OK from Responses" }],
         }],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-codex-responses",
@@ -663,7 +662,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "gpt-5.4-codex", provider: "openai-codex", accountId: "acct_123" },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).resolves.toBe("OK from Responses");
+    } as any)).resolves.toBe("OK from Responses");
   });
 
   it("sends Codex Responses utility requests to ChatGPT /codex/responses with account headers", async () => {
@@ -675,7 +674,7 @@ describe("callText provider-compat routing", () => {
         `event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: "OK" })}\n\n`,
         "data: [DONE]\n\n",
       ]),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-codex-responses",
@@ -688,15 +687,15 @@ describe("callText provider-compat routing", () => {
       },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).resolves.toBe("Codex OK");
+    } as any)).resolves.toBe("Codex OK");
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
-    expect(init.headers.Authorization).toBe("Bearer oauth-token");
-    expect(init.headers["chatgpt-account-id"]).toBe("acct_123");
-    expect(init.headers["OpenAI-Beta"]).toBe("responses=experimental");
-    expect(init.headers.originator).toBe("pi");
-    expect(JSON.parse(init.body)).toMatchObject({
+    expect((init.headers as any).Authorization).toBe("Bearer oauth-token");
+    expect((init.headers as any)["chatgpt-account-id"]).toBe("acct_123");
+    expect((init.headers as any)["OpenAI-Beta"]).toBe("responses=experimental");
+    expect((init.headers as any).originator).toBe("pi");
+    expect(JSON.parse(init.body as string)).toMatchObject({
       store: false,
       stream: true,
     });
@@ -707,7 +706,7 @@ describe("callText provider-compat routing", () => {
       ok: true,
       status: 200,
       text: async () => JSON.stringify({ output_text: "Codex OK" }),
-    });
+    } as any);
 
     await callText({
       api: "openai-codex-responses",
@@ -716,7 +715,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "gpt-5.4-codex", provider: "openai-codex-oauth" },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    });
+    } as any);
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
@@ -728,7 +727,7 @@ describe("callText provider-compat routing", () => {
       ok: true,
       status: 200,
       text: async () => JSON.stringify({ output_text: "should not be called" }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-codex-responses",
@@ -737,7 +736,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "gpt-5.4-codex", provider: "openai-codex-oauth" },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).rejects.toMatchObject({
+    } as any)).rejects.toMatchObject({
       code: "LLM_AUTH_FAILED",
       message: expect.stringContaining("account id"),
     });
@@ -749,7 +748,7 @@ describe("callText provider-compat routing", () => {
       ok: true,
       status: 200,
       text: async () => JSON.stringify({ output_text: "Top-level OK" }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-responses",
@@ -757,7 +756,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "gpt-5", provider: "openai" },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).resolves.toBe("Top-level OK");
+    } as any)).resolves.toBe("Top-level OK");
   });
 
   it("preserves Responses assistant role message text extraction", async () => {
@@ -771,7 +770,7 @@ describe("callText provider-compat routing", () => {
           content: [{ type: "text", text: "Assistant role OK" }],
         }],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-responses",
@@ -779,7 +778,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "gpt-5", provider: "openai" },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).resolves.toBe("Assistant role OK");
+    } as any)).resolves.toBe("Assistant role OK");
   });
 
   it("does not treat Responses non-message output as visible text", async () => {
@@ -792,7 +791,7 @@ describe("callText provider-compat routing", () => {
           content: [{ type: "output_text", text: "Hidden reasoning is not a reply." }],
         }],
       }),
-    });
+    } as any);
 
     await expect(callText({
       api: "openai-codex-responses",
@@ -800,7 +799,7 @@ describe("callText provider-compat routing", () => {
       model: { id: "gpt-5.4-codex", provider: "openai-codex", reasoning: true, accountId: "acct_123" },
       messages: [{ role: "user", content: "Reply OK." }],
       timeoutMs: 5_000,
-    })).rejects.toMatchObject({
+    } as any)).rejects.toMatchObject({
       code: "LLM_EMPTY_RESPONSE",
       context: expect.objectContaining({ reason: "empty_after_thinking" }),
     });

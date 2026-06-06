@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -10,7 +9,7 @@ import {
   revokeExecutionLease,
 } from "../core/execution-lease-registry.ts";
 
-function baseLease(overrides = {}) {
+function baseLease( overrides: any = {}) {
   return {
     schemaVersion: 1,
     leaseId: overrides.leaseId || "lease_read",

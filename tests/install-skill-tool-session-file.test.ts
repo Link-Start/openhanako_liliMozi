@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -127,7 +126,7 @@ describe("install_skill global skill-pool installation", () => {
 
     const originalPath = path.join(userSkillsDir, "demo-skill", "SKILL.md");
     expect(fs.readFileSync(originalPath, "utf-8")).toContain("# Different");
-    expect(result.details.skillName).toBe("demo-skill");
+    expect((result as any).details.skillName).toBe("demo-skill");
     expect(onInstalled).toHaveBeenCalledWith("demo-skill");
     expect(fs.existsSync(path.join(userSkillsDir, "demo-skill-agent-b"))).toBe(false);
   });
@@ -184,7 +183,7 @@ describe("install_skill global skill-pool installation", () => {
       reason: "test",
     }, null, null, {});
 
-    expect(result.details.skillName).toBe("kami");
+    expect((result as any).details.skillName).toBe("kami");
     expect(fs.existsSync(path.join(userSkillsDir, "kami", "SKILL.md"))).toBe(true);
     expect(fs.existsSync(path.join(userSkillsDir, "kami", "references", "design.md"))).toBe(true);
     expect(fs.existsSync(path.join(userSkillsDir, "kami", "assets", "templates", "page.html"))).toBe(true);

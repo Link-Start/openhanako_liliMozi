@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,7 +5,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createConfigRoute } from "../server/routes/config.ts";
 
-function makeAgent(tmpDir, overrides = {}) {
+function makeAgent(tmpDir, overrides: any = {}) {
   const agentDir = path.join(tmpDir, "agents", "hana");
   const memoryDir = path.join(agentDir, "memory");
   const summariesDir = path.join(memoryDir, "summaries");

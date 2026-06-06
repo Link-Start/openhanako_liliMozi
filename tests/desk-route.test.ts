@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -340,7 +339,7 @@ describe("desk route", () => {
       const { createDeskRoute } = await import("../server/routes/desk.ts");
       const app = new Hono();
       app.use("*", async (c, next) => {
-        c.set("authPrincipal", Object.freeze({
+        (c as any).set("authPrincipal", Object.freeze({
           kind: "device",
           connectionKind: "lan",
           credentialKind: "device_credential",
@@ -384,7 +383,7 @@ describe("desk route", () => {
       const { createDeskRoute } = await import("../server/routes/desk.ts");
       const app = new Hono();
       app.use("*", async (c, next) => {
-        c.set("authPrincipal", Object.freeze({
+        (c as any).set("authPrincipal", Object.freeze({
           kind: "local_user",
           connectionKind: "local",
           credentialKind: "loopback_token",

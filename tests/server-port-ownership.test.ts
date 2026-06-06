@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import net from "net";
@@ -49,9 +48,9 @@ describe("server transport ownership", () => {
     const blocker = net.createServer();
     await new Promise((resolve, reject) => {
       blocker.once("error", reject);
-      blocker.listen(0, "127.0.0.1", resolve);
+      blocker.listen(0, "127.0.0.1", resolve as any);
     });
-    const port = blocker.address().port;
+    const port = (blocker.address() as any).port;
     const hanaHome = fs.mkdtempSync(path.join(os.tmpdir(), "hana-port-conflict-test-"));
     const child = spawn(process.execPath, ["server/bootstrap.ts"], {
       cwd: root,
@@ -76,7 +75,7 @@ describe("server transport ownership", () => {
         new Promise(resolve => child.once("exit", (code, signal) => resolve({ code, signal }))),
         new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 10_000)),
       ]);
-      if (result.timeout) {
+      if ((result as any).timeout) {
         child.kill("SIGKILL");
       }
 

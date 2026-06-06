@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 
 import { createMediaCapabilities } from "../lib/bridge/media-capabilities.ts";

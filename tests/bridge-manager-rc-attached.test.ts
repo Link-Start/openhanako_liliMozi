@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * BridgeManager RC attached-session 路由集成测试
  *
@@ -21,18 +20,18 @@ import os from "os";
 import { BridgeManager } from "../lib/bridge/bridge-manager.ts";
 import { createSlashSystem } from "../core/slash-commands/index.ts";
 
-function createMocks({ session } = {}) {
+function createMocks({ session }: any = {}) {
   const s = session || {};
-  const adapter = {
+  const adapter: any = {
     mediaCapabilities: {
       inputModes: ["buffer", "remote_url", "public_url"],
       supportedKinds: ["image", "video", "audio", "document"],
     },
-    sendReply: vi.fn().mockResolvedValue(),
-    sendTypingIndicator: vi.fn().mockResolvedValue(),
+    sendReply: (vi.fn().mockResolvedValue as any)(),
+    sendTypingIndicator: (vi.fn().mockResolvedValue as any)(),
     stop: vi.fn(),
   };
-  const engine = {
+  const engine: any = {
     getAgent: vi.fn((id) => id === "hana"
       ? { id: "hana", agentName: "T", config: { bridge: { telegram: { owner: "owner123" } } }, sessionDir: os.tmpdir() }
       : null),
@@ -150,7 +149,7 @@ describe("BridgeManager RC attached-session routing", () => {
   });
 
   it("tool media from desktop session → forwarded via adapter", async () => {
-    const adapterSendMedia = vi.fn().mockResolvedValue();
+    const adapterSendMedia = (vi.fn().mockResolvedValue as any)();
     const { bm, adapter, hub, rcState } = createMocks();
     adapter.sendMedia = adapterSendMedia;
     hub.send.mockResolvedValueOnce({ text: "see image", toolMedia: ["https://example.com/a.png"] });
@@ -182,7 +181,7 @@ describe("BridgeManager RC attached-session routing", () => {
       minIntervalMs: 0,
       maxChars: 4096,
     };
-    adapter.sendDraft = vi.fn().mockResolvedValue();
+    adapter.sendDraft = (vi.fn().mockResolvedValue as any)();
     hub.send.mockImplementation(async (_text, opts) => {
       opts.onDelta("Desk", "Desk");
       opts.onDelta(" reply", "Desk reply");

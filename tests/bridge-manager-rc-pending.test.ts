@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * BridgeManager RC pending-selection 拦截集成测试
  *
@@ -25,7 +24,7 @@ import { createSlashSystem } from "../core/slash-commands/index.ts";
 
 function createMocks() {
   const adapter = {
-    sendReply: vi.fn().mockResolvedValue(),
+    sendReply: (vi.fn().mockResolvedValue as any)(),
     stop: vi.fn(),
   };
   const engine = {
@@ -46,10 +45,10 @@ function createMocks() {
     send: vi.fn().mockResolvedValue("AI response"),
     eventBus: { emit: vi.fn() },
   };
-  const slashSystem = createSlashSystem({ engine, hub });
-  engine.slashDispatcher = slashSystem.dispatcher;
-  engine.slashRegistry = slashSystem.registry;
-  engine.rcState = slashSystem.rcState;
+  const slashSystem = createSlashSystem({ engine, hub } as any);
+  (engine as any).slashDispatcher = slashSystem.dispatcher;
+  (engine as any).slashRegistry = slashSystem.registry;
+  (engine as any).rcState = slashSystem.rcState;
 
   const bm = new BridgeManager({ engine, hub });
   bm._platforms.set("telegram:hana", { adapter, status: "connected", agentId: "hana", platform: "telegram" });

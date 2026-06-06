@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -35,7 +34,7 @@ describe("ChannelRouter trigger lifecycle", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "butter"],
-    });
+    } as any);
     await appendMessage(path.join(channelsDir, `${channelId}.md`), "user", "@Hana hello");
 
     const hub = {
@@ -52,7 +51,7 @@ describe("ChannelRouter trigger lifecycle", () => {
     const router = new ChannelRouter({ hub });
     const executeCheck = vi.spyOn(router, "_executeCheck").mockResolvedValue({ replied: false });
 
-    await router.triggerImmediate(channelId);
+    await (router as any).triggerImmediate(channelId);
     await router.stop();
 
     expect(executeCheck).toHaveBeenCalledOnce();
@@ -74,7 +73,7 @@ describe("ChannelRouter trigger lifecycle", () => {
       id: "ch_crew",
       name: "Crew",
       members: ["hana", "yui"],
-    });
+    } as any);
 
     let onPost;
     const postAgent = {
@@ -95,9 +94,9 @@ describe("ChannelRouter trigger lifecycle", () => {
       agentPhoneActivities: { record: vi.fn() },
     };
     const router = new ChannelRouter({ hub });
-    const triggerImmediate = vi.spyOn(router, "triggerImmediate").mockResolvedValue();
+    const triggerImmediate = (vi.spyOn(router, "triggerImmediate").mockResolvedValue as any)();
 
-    router.setupPostHandler();
+    (router as any).setupPostHandler();
     onPost(channelId, "hana", { sender: "hana", body: "@Yui Ray 你看看这个？" });
 
     expect(triggerImmediate).toHaveBeenCalledWith(channelId, { mentionedAgents: ["yui"] });

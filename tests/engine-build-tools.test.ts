@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -146,7 +145,7 @@ describe("HanaEngine.buildTools", () => {
       hanakoHome: tmpDir,
       productDir: tmpDir,
       agentId: "hana",
-    });
+    } as any);
     engine.resolveUtilityConfig = vi.fn(() => ({
       utility: { id: "small-reviewer", provider: "test" },
       utility_large: { id: "large-reviewer", provider: "test" },

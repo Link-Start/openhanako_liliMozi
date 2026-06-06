@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -41,7 +40,7 @@ function makeSession(sessionDir, sessionId, messages) {
   return filePath;
 }
 
-function baseOpts(overrides = {}) {
+function baseOpts( overrides: any = {}) {
   const sessionDir = path.join(tempRoot, "sessions");
   fs.mkdirSync(sessionDir, { recursive: true });
 
@@ -72,7 +71,7 @@ function baseOpts(overrides = {}) {
 }
 
 function diaryPrompt() {
-  return callText.mock.calls[0][0].messages[0].content;
+  return (callText as any).mock.calls[0][0].messages[0].content;
 }
 
 describe("writeDiary hybrid material collection", () => {
@@ -81,7 +80,7 @@ describe("writeDiary hybrid material collection", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-07T12:00:00+08:00"));
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-diary-test-"));
-    callText.mockResolvedValue("# 2026-05-07 测试日记\n\n今天把日记写好了。");
+    (callText as any).mockResolvedValue("# 2026-05-07 测试日记\n\n今天把日记写好了。");
   });
 
   afterEach(() => {

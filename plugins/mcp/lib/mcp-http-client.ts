@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { MCP_PROTOCOL_VERSION } from "./mcp-stdio-client.ts";
 import { getOutboundProxyConfig } from "../../../lib/net/outbound-proxy.ts";
 import {
@@ -17,6 +16,10 @@ const SSE_ACCEPT = "text/event-stream";
 const FALLBACK_STATUSES = new Set([400, 404, 405]);
 
 export class McpHttpError extends Error {
+  declare body: any;
+  declare headers: any;
+  declare oauthError: any;
+  declare status: any;
   constructor(message, { status = null, body = "", headers = null, oauthError = "" } = {}) {
     super(message);
     this.name = "McpHttpError";
@@ -202,6 +205,20 @@ function redactProxyUrl(proxyUrl) {
 }
 
 export class McpStreamableHttpClient {
+  declare _closed: any;
+  declare _initialized: any;
+  declare _nextId: any;
+  declare _stopping: any;
+  declare endpoint: any;
+  declare fetchImpl: any;
+  declare getAuthToken: any;
+  declare initialProtocolVersion: any;
+  declare log: any;
+  declare onClose: any;
+  declare protocolVersion: any;
+  declare refreshAuthToken: any;
+  declare server: any;
+  declare sessionId: any;
   constructor(server, { fetchImpl = globalThis.fetch, log = console, onClose = null, getAuthToken = null, refreshAuthToken = null } = {}) {
     this.server = server;
     this.fetchImpl = fetchImpl;
@@ -277,7 +294,7 @@ export class McpStreamableHttpClient {
     });
   }
 
-  async request(method, params = {}, opts = {}) {
+  async request(method, params: any = {}, opts = {}) {
     if (!this.running) throw new Error("MCP connector is not running");
     try {
       return await this._request(method, params, opts);
@@ -356,7 +373,7 @@ export class McpStreamableHttpClient {
     }
   }
 
-  async _request(method, params = {}, { initializing = false, retryOnSessionExpired = true } = {}) {
+  async _request(method, params: any = {}, { initializing = false, retryOnSessionExpired = true } = {}) {
     const id = this._nextId++;
     const payload = { jsonrpc: "2.0", id, method, params };
     try {
@@ -377,7 +394,7 @@ export class McpStreamableHttpClient {
     }
   }
 
-  async _notify(method, params = {}) {
+  async _notify(method, params: any = {}) {
     await this._postJsonRpc({ jsonrpc: "2.0", method, params }, { initializing: false });
   }
 
@@ -399,7 +416,7 @@ export class McpStreamableHttpClient {
     }
   }
 
-  async _headers({ sessionId = this.sessionId, includeJson = true, initializing = false } = {}) {
+  async _headers({ sessionId = this.sessionId, includeJson = true, initializing = false }: any = {}) {
     const headers = {
       ...headersWithoutMcpProtocolVersion(connectorHeaders(this.server)),
       Accept: STREAMABLE_ACCEPT,
@@ -453,6 +470,23 @@ export class McpStreamableHttpClient {
 }
 
 export class McpLegacySseClient {
+  declare _abort: any;
+  declare _buffer: any;
+  declare _closed: any;
+  declare _endpointReject: any;
+  declare _endpointResolve: any;
+  declare _nextId: any;
+  declare _pending: any;
+  declare _queued: any;
+  declare _stopping: any;
+  declare fetchImpl: any;
+  declare getAuthToken: any;
+  declare log: any;
+  declare messageEndpoint: any;
+  declare onClose: any;
+  declare refreshAuthToken: any;
+  declare server: any;
+  declare sseUrl: any;
   constructor(server, { fetchImpl = globalThis.fetch, log = console, onClose = null, getAuthToken = null, refreshAuthToken = null } = {}) {
     this.server = server;
     this.fetchImpl = fetchImpl;
@@ -521,7 +555,7 @@ export class McpLegacySseClient {
     });
   }
 
-  async request(method, params = {}, { timeout = 30_000 } = {}) {
+  async request(method, params: any = {}, { timeout = 30_000 } = {}) {
     if (!this.running) throw new Error("MCP connector is not running");
     try {
       return await this._sendRequest(method, params, timeout);
@@ -571,7 +605,7 @@ export class McpLegacySseClient {
     });
   }
 
-  async notify(method, params = {}) {
+  async notify(method, params: any = {}) {
     if (!this.running) return;
     await this._postMessage({ jsonrpc: "2.0", method, params });
   }
@@ -724,7 +758,7 @@ export class McpLegacySseClient {
   }
 
   async _headers({ accept, includeJson }) {
-    const headers = { ...connectorHeaders(this.server), Accept: accept };
+    const headers: any = { ...connectorHeaders(this.server), Accept: accept };
     if (includeJson) headers["Content-Type"] = "application/json";
     const token = await requestAuthToken(this.server, this.getAuthToken);
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -733,7 +767,10 @@ export class McpLegacySseClient {
 }
 
 export class McpAutoHttpClient {
-  constructor(server, opts = {}) {
+  declare client: any;
+  declare opts: any;
+  declare server: any;
+  constructor(server, opts: any = {}) {
     this.server = server;
     this.opts = opts;
     this.client = null;

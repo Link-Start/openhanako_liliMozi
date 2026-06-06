@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it } from "vitest";
 import { createRequire } from "module";
 import fs from "fs";
@@ -188,7 +187,7 @@ describe("launch integrity fs resolution", () => {
     const fakeRequire = (id) => {
       if (id === "original-fs") {
         const err = new Error("Cannot find module 'original-fs'");
-        err.code = "MODULE_NOT_FOUND";
+        (err as any).code = "MODULE_NOT_FOUND";
         throw err;
       }
       if (id === "fs") return nodeFs;

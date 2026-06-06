@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * #521 回归测试。
  *
@@ -24,7 +23,7 @@ afterEach(() => {
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 });
 
-function entry(role, opts = {}) {
+function entry(role, opts: any = {}) {
   return JSON.stringify({
     type: "message",
     id: opts.id || crypto.randomUUID(),

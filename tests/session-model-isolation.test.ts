@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Session model isolation — 验证 per-session 模型隔离
  *
@@ -85,14 +84,14 @@ describe("Session model isolation", () => {
   it("新 session 无指定模型时用 agent 默认", () => {
     const models = makeMockModels();
     const coord = makeMockSessionCoordinator(models);
-    coord.createSession(null, null, true);
+    (coord.createSession as any)(null, null, true);
     expect(coord.session.model).toBe(MODEL_DEFAULT);
   });
 
   it("新 session 指定模型时用指定的", () => {
     const models = makeMockModels();
     const coord = makeMockSessionCoordinator(models);
-    coord.createSession(null, null, true, MODEL_B);
+    coord.createSession(null, null, true, MODEL_B as any);
     expect(coord.session.model).toBe(MODEL_B);
   });
 
@@ -101,7 +100,7 @@ describe("Session model isolation", () => {
     const coord = makeMockSessionCoordinator(models);
     coord.setPendingModel(MODEL_B);
     expect(coord.pendingModel).toBe(MODEL_B);
-    coord.createSession(null, null, true);
+    (coord.createSession as any)(null, null, true);
     expect(coord.session.model).toBe(MODEL_B);
     expect(coord.pendingModel).toBeNull();
   });

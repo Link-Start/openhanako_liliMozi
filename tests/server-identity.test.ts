@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -13,7 +12,7 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
-function writeValidIdentity(root, overrides = {}) {
+function writeValidIdentity(root, overrides: any = {}) {
   const serverNode = {
     schemaVersion: 1,
     serverId: "server_test",

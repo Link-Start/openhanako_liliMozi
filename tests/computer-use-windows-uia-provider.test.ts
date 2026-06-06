@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import { describe, expect, it, vi } from "vitest";
 import { createWindowsUiaProvider } from "../core/computer-use/providers/windows-uia-provider.ts";
@@ -36,12 +35,12 @@ function helperResult(data, args = []) {
 }
 
 function makeRunner(handler) {
-  const calls = [];
+  const calls: any[] = [];
   return {
     calls,
     runner: {
       run: vi.fn(async (command, args, options) => {
-        const call = { command, args, options };
+        const call: any = { command, args, options };
         calls.push(call);
         const response = await handler(command, args, options);
         const requestPath = argValue(args, "-RequestPath");
@@ -147,7 +146,7 @@ describe("Windows UIA provider", () => {
       command: "powershell.exe",
       helperScript: `${"#".repeat(40000)}\nWrite-Output '{}'`,
       runner,
-    });
+    } as any);
 
     await provider.listApps();
 
@@ -177,7 +176,7 @@ describe("Windows UIA provider", () => {
       });
       return { stdout: "Windows PowerShell\r\nCopyright banner\r\n", stderr: "debug warning\r\n", exitCode: 0 };
     });
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     await expect(provider.listApps()).resolves.toMatchObject([
       { appId: "pid:12", name: "Notepad", pid: 12 },
@@ -192,7 +191,7 @@ describe("Windows UIA provider", () => {
       helperResultPath = writeTextHelperResult(args, invalidResult);
       return { stdout: "banner before result\n".repeat(20), stderr: "warning stream\n", exitCode: 0 };
     });
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     let error = null;
     try {
@@ -227,7 +226,7 @@ describe("Windows UIA provider", () => {
       helperResultPath = argValue(args, "-ResultPath");
       return { stdout: "banner without result\n", stderr: "warning without result\n", exitCode: 0 };
     });
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     await expect(provider.listApps()).rejects.toMatchObject({
       code: COMPUTER_USE_ERRORS.PROVIDER_CRASHED,
@@ -258,7 +257,7 @@ describe("Windows UIA provider", () => {
         command: "powershell.exe",
         runner,
         maxResultBytes: 128,
-      });
+      } as any);
 
       await expect(provider.listApps()).rejects.toMatchObject({
         code: COMPUTER_USE_ERRORS.PROVIDER_CRASHED,
@@ -286,7 +285,7 @@ describe("Windows UIA provider", () => {
       });
       return { stdout: "", stderr: "", exitCode: 0 };
     });
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     await expect(provider.getAppState({}, { leaseId: "lease-1", providerState: { processId: 12 } }))
       .rejects.toMatchObject({
@@ -298,11 +297,11 @@ describe("Windows UIA provider", () => {
 
   it("maps helper launch ENAMETOOLONG into a typed provider error", async () => {
     const launchError = new Error("spawn ENAMETOOLONG");
-    launchError.code = "ENAMETOOLONG";
+    (launchError as any).code = "ENAMETOOLONG";
     const { runner } = makeRunner(() => {
       throw launchError;
     });
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     await expect(provider.listApps()).rejects.toMatchObject({
       code: COMPUTER_USE_ERRORS.PROVIDER_CRASHED,
@@ -313,11 +312,11 @@ describe("Windows UIA provider", () => {
 
   it("keeps powershell-not-found status reason after launch error mapping", async () => {
     const launchError = new Error("spawn ENOENT");
-    launchError.code = "ENOENT";
+    (launchError as any).code = "ENOENT";
     const { runner } = makeRunner(() => {
       throw launchError;
     });
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "missing-powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "missing-powershell.exe", runner } as any);
 
     await expect(provider.getStatus()).resolves.toMatchObject({
       available: false,
@@ -334,7 +333,7 @@ describe("Windows UIA provider", () => {
         windows: [{ windowId: "123", title: "Untitled - Notepad" }],
       }],
     }, args));
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     const apps = await provider.listApps();
     const lease = await provider.createLease({}, { appId: "pid:12", windowId: "123" });
@@ -354,7 +353,7 @@ describe("Windows UIA provider", () => {
 
   it("declares background-only UIA capabilities and omits foreground raw input actions from leases", async () => {
     const { runner } = makeRunner((_command, args) => helperResult({ ok: true }, args));
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     const lease = await provider.createLease({}, { appId: "pid:12", windowId: "123" });
 
@@ -382,7 +381,7 @@ describe("Windows UIA provider", () => {
       elements: [{ elementId: "uia:1", role: "ControlType.Button", label: "OK", patterns: ["InvokePattern"] }],
       providerState: { processId: 12, windowId: 123 },
     }, args));
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     const snapshot = await provider.getAppState({}, {
       leaseId: "lease-1",
@@ -402,7 +401,7 @@ describe("Windows UIA provider", () => {
 
   it("maps only snapshot-bound semantic UIA actions to the helper", async () => {
     const { runner, calls } = makeRunner((_command, args) => helperResult({ ok: true }, args));
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
     const lease = { leaseId: "lease-1", providerState: { processId: 12, windowId: 123 } };
     const snapshotElement = {
       elementId: "uia:1",
@@ -432,7 +431,7 @@ describe("Windows UIA provider", () => {
 
   it("rejects foreground-only actions before invoking the helper", async () => {
     const { runner, calls } = makeRunner((_command, args) => helperResult({ ok: true }, args));
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
     const lease = { leaseId: "lease-1", providerState: { processId: 12, windowId: 123 } };
 
     await expect(provider.performAction({}, lease, { type: "click_point", x: 1, y: 2 }))
@@ -453,7 +452,7 @@ describe("Windows UIA provider", () => {
 
   it("rejects element-indexed actions unless the host provides snapshot-bound metadata", async () => {
     const { runner } = makeRunner((_command, args) => helperResult({ ok: true }, args));
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
     const lease = { leaseId: "lease-1", providerState: { processId: 12, windowId: 123 } };
 
     await expect(provider.performAction({}, lease, { type: "click_element", elementId: "uia:1" }))
@@ -464,7 +463,7 @@ describe("Windows UIA provider", () => {
 
   it("rejects malformed foreground input before invoking the helper", async () => {
     const { runner } = makeRunner((_command, args) => helperResult({ ok: true }, args));
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
     const lease = { leaseId: "lease-1", providerState: { processId: 12, windowId: 123 } };
 
     await expect(provider.performAction({}, lease, { type: "click_point", x: 1 }))
@@ -486,7 +485,7 @@ describe("Windows UIA provider", () => {
         exitCode: 0,
       };
     });
-    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner });
+    const provider = createWindowsUiaProvider({ platform: "win32", command: "powershell.exe", runner } as any);
 
     await expect(provider.getAppState({}, { leaseId: "lease-1", providerState: { processId: 12 } }))
       .rejects.toMatchObject({ code: COMPUTER_USE_ERRORS.TARGET_NOT_FOUND });

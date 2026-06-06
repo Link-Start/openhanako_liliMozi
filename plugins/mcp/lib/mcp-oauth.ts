@@ -1,4 +1,3 @@
-// @ts-nocheck
 import crypto from "node:crypto";
 import { MCP_PROTOCOL_VERSION } from "./mcp-stdio-client.ts";
 import { McpHttpError } from "./mcp-http-client.ts";
@@ -9,7 +8,7 @@ import {
 
 export function parseWwwAuthenticate(value) {
   const header = String(value || "");
-  const params = {};
+  const params: any = {};
   const bearer = header.replace(/^Bearer\s+/i, "");
   const pattern = /([a-zA-Z_][a-zA-Z0-9_-]*)=(?:"([^"]*)"|([^,\s]+))/g;
   let match;
@@ -30,11 +29,10 @@ export function createOAuthState() {
 }
 
 export async function discoverMcpOAuth({
-  connectorUrl,
-  headers = {},
+  connectorUrl, headers = {} as any,
   protocolVersion = "",
   fetchImpl = globalThis.fetch,
-} = {}) {
+}: any = {}) {
   if (!connectorUrl) throw new Error("connectorUrl is required");
   const initialProtocolVersion = resolveInitialMcpProtocolVersion({ headers, protocolVersion });
   const challenge = await fetchAuthChallenge(connectorUrl, fetchImpl, initialProtocolVersion);
@@ -84,7 +82,7 @@ export async function registerMcpOAuthClient({
   scope = "",
   clientName = "Hana",
   fetchImpl = globalThis.fetch,
-} = {}) {
+}: any = {}) {
   if (!registrationEndpoint) throw new Error("registrationEndpoint is required");
   if (!redirectUri) throw new Error("redirectUri is required");
 
@@ -95,7 +93,7 @@ export async function registerMcpOAuthClient({
     response_types: ["code"],
     token_endpoint_auth_method: "none",
   };
-  if (scope) metadata.scope = scope;
+  if (scope) (metadata as any).scope = scope;
 
   const response = await fetchImpl(registrationEndpoint, {
     method: "POST",
@@ -131,7 +129,7 @@ export async function createMcpOAuthAuthorization({
   codeVerifier,
   codeChallenge,
   fetchImpl = globalThis.fetch,
-} = {}) {
+}: any = {}) {
   if (!connector?.id) throw new Error("connector.id is required");
   if (!connector?.url) throw new Error("connector.url is required");
   if (!redirectUri) throw new Error("redirectUri is required");
@@ -215,7 +213,7 @@ export async function exchangeMcpOAuthCode({
   codeVerifier,
   resource,
   fetchImpl = globalThis.fetch,
-} = {}) {
+}: any = {}) {
   if (!tokenEndpoint) throw new Error("tokenEndpoint is required");
   if (!code) throw new Error("code is required");
   if (!redirectUri) throw new Error("redirectUri is required");
@@ -247,7 +245,7 @@ export async function refreshMcpOAuthToken({
   scope = "",
   resource,
   fetchImpl = globalThis.fetch,
-} = {}) {
+}: any = {}) {
   if (!tokenEndpoint) throw new Error("tokenEndpoint is required");
   if (!refreshToken) throw new Error("refreshToken is required");
   if (!clientId) throw new Error("clientId is required");

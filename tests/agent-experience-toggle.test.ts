@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,7 +26,7 @@ function makeAgent({ experienceEnabled }) {
     agentsDir,
     productDir,
     userDir,
-  });
+  } as any);
   agent._config = {
     locale: "en",
     agent: { name: "Hana", yuan: "hanako" },

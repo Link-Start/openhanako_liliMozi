@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { createApprovalGateway, createModelApprovalReviewer } from "../lib/approval-gateway.ts";
 

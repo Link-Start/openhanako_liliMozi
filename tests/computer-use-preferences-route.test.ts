@@ -1,15 +1,14 @@
-// @ts-nocheck
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createPreferencesRoute } from "../server/routes/preferences.ts";
 
-function makeApp(engine, options = {}) {
+function makeApp(engine, options: any = {}) {
   const app = new Hono();
   app.route("/api", createPreferencesRoute(engine, options));
   return app;
 }
 
-function makeEngine(options = {}) {
+function makeEngine( options: any = {}) {
   const computerUseSettings = options.computerUseSettings || {
     enabled: true,
     provider_by_platform: { darwin: "macos:cua", win32: "windows:uia", linux: "mock" },
@@ -91,7 +90,7 @@ describe("Computer Use preference routes", () => {
   });
 
   it("uses the async Computer Use settings updater when available", async () => {
-    const engine = makeEngine();
+    const engine: any = makeEngine();
     engine.updateComputerUseSettings = vi.fn(async (settings) => ({
       enabled: settings.enabled,
       provider_by_platform: { darwin: "macos:cua", win32: "windows:uia", linux: "mock" },
@@ -107,7 +106,7 @@ describe("Computer Use preference routes", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(engine.updateComputerUseSettings).toHaveBeenCalledWith({ enabled: false });
+    expect((engine as any).updateComputerUseSettings).toHaveBeenCalledWith({ enabled: false });
     expect(engine.setComputerUseSettings).not.toHaveBeenCalled();
   });
 

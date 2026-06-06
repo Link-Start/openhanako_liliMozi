@@ -1,4 +1,3 @@
-// @ts-nocheck
 const OPENAI_MIN_PIXELS = 655_360;
 const OPENAI_MAX_PIXELS = 8_294_400;
 const OPENAI_MAX_EDGE = 3840;
@@ -191,7 +190,7 @@ function normalizeOpenAiSizeInput(value, { ratio, flexible, sourceName }) {
   throw new Error(`${errorPrefix(sourceName)}size "${raw}" is unsupported`);
 }
 
-export function resolveOpenAiImageSize(params = {}, providerDefaults = {}, options = {}) {
+export function resolveOpenAiImageSize( params: any = {}, providerDefaults: any = {}, options: any = {}): string | null {
   const sourceName = options.sourceName || "OpenAI image";
   const flexible = options.flexible !== false;
   const effectiveRatio = params.aspect_ratio

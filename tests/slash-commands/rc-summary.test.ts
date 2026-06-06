@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -25,11 +24,11 @@ function makeUserMsg(text) {
 }
 function makeAssistantMsg(text, tools = []) {
   const blocks = [{ type: "text", text }];
-  for (const name of tools) blocks.push({ type: "tool_use", name, input: {} });
+  for (const name of tools) blocks.push({ type: "tool_use", name, input: {} } as any);
   return { type: "message", message: { role: "assistant", content: blocks } };
 }
 
-function makeEngine({ utilConfig, chatCreds } = {}) {
+function makeEngine({ utilConfig, chatCreds }: any = {}) {
   return {
     resolveUtilityConfig: utilConfig === undefined
       ? vi.fn(() => { throw new Error("not configured"); })
@@ -45,7 +44,7 @@ function makeAgent(chatId = "gpt-5", provider = "openai") {
 }
 
 beforeEach(() => {
-  callText.mockReset();
+  (callText as any).mockReset();
 });
 afterEach(() => {
   if (tmpFile && fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
@@ -67,7 +66,7 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
   it("Tier 1 (utility) succeeds → does not reach tier 2/3", async () => {
     const p = writeSessionFile([makeUserMsg("hi"), makeAssistantMsg("hello")]);
-    callText.mockResolvedValueOnce("utility summary");
+    (callText as any).mockResolvedValueOnce("utility summary");
     const engine = makeEngine({
       utilConfig: {
         utility: "gpt-4o-mini", utility_large: "gpt-4o",
@@ -82,8 +81,8 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
   it("Tier 1 fails → falls back to Tier 2 (utility_large)", async () => {
     const p = writeSessionFile([makeUserMsg("hi"), makeAssistantMsg("hello")]);
-    callText.mockRejectedValueOnce(new Error("utility down"));
-    callText.mockResolvedValueOnce("large summary");
+    (callText as any).mockRejectedValueOnce(new Error("utility down"));
+    (callText as any).mockResolvedValueOnce("large summary");
     const engine = makeEngine({
       utilConfig: {
         utility: "gpt-4o-mini", utility_large: "gpt-4o",
@@ -98,9 +97,9 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
   it("Tiers 1+2 fail → falls back to Tier 3 (chat)", async () => {
     const p = writeSessionFile([makeUserMsg("hi"), makeAssistantMsg("hello")]);
-    callText.mockRejectedValueOnce(new Error("utility down"));
-    callText.mockRejectedValueOnce(new Error("large down"));
-    callText.mockResolvedValueOnce("chat summary");
+    (callText as any).mockRejectedValueOnce(new Error("utility down"));
+    (callText as any).mockRejectedValueOnce(new Error("large down"));
+    (callText as any).mockResolvedValueOnce("chat summary");
     const engine = makeEngine({
       utilConfig: {
         utility: "u", utility_large: "ul",
@@ -116,7 +115,7 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
   it("all three tiers fail → returns null (caller does tier-4 plain text)", async () => {
     const p = writeSessionFile([makeUserMsg("hi"), makeAssistantMsg("hello")]);
-    callText.mockRejectedValue(new Error("offline"));
+    (callText as any).mockRejectedValue(new Error("offline"));
     const engine = makeEngine({
       utilConfig: {
         utility: "u", utility_large: "ul",
@@ -132,7 +131,7 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
   it("engine.resolveUtilityConfig throws → tier 1+2 skipped, tier 3 tried", async () => {
     const p = writeSessionFile([makeUserMsg("hi"), makeAssistantMsg("hello")]);
-    callText.mockResolvedValueOnce("chat only");
+    (callText as any).mockResolvedValueOnce("chat only");
     const engine = makeEngine({
       utilConfig: undefined,  // default mock throws
       chatCreds: { model: "gpt-5", provider: "openai", api: "openai", api_key: "k", base_url: "https://x" },
@@ -144,7 +143,7 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
   it("utility config incomplete (missing api_key) → skips tier 1 cleanly", async () => {
     const p = writeSessionFile([makeUserMsg("hi"), makeAssistantMsg("hello")]);
-    callText.mockResolvedValueOnce("from large");
+    (callText as any).mockResolvedValueOnce("from large");
     const engine = makeEngine({
       utilConfig: {
         utility: "u", utility_large: "ul",
@@ -161,7 +160,7 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
   it("trims whitespace on success", async () => {
     const p = writeSessionFile([makeUserMsg("hi"), makeAssistantMsg("hello")]);
-    callText.mockResolvedValueOnce("  padded summary  \n");
+    (callText as any).mockResolvedValueOnce("  padded summary  \n");
     const engine = makeEngine({
       utilConfig: {
         utility: "u", utility_large: "ul",
@@ -178,7 +177,7 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
       makeUserMsg("帮我检查远程控制的摘要为什么太短"),
       makeAssistantMsg("我正在查看 /rc 接管后的摘要生成逻辑，准备调整提示词。", ["read"]),
     ]);
-    callText.mockResolvedValueOnce("正在调整 /rc 摘要提示词，重点补足当前进展和下一步线索。");
+    (callText as any).mockResolvedValueOnce("正在调整 /rc 摘要提示词，重点补足当前进展和下一步线索。");
     const engine = makeEngine({
       utilConfig: {
         utility: "u", utility_large: "ul",
@@ -189,7 +188,7 @@ describe("summarizeSessionForRc — 3-tier fallback", () => {
 
     await summarizeSessionForRc(engine, makeAgent(), p);
 
-    const system = callText.mock.calls[0][0].messages[0].content;
+    const system = (callText as any).mock.calls[0][0].messages[0].content;
     expect(system).toContain("100 字以内");
     expect(system).toContain("当前进展");
     expect(system).toContain("下一步线索");

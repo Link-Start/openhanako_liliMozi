@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   bridgeDeliveryTarget,
   buildImageParams,
@@ -19,7 +18,7 @@ function assertMediaRuntime(ctx) {
   return { registry, store, poller };
 }
 
-export async function submitImageGeneration({ input = {}, ctx, metadata = null, deliveryTarget = undefined } = {}) {
+export async function submitImageGeneration({ input = {}, ctx, metadata = null, deliveryTarget = undefined }: any = {}) {
   const { registry, store, poller } = assertMediaRuntime(ctx);
   const sessionPath = normalizeSessionPath(ctx);
   if (!sessionPath) {

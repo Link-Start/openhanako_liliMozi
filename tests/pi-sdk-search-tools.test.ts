@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { PassThrough } from "stream";
 import { EventEmitter } from "events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,7 +42,7 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
     parameters: {},
     execute: vi.fn(),
   })),
-  createFindToolDefinition: vi.fn((_cwd, options = {}) => ({
+  createFindToolDefinition: vi.fn((_cwd, options: any = {}) => ({
     name: "find",
     label: "find",
     description: "find",
@@ -83,8 +82,8 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
   getAgentDir: () => process.cwd(),
 }));
 
-function createChildProcess({ stdout = "", stderr = "", code = 0 } = {}) {
-  const child = new EventEmitter();
+function createChildProcess({ stdout = "", stderr = "", code = 0 }: any = {}) {
+  const child: any = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.killed = false;
@@ -122,14 +121,14 @@ describe("Hana Pi SDK search tools", () => {
     };
     spawn.mockReturnValue(createChildProcess({ stdout: `${JSON.stringify(match)}\n` }));
 
-    const tool = createGrepTool(cwd, {
+    const tool = (createGrepTool as any)(cwd, {
       operations: {
         isDirectory: () => true,
         readFile: () => "",
       },
     });
 
-    await tool.execute("call-1", { pattern: "name", path: "." });
+    await (tool as any).execute("call-1", { pattern: "name", path: "." });
 
     expect(spawn).toHaveBeenCalledWith(
       "rg",
@@ -146,9 +145,9 @@ describe("Hana Pi SDK search tools", () => {
     const cwd = process.cwd();
     spawn.mockReturnValue(createChildProcess({ stdout: `${cwd}/package.json\n` }));
 
-    const tool = createFindTool(cwd);
+    const tool = (createFindTool as any)(cwd);
 
-    await tool.execute("call-2", { pattern: "package.json", path: "." });
+    await (tool as any).execute("call-2", { pattern: "package.json", path: "." });
 
     expect(spawn).toHaveBeenCalledWith(
       "fd",

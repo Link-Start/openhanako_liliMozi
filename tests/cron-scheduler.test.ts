@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCronScheduler, DEFAULT_CRON_EXECUTION_TIMEOUT_MS } from "../lib/desk/cron-scheduler.ts";
 
@@ -50,7 +49,7 @@ describe("cron-scheduler", () => {
       cronStore: store,
       executeJob: async () => {},
       onJobDone: (j, result) => done.push({ id: j.id, result }),
-    });
+    } as any);
 
     await scheduler.checkJobs();
 
@@ -82,7 +81,7 @@ describe("cron-scheduler", () => {
       cronStore: store,
       executeJob: async () => executionResult,
       onJobDone: (j, result) => done.push({ id: j.id, result }),
-    });
+    } as any);
 
     await scheduler.checkJobs();
 
@@ -113,7 +112,7 @@ describe("cron-scheduler", () => {
         throw new Error("boom");
       },
       onJobDone: (j, result) => done.push({ id: j.id, result }),
-    });
+    } as any);
 
     await scheduler.checkJobs();
 
@@ -141,11 +140,11 @@ describe("cron-scheduler", () => {
       cronStore: store,
       executeJob: async () => {
         const err = new Error("agent 正在执行另一个 cron");
-        err.skipped = true;
+        (err as any).skipped = true;
         throw err;
       },
       onJobDone: (j, result) => done.push({ id: j.id, result }),
-    });
+    } as any);
 
     await scheduler.checkJobs();
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * tests/outbound-proxy-diagnostics.test.js
  *

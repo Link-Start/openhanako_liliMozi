@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -22,7 +21,7 @@ describe("stage_files tool", () => {
     expect(tool.description).toContain("browser screenshot");
     expect(tool.description).toContain("Bridge/remote platforms");
     expect(tool.description).toContain("consumers choose the platform-specific delivery");
-    expect(tool.parameters.properties.filepaths.description).toContain("StageFile");
+    expect((tool.parameters.properties.filepaths as any).description).toContain("StageFile");
   });
 
   it("registers staged files as session files while preserving legacy mediaUrls", async () => {

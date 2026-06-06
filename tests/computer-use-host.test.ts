@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { ComputerHost } from "../core/computer-use/computer-host.ts";
 import { ComputerProviderRegistry } from "../core/computer-use/provider-registry.ts";
@@ -132,7 +131,7 @@ describe("ComputerHost", () => {
     const provider = createMockComputerProvider({ providerId: "mock" });
     provider.capabilities.pointClick = "requiresApproval";
     provider.capabilities.elementDoubleClick = true;
-    provider.createLease = async (_ctx, target) => ({
+    (provider as any).createLease = async (_ctx: any, target: any) => ({
       appId: target?.appId || "app.notes",
       windowId: target?.windowId || "win-1",
       allowedActions: ["double_click", "click_point", "stop"],
@@ -160,7 +159,7 @@ describe("ComputerHost", () => {
     provider.capabilities.pointClick = "foreground";
     provider.capabilities.drag = "foreground";
     provider.capabilities.keyboardInput = "foreground";
-    provider.createLease = async (_ctx, target) => ({
+    (provider as any).createLease = async (_ctx: any, target: any) => ({
       appId: target?.appId || "app.notes",
       windowId: target?.windowId || "win-1",
       allowedActions: ["click_point", "drag", "press_key", "stop"],
@@ -186,7 +185,7 @@ describe("ComputerHost", () => {
   it("accepts pid-scoped keyboard capability for macOS Cua key input", async () => {
     const provider = createMockComputerProvider({ providerId: "mock" });
     provider.capabilities.keyboardInput = "pidScoped";
-    provider.createLease = async (_ctx, target) => ({
+    (provider as any).createLease = async (_ctx: any, target: any) => ({
       appId: target?.appId || "app.notes",
       windowId: target?.windowId || "win-1",
       allowedActions: ["press_key", "stop"],
@@ -205,7 +204,7 @@ describe("ComputerHost", () => {
 
   it("marks native-cursor providers as provider-rendered for action presentation", async () => {
     const provider = createMockComputerProvider({ providerId: "mock" });
-    provider.capabilities.nativeCursor = true;
+    (provider.capabilities as any).nativeCursor = true;
     const { host } = makeHost(provider);
     const lease = await host.createLease(ctx, { appId: "app.notes" });
 
@@ -262,7 +261,7 @@ describe("ComputerHost", () => {
     const provider = createMockComputerProvider({ providerId: "mock" });
     provider.stop = vi.fn(async () => ({ ok: true }));
     provider.releaseLease = vi.fn(async () => ({ released: true }));
-    provider.dispose = vi.fn(async () => ({ disposed: true }));
+    (provider as any).dispose = vi.fn(async () => ({ disposed: true }));
     const { host } = makeHost(provider);
     const lease = await host.createLease(ctx, { appId: "app.notes" });
 
@@ -276,7 +275,7 @@ describe("ComputerHost", () => {
       { sessionPath: ctx.sessionPath, agentId: ctx.agentId },
       expect.objectContaining({ leaseId: lease.leaseId }),
     );
-    expect(provider.dispose).toHaveBeenCalledOnce();
+    expect((provider as any).dispose).toHaveBeenCalledOnce();
     await expect(host.getAppState(ctx, lease.leaseId))
       .rejects.toMatchObject({ code: COMPUTER_USE_ERRORS.LEASE_RELEASED });
   });
@@ -334,7 +333,7 @@ describe("ComputerHost", () => {
     }, { appId: "app.notes" });
 
     expect(next.sessionPath).toBe("/tmp/other-session.jsonl");
-    await expect(host.getAppState(ctx))
+    await expect((host as any).getAppState(ctx))
       .rejects.toMatchObject({ code: COMPUTER_USE_ERRORS.LEASE_RELEASED });
   });
 
@@ -344,14 +343,14 @@ describe("ComputerHost", () => {
     let createLeaseCalls = 0;
     let finishStop = null;
     let cleanupFinished = false;
-    provider.createLease = vi.fn(async (...args) => {
+    (provider as any).createLease = vi.fn(async (...args: any[]) => {
       createLeaseCalls += 1;
       if (createLeaseCalls === 2) {
         expect(cleanupFinished).toBe(true);
       }
-      return originalCreateLease(...args);
+      return (originalCreateLease as any)(...args);
     });
-    provider.stop = vi.fn(async () => new Promise((resolve) => {
+    (provider as any).stop = vi.fn(async () => new Promise((resolve) => {
       finishStop = () => {
         cleanupFinished = true;
         resolve({ ok: true });
@@ -395,7 +394,7 @@ describe("ComputerHost", () => {
   it("resolves missing lease and snapshot ids from the current session lease", async () => {
     const { host, provider } = makeHost();
     const lease = await host.createLease(ctx, { appId: "app.notes" });
-    const snapshot = await host.getAppState(ctx);
+    const snapshot = await (host as any).getAppState(ctx);
 
     expect(snapshot.leaseId).toBe(lease.leaseId);
 
@@ -403,7 +402,7 @@ describe("ComputerHost", () => {
       type: "click_element",
       elementId: "mock-button",
     });
-    await host.stop(ctx);
+    await (host as any).stop(ctx);
 
     expect(provider.actions.at(-2)).toMatchObject({
       leaseId: lease.leaseId,

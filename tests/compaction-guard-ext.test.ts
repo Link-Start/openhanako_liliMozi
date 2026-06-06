@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock compaction-utils 以便精准控制 L3 判断和硬截断结果
@@ -16,7 +15,7 @@ import {
 } from "../core/compaction-utils.ts";
 
 function createMockPi() {
-  const handlers = {};
+  const handlers: any = {};
   return {
     on: vi.fn((event, handler) => {
       handlers[event] = handler;
@@ -77,7 +76,7 @@ describe("CompactionGuardExtension", () => {
 
   describe("L1: tool_result truncation", () => {
     it("leaves short text unchanged", async () => {
-      truncateTextHeadTail.mockReturnValue({ text: "short", truncated: false, originalBytes: 5 });
+      (truncateTextHeadTail as any).mockReturnValue({ text: "short", truncated: false, originalBytes: 5 });
       const res = await pi.trigger("tool_result", {
         toolName: "read",
         isError: false,
@@ -87,7 +86,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("replaces long text content with truncated version", async () => {
-      truncateTextHeadTail.mockReturnValue({
+      (truncateTextHeadTail as any).mockReturnValue({
         text: "HEAD...[省略]...TAIL",
         truncated: true,
         originalBytes: 200_000,
@@ -111,7 +110,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("does NOT touch image blocks", async () => {
-      truncateTextHeadTail.mockReturnValue({ text: "", truncated: false, originalBytes: 0 });
+      (truncateTextHeadTail as any).mockReturnValue({ text: "", truncated: false, originalBytes: 0 });
       const res = await pi.trigger("tool_result", {
         toolName: "read",
         isError: false,
@@ -122,7 +121,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("mixes truncated text blocks with untouched image blocks", async () => {
-      truncateTextHeadTail.mockReturnValueOnce({
+      (truncateTextHeadTail as any).mockReturnValueOnce({
         text: "TRUNCATED",
         truncated: true,
         originalBytes: 100_000,
@@ -144,7 +143,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("swallows hook exceptions and returns undefined (passthrough)", async () => {
-      truncateTextHeadTail.mockImplementation(() => {
+      (truncateTextHeadTail as any).mockImplementation(() => {
         throw new Error("boom");
       });
       const res = await pi.trigger("tool_result", {
@@ -186,7 +185,7 @@ describe("CompactionGuardExtension", () => {
     };
 
     it("returns cache-preserving compaction when summarize tokens are within threshold", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000); // < 128K * 0.85 = 108,800
+      (estimatePreparationTokens as any).mockReturnValue(50_000); // < 128K * 0.85 = 108,800
       const res = await pi.trigger(
         "session_before_compact",
         { preparation, signal: { aborted: false } },
@@ -234,7 +233,7 @@ describe("CompactionGuardExtension", () => {
         buildSessionCacheSnapshot,
         getCompactionMode: () => "pi_compatible",
       })(pi);
-      estimatePreparationTokens.mockReturnValue(50_000);
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
 
       const res = await pi.trigger(
         "session_before_compact",
@@ -249,7 +248,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("strips inline media from compaction preparation before estimating or snapshotting history", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000);
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
       const mediaPreparation = {
         ...preparation,
         messagesToSummarize: [
@@ -280,7 +279,7 @@ describe("CompactionGuardExtension", () => {
         ctx,
       );
 
-      const estimatedPreparation = estimatePreparationTokens.mock.calls[0][0];
+      const estimatedPreparation = (estimatePreparationTokens as any).mock.calls[0][0];
       expect(JSON.stringify(estimatedPreparation)).not.toContain("BASE64_AUDIO");
       expect(JSON.stringify(estimatedPreparation)).not.toContain("BASE64_IMAGE");
       expect(estimatedPreparation.messagesToSummarize[0].content).toEqual([
@@ -300,7 +299,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("does not let the latest transformed context expand the Pi compaction boundary", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000);
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
       await pi.trigger("context", {
         messages: [{ role: "user", content: [{ type: "text", text: "live context" }], timestamp: 1 }],
       });
@@ -318,7 +317,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("passes only Pi preparation messages to the cache compactor, not the kept tail from live context", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000);
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
       await pi.trigger("context", {
         messages: [
           { role: "user", content: [{ type: "text", text: "old history to summarize" }], timestamp: 1 },
@@ -347,7 +346,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("does not read stale session-bound pi helpers during compaction", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000);
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
       pi.getThinkingLevel.mockImplementation(() => {
         throw new Error("This extension ctx is stale after session replacement or reload.");
       });
@@ -366,8 +365,8 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("uses the session snapshot cache params for the side-task request contract", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000);
-      buildSessionCacheSnapshot.mockImplementationOnce((sessionPath, { reason, messages } = {}) => ({
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
+      (buildSessionCacheSnapshot as any).mockImplementationOnce((sessionPath: any, { reason, messages }: any = {}) => ({
         strategy: "session_snapshot",
         strict: true,
         sessionPath,
@@ -394,8 +393,8 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("canonicalizes legacy auto thinking before compaction side-task requests", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000);
-      buildSessionCacheSnapshot.mockImplementationOnce((sessionPath, { reason, messages } = {}) => ({
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
+      (buildSessionCacheSnapshot as any).mockImplementationOnce((sessionPath: any, { reason, messages }: any = {}) => ({
         strategy: "session_snapshot",
         strict: true,
         sessionPath,
@@ -439,7 +438,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("uses explicit cache recovery when GLM thinking tool-call history cannot replay reasoning_content", async () => {
-      estimatePreparationTokens.mockReturnValue(50_000);
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
       const glmModel = {
         id: "glm-4.5",
         provider: "zhipu",
@@ -514,7 +513,7 @@ describe("CompactionGuardExtension", () => {
         buildSessionCacheSnapshot,
         getCompactionMode: () => "auto",
       })(pi);
-      estimatePreparationTokens.mockReturnValue(50_000);
+      (estimatePreparationTokens as any).mockReturnValue(50_000);
       const glmModel = {
         id: "glm-5.1",
         provider: "zhipu",
@@ -571,8 +570,8 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("returns hard truncation when the full cache-preserving request would exceed the budget", async () => {
-      estimatePreparationTokens.mockReturnValue(100); // old Pi summarizer estimate fits
-      computeHardTruncation.mockReturnValue({
+      (estimatePreparationTokens as any).mockReturnValue(100); // old Pi summarizer estimate fits
+      (computeHardTruncation as any).mockReturnValue({
         summary: "[hard truncated for full request]",
         firstKeptEntryId: "uuid-42",
         tokensBefore: 90_000,
@@ -613,8 +612,8 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("returns hard truncation when summarize tokens exceed threshold", async () => {
-      estimatePreparationTokens.mockReturnValue(120_000); // > 108,800
-      computeHardTruncation.mockReturnValue({
+      (estimatePreparationTokens as any).mockReturnValue(120_000); // > 108,800
+      (computeHardTruncation as any).mockReturnValue({
         summary: "[hard truncated]",
         firstKeptEntryId: "uuid-42",
         tokensBefore: 90_000,
@@ -641,8 +640,8 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("cancels when hard truncate itself fails", async () => {
-      estimatePreparationTokens.mockReturnValue(120_000);
-      computeHardTruncation.mockReturnValue(null); // 无法截断
+      (estimatePreparationTokens as any).mockReturnValue(120_000);
+      (computeHardTruncation as any).mockReturnValue(null); // 无法截断
       const res = await pi.trigger(
         "session_before_compact",
         { preparation, signal: { aborted: false } },
@@ -652,7 +651,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("cancels when signal already aborted", async () => {
-      estimatePreparationTokens.mockReturnValue(120_000);
+      (estimatePreparationTokens as any).mockReturnValue(120_000);
       const res = await pi.trigger(
         "session_before_compact",
         { preparation, signal: { aborted: true } },
@@ -663,7 +662,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("cancels when model is missing", async () => {
-      estimatePreparationTokens.mockReturnValue(120_000);
+      (estimatePreparationTokens as any).mockReturnValue(120_000);
       const res = await pi.trigger(
         "session_before_compact",
         { preparation, signal: { aborted: false } },
@@ -673,7 +672,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("cancels when contextWindow is 0", async () => {
-      estimatePreparationTokens.mockReturnValue(120_000);
+      (estimatePreparationTokens as any).mockReturnValue(120_000);
       const res = await pi.trigger(
         "session_before_compact",
         { preparation, signal: { aborted: false } },
@@ -683,7 +682,7 @@ describe("CompactionGuardExtension", () => {
     });
 
     it("swallows hook exceptions and cancels", async () => {
-      estimatePreparationTokens.mockImplementation(() => {
+      (estimatePreparationTokens as any).mockImplementation(() => {
         throw new Error("boom");
       });
       const res = await pi.trigger(
@@ -698,8 +697,8 @@ describe("CompactionGuardExtension", () => {
       pi = createMockPi();
       createCompactionGuardExtension({ hardTruncateThreshold: 0.5, cacheCompactor })(pi);
       // 50% * 128K = 64K
-      estimatePreparationTokens.mockReturnValue(70_000); // > 64K 应触发
-      computeHardTruncation.mockReturnValue({
+      (estimatePreparationTokens as any).mockReturnValue(70_000); // > 64K 应触发
+      (computeHardTruncation as any).mockReturnValue({
         summary: "s", firstKeptEntryId: "id", tokensBefore: 0, details: {},
       });
       const res = await pi.trigger(

@@ -1,11 +1,10 @@
-// @ts-nocheck
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { createSessionOps } from "../../core/slash-commands/session-ops.ts";
 
-let tmpDir, engine, agents;
+let tmpDir: any, engine: any, agents: any;
 
 function agentDir(id) { return path.join(tmpDir, "agents", id); }
 function bridgeDirFor(id) { return path.join(agentDir(id), "bridge"); }
@@ -26,7 +25,7 @@ beforeEach(() => {
     a2: { id: "a2", sessionDir: agentDir("a2") },
   };
   for (const a of Object.values(agents)) {
-    fs.mkdirSync(path.join(a.sessionDir, "bridge", "owner"), { recursive: true });
+    fs.mkdirSync(path.join((a as any).sessionDir, "bridge", "owner"), { recursive: true });
   }
   engine = {
     getAgent: vi.fn((id) => agents[id] || null),

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../shared/errors.ts";
 import { prepareVisionInputForTextOnlyModel } from "../core/vision-prepare.ts";
@@ -35,7 +34,7 @@ describe("prepareVisionInputForTextOnlyModel", () => {
       getVisionBridge: () => ({ prepare }),
       visionPolicyTarget: { isVisionAuxiliaryEnabled: () => true },
       prepareModelImages: passthroughPrepareModelImages,
-    });
+    } as any);
 
     expect(prepare).toHaveBeenCalledWith(expect.objectContaining({
       targetModel: deepseekImageDeclaredModel,
@@ -67,7 +66,7 @@ describe("prepareVisionInputForTextOnlyModel", () => {
       getVisionBridge: () => ({ prepare }),
       visionPolicyTarget: { isVisionAuxiliaryEnabled: () => true },
       prepareModelImages,
-    });
+    } as any);
 
     expect(prepareModelImages).toHaveBeenCalledWith(expect.objectContaining({
       text: "what is this?",
@@ -94,7 +93,7 @@ describe("prepareVisionInputForTextOnlyModel", () => {
       sessionPath: "/tmp/session.jsonl",
       getVisionBridge: () => ({ prepare }),
       visionPolicyTarget: { isVisionAuxiliaryEnabled: () => true },
-    });
+    } as any);
 
     expect(prepare).not.toHaveBeenCalled();
     expect(result).toEqual({ text: "what is this?", opts: { images } });
@@ -115,7 +114,7 @@ describe("prepareVisionInputForTextOnlyModel", () => {
       visionPolicyTarget: { isVisionAuxiliaryEnabled: () => true },
       warn,
       prepareModelImages: passthroughPrepareModelImages,
-    });
+    } as any);
 
     expect(result.opts.images).toEqual([]);
     expect(result.text).toMatch(/图片分析失败|Image analysis failed/);
@@ -131,7 +130,7 @@ describe("prepareVisionInputForTextOnlyModel", () => {
       sessionPath: "/tmp/session.jsonl",
       getVisionBridge: () => null,
       visionPolicyTarget: { isVisionAuxiliaryEnabled: () => true },
-    })).rejects.toThrow(/vision auxiliary model/i);
+    } as any)).rejects.toThrow(/vision auxiliary model/i);
   });
 
   it("propagates user aborts instead of degrading them", async () => {
@@ -150,7 +149,7 @@ describe("prepareVisionInputForTextOnlyModel", () => {
       visionPolicyTarget: { isVisionAuxiliaryEnabled: () => true },
       signal: controller.signal,
       prepareModelImages: passthroughPrepareModelImages,
-    });
+    } as any);
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });

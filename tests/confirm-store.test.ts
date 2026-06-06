@@ -1,11 +1,10 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import { ConfirmStore } from "../lib/confirm-store.ts";
 
 describe("ConfirmStore", () => {
   it("exposes pending confirmation metadata without resolving it", () => {
     const store = new ConfirmStore();
-    const { confirmId } = store.create(
+    const { confirmId } = (store as any).create(
       "tool_action_approval",
       { toolName: "write" },
       "/sessions/a.jsonl",
@@ -19,7 +18,7 @@ describe("ConfirmStore", () => {
     });
     expect(store.size).toBe(1);
 
-    store.resolve(confirmId, "rejected");
+    (store as any).resolve(confirmId, "rejected");
     expect(store.get(confirmId)).toBeNull();
   });
 });

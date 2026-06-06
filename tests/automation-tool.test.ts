@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { createAutomationTool } from "../lib/tools/automation-tool.ts";
 

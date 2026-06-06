@@ -1,4 +1,3 @@
-// @ts-nocheck
 import path from "path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -42,7 +41,7 @@ const MODEL = {
   input: ["text", "image"],
 };
 
-function makeSession(sessionPath, overrides = {}) {
+function makeSession(sessionPath, overrides: any = {}) {
   const sessionManager = overrides.sessionManager || {
     getSessionFile: () => sessionPath,
     getCwd: () => path.dirname(sessionPath),
@@ -75,7 +74,7 @@ function makeAgent(root = "/tmp/hana-runtime-hibernation") {
   };
 }
 
-function makeCoordinator(overrides = {}) {
+function makeCoordinator( overrides: any = {}) {
   const root = overrides.root || "/tmp/hana-runtime-hibernation";
   const agent = overrides.agent || makeAgent(root);
   return new SessionCoordinator({
@@ -170,7 +169,7 @@ describe("SessionCoordinator runtime hibernation", () => {
     coordinator._currentSessionPath = sessionPath;
     coordinator._sessionStarted = true;
 
-    await coordinator.promptSession(sessionPath, "hello");
+    await (coordinator as any).promptSession(sessionPath, "hello");
 
     expect(sessionManagerOpenMock).toHaveBeenCalledWith(sessionPath, expect.stringContaining("sessions"));
     expect(restored.prompt).toHaveBeenCalledWith("hello", undefined);

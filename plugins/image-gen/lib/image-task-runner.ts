@@ -1,4 +1,3 @@
-// @ts-nocheck
 import path from "node:path";
 import { t } from "../../../lib/i18n.ts";
 
@@ -58,7 +57,7 @@ export function buildImageParams(input) {
   };
 }
 
-export function imageDeferredMeta({ prompt, deliveryTarget = null } = {}) {
+export function imageDeferredMeta({ prompt, deliveryTarget = null }: any = {}) {
   return {
     type: "image-generation",
     mediaKind: "image",
@@ -80,7 +79,7 @@ async function adapterIsAvailable(adapter, submitCtx) {
   }
 }
 
-function targetFromAdapter(adapter, input, media = {}) {
+function targetFromAdapter(adapter, input, media: any = {}) {
   if (!adapter) return null;
   return {
     adapter,
@@ -206,7 +205,7 @@ async function targetFromExplicitModel(input, registry, submitCtx) {
   if (!input.model) return null;
   const providers = await listMediaProviders(submitCtx);
   const matches = [];
-  for (const provider of Object.values(providers)) {
+  for (const provider of Object.values(providers) as any[]) {
     const model = provider?.models?.find((item) => item?.id === input.model);
     if (model) matches.push({ providerId: provider.providerId, modelId: model.id });
   }
@@ -230,7 +229,7 @@ async function targetFromConfiguredDefault(input, registry, submitCtx) {
 
 async function targetFromFirstAvailableProvider(input, registry, submitCtx) {
   const providers = await listMediaProviders(submitCtx);
-  for (const provider of Object.values(providers)) {
+  for (const provider of Object.values(providers) as any[]) {
     if (provider?.hasCredentials === false) continue;
     const model = provider?.models?.find((item) => registry.getProtocol?.(item.protocolId));
     if (!model) continue;

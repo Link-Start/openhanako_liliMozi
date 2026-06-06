@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   COVER_STYLE_GUIDE_VERSION,
   buildCoverStyleGuideForAgent,
@@ -26,7 +25,7 @@ export const parameters = {
   },
 };
 
-export async function execute(input = {}) {
+export async function execute( input: any = {}) {
   const themeTone = input.themeTone === "dark" ? "dark" : "light";
   const userGuidance = typeof input.userGuidance === "string" ? input.userGuidance.trim() : "";
   return {

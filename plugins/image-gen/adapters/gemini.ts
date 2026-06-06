@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   createLocalTaskId,
   normalizeBaseUrl,
@@ -11,7 +10,7 @@ const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const GEMINI_SUPPORTED_RATIOS = new Set(["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]);
 const GEMINI_SUPPORTED_IMAGE_SIZES = new Set(["1K", "2K", "4K"]);
 
-async function getCredentials(ctx, params = {}) {
+async function getCredentials(ctx, params: any = {}) {
   const providerId = params.credentialProviderId || params.providerId || "gemini";
   const creds = await ctx.bus.request("provider:credentials", { providerId });
   if (creds.error || !creds.apiKey) {
@@ -53,7 +52,7 @@ function normalizeGeminiImageSize(value, fieldName) {
 }
 
 function normalizeGeminiImageConfig(params) {
-  const imageConfig = {};
+  const imageConfig: any = {};
   const aspectRatio = normalizeGeminiAspectRatio(params.aspect_ratio || params.aspectRatio || params.ratio);
   if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
 
@@ -111,10 +110,10 @@ export const geminiImageAdapter = {
   async submit(params, ctx) {
     const creds = await getCredentials(ctx, params);
     const modelId = params.modelId || params.model || "gemini-3.1-flash-image-preview";
-    const parts = [{ text: params.prompt }];
+    const parts: any[] = [{ text: params.prompt }];
     for (const image of normalizeImageInput(params.image)) {
       const part = await imagePart(image);
-      if (part) parts.push(part);
+      if (part) parts.push(part as any);
     }
 
     const imageConfig = normalizeGeminiImageConfig(params);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { AgentPhoneActivityStore } from "../lib/conversations/agent-phone-activity.ts";
 

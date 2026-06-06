@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -58,7 +57,7 @@ describe("image-gen poller completion event", () => {
       generatedDir,
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
       registerSessionFile: vi.fn(() => ({ fileId: "sf1", filePath: path.join(generatedDir, "cover.png") })),
-    });
+    } as any);
 
     await poller._checkTask(taskId, store.get(taskId));
 

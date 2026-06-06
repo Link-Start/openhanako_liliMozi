@@ -1,11 +1,10 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import { bridgeCommands } from "../../core/slash-commands/bridge-commands.ts";
 import { RcStateStore } from "../../core/slash-commands/rc-state.ts";
 
 function cmd(name) { return bridgeCommands.find(c => c.name === name); }
 
-function makeEngine({ sessions = [], rcState } = {}) {
+function makeEngine({ sessions = [], rcState }: any = {}) {
   return {
     rcState: rcState || new RcStateStore(),
     listSessions: vi.fn(async () => sessions),
@@ -33,7 +32,7 @@ describe("/rc command", () => {
   });
 
   it("rejects when sessionRef.kind is not bridge", async () => {
-    const r = await c.handler({
+    const r: any = await c.handler({
       engine: makeEngine(),
       sessionRef: { kind: "desktop", agentId: "a1", sessionPath: "/x" },
     });
@@ -42,7 +41,7 @@ describe("/rc command", () => {
 
   it("returns error when rcState missing (defensive)", async () => {
     const engine = { listSessions: async () => [], getAgent: () => null, rcState: null };
-    const r = await c.handler({
+    const r: any = await c.handler({
       engine,
       sessionRef: { kind: "bridge", agentId: "a1", sessionKey: "k" },
     });
@@ -53,7 +52,7 @@ describe("/rc command", () => {
     const engine = makeEngine({
       sessions: [{ path: "/a/s1.jsonl", agentId: "a1", modified: new Date(), title: "架构讨论", messageCount: 12 }],
     });
-    const r = await c.handler({
+    const r: any = await c.handler({
       engine,
       isGroup: true,
       sessionRef: { kind: "bridge", agentId: "a1", sessionKey: "tg_group_x@a1" },
@@ -64,14 +63,14 @@ describe("/rc command", () => {
   });
 
   it("rejects when already attached (must /exitrc first)", async () => {
-    const ctx = ctxBridge({ rcAttached: true });
-    const r = await c.handler(ctx);
+    const ctx = ctxBridge({ rcAttached: true } as any);
+    const r: any = await c.handler(ctx);
     expect(r.reply).toMatch(/已处于接管态.*\/exitrc/);
   });
 
   it("replies 'no sessions' when agent has none", async () => {
     const engine = makeEngine({ sessions: [] });
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toMatch(/没有可接管的桌面会话/);
     expect(engine.rcState.isPending("tg_dm_x@a1")).toBe(false);
   });
@@ -82,7 +81,7 @@ describe("/rc command", () => {
       { path: "/a/s2.jsonl", agentId: "a1", modified: new Date(), title: "周报写作", messageCount: 3 },
     ];
     const engine = makeEngine({ sessions });
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toMatch(/选择要接管/);
     expect(r.reply).toContain("1. 架构讨论");
     expect(r.reply).toContain("2. 周报写作");
@@ -98,7 +97,7 @@ describe("/rc command", () => {
     const engine = makeEngine({
       sessions: [{ path: "/a/s.jsonl", agentId: "a1", modified: new Date(), title: null, messageCount: 1 }],
     });
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toMatch(/未命名/);
   });
 
@@ -109,7 +108,7 @@ describe("/rc command", () => {
         { path: "/theirs.jsonl", agentId: "other", modified: new Date(), title: "theirs", messageCount: 0 },
       ],
     });
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toContain("mine");
     expect(r.reply).not.toContain("theirs");
   });
@@ -124,7 +123,7 @@ describe("/rc command", () => {
         { path: "/free.jsonl", agentId: "a1", modified: new Date(), title: "free", messageCount: 0 },
       ],
     });
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toContain("1. free");
     expect(r.reply).not.toContain("busy");
     expect(engine.rcState.getPending("tg_dm_x@a1")?.options).toEqual([
@@ -136,7 +135,7 @@ describe("/rc command", () => {
     const sessions = Array.from({ length: 15 }, (_, i) =>
       ({ path: `/s${i}.jsonl`, agentId: "a1", modified: new Date(Date.now() - i * 1000), title: `T${i}`, messageCount: 0 }));
     const engine = makeEngine({ sessions });
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     const matches = r.reply.match(/^\d+\./gm) || [];
     expect(matches.length).toBe(10);
     expect(r.reply).toContain("10. T9");
@@ -154,7 +153,7 @@ describe("/exitrc command", () => {
   });
 
   it("rejects when sessionRef.kind is not bridge", async () => {
-    const r = await c.handler({
+    const r: any = await c.handler({
       engine: makeEngine(),
       sessionRef: { kind: "desktop", agentId: "a1", sessionPath: "/x" },
     });
@@ -163,14 +162,14 @@ describe("/exitrc command", () => {
 
   it("replies 'not attached' when nothing to exit", async () => {
     const engine = makeEngine();
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toMatch(/未处于接管状态/);
   });
 
   it("clears attachment and confirms exit", async () => {
     const engine = makeEngine();
     engine.rcState.attach("tg_dm_x@a1", "/some.jsonl");
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toMatch(/已退出接管/);
     expect(engine.rcState.isAttached("tg_dm_x@a1")).toBe(false);
   });
@@ -200,7 +199,7 @@ describe("/exitrc command", () => {
   it("clears pending-selection too when user exits during selection", async () => {
     const engine = makeEngine();
     engine.rcState.setPending("tg_dm_x@a1", { type: "rc-select", promptText: "p", options: [] });
-    const r = await c.handler(ctxBridge({ engine }));
+    const r: any = await c.handler(ctxBridge({ engine }));
     expect(r.reply).toMatch(/已退出接管/);
     expect(engine.rcState.isPending("tg_dm_x@a1")).toBe(false);
   });
@@ -235,14 +234,14 @@ function ctxWithAttachedAndOps({ desktopPath = "/attached/s.jsonl", sessionOpsOv
 describe("/new /reset rejected during attachment", () => {
   it("/new 接管态下拒绝并提示 /exitrc", async () => {
     const { ctx } = ctxWithAttachedAndOps();
-    const r = await cmd("new").handler(ctx);
+    const r: any = await cmd("new").handler(ctx);
     expect(r.reply).toMatch(/接管桌面会话期间禁止.*\/exitrc/);
     expect(ctx.sessionOps.rotate).not.toHaveBeenCalled();
   });
 
   it("/reset 接管态下拒绝并提示 /exitrc", async () => {
     const { ctx } = ctxWithAttachedAndOps();
-    const r = await cmd("reset").handler(ctx);
+    const r: any = await cmd("reset").handler(ctx);
     expect(r.reply).toMatch(/接管桌面会话期间禁止.*\/exitrc/);
     expect(ctx.sessionOps.delete).not.toHaveBeenCalled();
   });
@@ -255,7 +254,7 @@ describe("/new /reset rejected during attachment", () => {
       sessionRef: { kind: "bridge", agentId: "a1", sessionKey: "tg_dm_x@a1" },
       sessionOps: { rotate: vi.fn(async () => ({ status: "rotated" })) },
     };
-    const r = await cmd("new").handler(ctx);
+    const r: any = await cmd("new").handler(ctx);
     expect(r.reply).toMatch(/已开启新会话/);
     expect(ctx.sessionOps.rotate).toHaveBeenCalledOnce();
   });
@@ -296,7 +295,7 @@ describe("/compact redirects to attached desktop session", () => {
       sessionPath: desktopPath,
     }));
     expect(ctx.reply).toHaveBeenCalledTimes(2);
-    expect(ctx.reply.mock.calls[0][0]).toMatch(/正在压缩/);
-    expect(ctx.reply.mock.calls[1][0]).toMatch(/9000.*3200/);
+    expect((ctx.reply.mock.calls as any)[0][0]).toMatch(/正在压缩/);
+    expect((ctx.reply.mock.calls as any)[1][0]).toMatch(/9000.*3200/);
   });
 });

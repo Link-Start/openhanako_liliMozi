@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const originalPlatform = process.platform;
@@ -14,9 +13,9 @@ vi.mock("../lib/pi-sdk/index.js", () => {
     createReadTool: vi.fn(() => makeTool("read")),
     createWriteTool: vi.fn(() => makeTool("write")),
     createEditTool: vi.fn(() => makeTool("edit")),
-    createBashTool: vi.fn((cwd, opts = {}) => ({
+    createBashTool: vi.fn((cwd, opts: any = {}) => ({
       name: "bash",
-      execute: vi.fn((toolCallId, params = {}) => {
+      execute: vi.fn((toolCallId, params: any = {}) => {
         const exec = opts.operations?.exec;
         if (!exec) return { content: [] };
         return exec(params.command, cwd, params);
@@ -49,7 +48,7 @@ describe("createSandboxedTools on Windows", () => {
       getSandboxEnabled: () => true,
       getSandboxNetworkEnabled,
       getExternalReadPaths,
-    });
+    } as any);
 
     expect(createWin32Exec).toHaveBeenCalledWith();
     const bashTool = tools.find((tool) => tool.name === "bash");

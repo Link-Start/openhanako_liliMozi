@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -20,7 +19,7 @@ describe("resources route", () => {
     return filePath;
   }
 
-  function makeMissingSessionFileSidecar({ fileId = "sf_route_missing" } = {}) {
+  function makeMissingSessionFileSidecar({ fileId = "sf_route_missing" }: any = {}) {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-resources-route-"));
     const agentsDir = path.join(tmpDir, "agents");
     const sessionPath = path.join(agentsDir, "hana", "sessions", "main.jsonl");
@@ -107,7 +106,7 @@ describe("resources route", () => {
           studioId: "studio_ctx",
         },
       }),
-      getResource: (_resourceId, options = {}) => {
+      getResource: (_resourceId, options: any = {}) => {
         seenContext = options.requestContext;
         return {
           schemaVersion: 1,
@@ -289,7 +288,7 @@ describe("resources route", () => {
     const app = new Hono();
     app.use("/api/resources/*", async (c, next) => {
       if (c.req.path.endsWith("/ticket")) {
-        c.set("authPrincipal", Object.freeze({
+        (c as any).set("authPrincipal", Object.freeze({
           kind: "device",
           credentialKind: "device_credential",
           connectionKind: "lan",

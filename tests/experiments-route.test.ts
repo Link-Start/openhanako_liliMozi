@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -17,7 +16,7 @@ import {
 function makeEngine() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-experiments-route-"));
   const agentsDir = path.join(root, "agents");
-  const prefsState = {};
+  const prefsState: any = {};
   return {
     root,
     engine: {
@@ -42,7 +41,7 @@ describe("experiments route", () => {
     const { engine } = makeEngine();
     const route = createExperimentsRoute(engine);
 
-    const { status, body } = await routeFetch(route, "/experiments");
+    const { status, body } = await (routeFetch as any)(route, "/experiments");
 
     expect(status).toBe(200);
     const entry = body.experiments.find((item) => item.id === CACHE_SNAPSHOT_EXPERIMENT_ID);
@@ -115,11 +114,11 @@ describe("experiments route", () => {
     expect(readCacheSnapshotObservation(agentDir).memoryMdPreview).toContain("重要事实");
 
     const route = createExperimentsRoute(engine);
-    const missing = await routeFetch(route, "/experiments/memory/cache-snapshot-reflection/observation");
+    const missing = await (routeFetch as any)(route, "/experiments/memory/cache-snapshot-reflection/observation");
     expect(missing.status).toBe(400);
     expect(missing.body.error).toMatch(/agentId/);
 
-    const ok = await routeFetch(route, "/experiments/memory/cache-snapshot-reflection/observation?agentId=hana");
+    const ok = await (routeFetch as any)(route, "/experiments/memory/cache-snapshot-reflection/observation?agentId=hana");
     expect(ok.status).toBe(200);
     expect(ok.body.observation.memoryMdPreview).toContain("重要事实");
 

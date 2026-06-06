@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
@@ -41,7 +40,7 @@ function makeApp({ pending, principal }) {
   return import("../server/routes/confirm.ts").then(({ createConfirmRoute }) => {
     const app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("authPrincipal", principal);
+      (c as any).set("authPrincipal", principal);
       await next();
     });
     app.route("/api", createConfirmRoute(confirmStore, engine));

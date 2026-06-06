@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * #1285 I1：bridge 冷恢复路径读时修复测试
  *
@@ -24,14 +23,14 @@ const sessionManagerCreateMock = vi.fn();
 const createAgentSessionMock = vi.fn();
 
 vi.mock("../lib/pi-sdk/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual: any = await importOriginal();
   return {
     ...actual,
-    createAgentSession: (...args) => createAgentSessionMock(...args),
+    createAgentSession: (...args: any[]) => createAgentSessionMock(...args),
     SessionManager: {
       ...actual.SessionManager,
-      create: (...args) => sessionManagerCreateMock(...args),
-      open: (...args) => sessionManagerOpenMock(...args),
+      create: (...args: any[]) => sessionManagerCreateMock(...args),
+      open: (...args: any[]) => sessionManagerOpenMock(...args),
     },
   };
 });
@@ -40,10 +39,10 @@ vi.mock("../lib/pi-sdk/index.js", async (importOriginal) => {
 const repairMock = vi.fn(() => ({ repaired: false, removed: 0 }));
 
 vi.mock("../core/session-health.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual: any = await importOriginal();
   return {
     ...actual,
-    repairOrphanToolResultEntriesInFile: (...args) => repairMock(...args),
+    repairOrphanToolResultEntriesInFile: (...args: any[]) => (repairMock as any)(...args),
   };
 });
 
@@ -62,11 +61,11 @@ const pruneInlineMediaMock = vi.fn(() => ({
 }));
 
 vi.mock("../core/session-inline-media-prune.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual: any = await importOriginal();
   return {
     ...actual,
-    pruneSessionInlineMediaHistory: (...args) => pruneInlineMediaMock(...args),
-    repairSessionInlineMediaEntriesInFile: (...args) => repairInlineMediaMock(...args),
+    pruneSessionInlineMediaHistory: (...args: any[]) => (pruneInlineMediaMock as any)(...args),
+    repairSessionInlineMediaEntriesInFile: (...args: any[]) => (repairInlineMediaMock as any)(...args),
   };
 });
 
@@ -205,11 +204,11 @@ describe("executeExternalMessage — 冷恢复 open 前调 repairOrphanToolResul
     const manager = new BridgeSessionManager(makeDeps(agent, rootDir));
 
     const callOrder = [];
-    repairMock.mockImplementation((p) => {
+    (repairMock.mockImplementation as any)((p: any) => {
       callOrder.push("orphan-repair");
       return { repaired: false, removed: 0 };
     });
-    repairInlineMediaMock.mockImplementation((p) => {
+    (repairInlineMediaMock.mockImplementation as any)((p: any) => {
       callOrder.push("inline-media-repair");
       return { repaired: false, stripped: 0, strippedImages: 0, strippedVideos: 0, strippedAudios: 0 };
     });

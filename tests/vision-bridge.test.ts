@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -62,8 +61,8 @@ describe("VisionBridge", () => {
     });
 
     expect(callText).toHaveBeenCalledTimes(1);
-    expect(callText.mock.calls[0][0].messages[0].content[0].text).toContain("User request");
-    expect(callText.mock.calls[0][0].messages[0].content[0].text).toContain("what is this?");
+    expect((callText.mock.calls as any)[0][0].messages[0].content[0].text).toContain("User request");
+    expect((callText.mock.calls as any)[0][0].messages[0].content[0].text).toContain("what is this?");
     expect(result.images).toBeUndefined();
     expect(result.text).toContain(`[attached_image: ${pathA}]`);
 
@@ -264,7 +263,7 @@ describe("VisionBridge", () => {
       }],
     });
 
-    const content = callText.mock.calls[0][0].messages[0].content;
+    const content = (callText.mock.calls as any)[0][0].messages[0].content;
     expect(content[1]).toMatchObject({
       type: "image",
       data: JPEG_BASE64,
@@ -320,7 +319,7 @@ describe("VisionBridge", () => {
       imageAttachmentPaths: [pathA],
     });
 
-    const prompt = callText.mock.calls[0][0].messages[0].content[0].text;
+    const prompt = (callText.mock.calls as any)[0][0].messages[0].content[0].text;
     expect(prompt).toContain("visual_primitives");
     expect(prompt).toContain("box_2d");
     expect(prompt).toContain("[ymin, xmin, ymax, xmax]");
@@ -375,7 +374,7 @@ describe("VisionBridge", () => {
       imageAttachmentPaths: [pathA],
     });
 
-    const prompt = callText.mock.calls[0][0].messages[0].content[0].text;
+    const prompt = (callText.mock.calls as any)[0][0].messages[0].content[0].text;
     expect(prompt).toContain("bbox_2d");
     expect(prompt).toContain("point_2d");
 
@@ -426,7 +425,7 @@ describe("VisionBridge", () => {
       imageAttachmentPaths: [pathA],
     });
 
-    const prompt = callText.mock.calls[0][0].messages[0].content[0].text;
+    const prompt = (callText.mock.calls as any)[0][0].messages[0].content[0].text;
     expect(prompt).toContain("visual_anchors");
     expect(prompt).toContain("center");
 
@@ -499,7 +498,7 @@ describe("VisionBridge", () => {
       imageAttachmentPaths: [pathA],
     });
 
-    const prompt = callText.mock.calls[0][0].messages[0].content[0].text;
+    const prompt = (callText.mock.calls as any)[0][0].messages[0].content[0].text;
     expect(prompt).toContain("Return a concise paper note");
     expect(prompt).not.toContain("visual_primitives");
 
@@ -525,8 +524,8 @@ describe("VisionBridge", () => {
       imageAttachmentPaths: [pathA],
     });
 
-    expect(callText.mock.calls[0][0]).not.toHaveProperty("temperature");
-    expect(callText.mock.calls[0][0].timeoutMs).toBe(120_000);
+    expect((callText.mock.calls as any)[0][0]).not.toHaveProperty("temperature");
+    expect((callText.mock.calls as any)[0][0].timeoutMs).toBe(120_000);
   });
 
   it("caps auxiliary vision output by the model maxTokens contract", async () => {
@@ -550,7 +549,7 @@ describe("VisionBridge", () => {
       imageAttachmentPaths: [pathA],
     });
 
-    expect(callText.mock.calls[0][0].maxTokens).toBe(2048);
+    expect((callText.mock.calls as any)[0][0].maxTokens).toBe(2048);
   });
 
   it("does nothing for image-capable target models", async () => {
@@ -663,7 +662,7 @@ describe("VisionBridge", () => {
         coordinateSpace: "norm-1000",
         boxOrder: "xyxy",
       },
-    };
+    } as any;
     await bridge.prepare({ ...payload, sessionPath: "/tmp/b.jsonl" });
 
     expect(callText).toHaveBeenCalledTimes(2);

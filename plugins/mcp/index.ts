@@ -1,7 +1,8 @@
-// @ts-nocheck
 import { McpRuntime } from "./lib/mcp-runtime.ts";
 
 export default class McpPlugin {
+  declare ctx: any;
+  declare register: any;
   async onload() {
     const runtime = new McpRuntime(this.ctx);
     this.ctx._mcpRuntime = runtime;

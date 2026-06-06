@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import {
   buildLlmContextCachePrefixContract,
@@ -26,7 +25,7 @@ describe("LLM cache prefix contract", () => {
       systemPrompt: "stable system prompt",
       tools: [tool("read"), tool("bash")],
       messages: [{ role: "user", content: "first turn" }],
-    });
+    } as any);
     const afterToolCall = buildLlmContextCachePrefixContract({
       model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
       systemPrompt: "stable system prompt",
@@ -36,7 +35,7 @@ describe("LLM cache prefix contract", () => {
         { role: "assistant", tool_calls: [{ id: "call_1", function: { name: "read" } }] },
         { role: "tool", content: "dynamic tool result", tool_call_id: "call_1" },
       ],
-    });
+    } as any);
 
     expect(afterToolCall.cachePrefixHash).toBe(base.cachePrefixHash);
     expect(diffCachePrefixContracts(base, afterToolCall)).toEqual([]);

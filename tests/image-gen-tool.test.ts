@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // generate-image no longer imports adapter modules directly — adapters come
@@ -20,7 +19,7 @@ beforeEach(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeAdapter(overrides = {}) {
+function makeAdapter( overrides: any = {}) {
   return {
     id: "fake-provider",
     types: ["image"],
@@ -30,7 +29,7 @@ function makeAdapter(overrides = {}) {
   };
 }
 
-function makeMediaGen(adapterOverrides = {}) {
+function makeMediaGen( adapterOverrides: any = {}) {
   const adapter = makeAdapter(adapterOverrides);
   const registry = {
     get: vi.fn((id) => (id === adapter.id ? adapter : undefined)),
@@ -48,7 +47,7 @@ function makeMediaGen(adapterOverrides = {}) {
   return { registry, store, poller, adapter };
 }
 
-function makeCtx(mediaGen, busOverrides = {}) {
+function makeCtx(mediaGen, busOverrides: any = {}) {
   return {
     _mediaGen: mediaGen,
     dataDir: "/tmp/test-data",
@@ -462,15 +461,15 @@ describe("generate-image tool — single submit returns media placeholder metada
 
     await execute({ prompt: "ocean" }, ctx);
 
-    const deferredCall = busRequest.mock.calls.find(([type]) => type === "deferred:register");
+    const deferredCall = (busRequest.mock.calls as any).find(([type]: any) => type === "deferred:register");
     const taskId = store.add.mock.calls[0][0].taskId;
     expect(deferredCall).toBeTruthy();
-    expect(deferredCall[1].taskId).toBe(taskId);
-    expect(deferredCall[1].meta.type).toBe("image-generation");
-    expect(deferredCall[1].meta.mediaKind).toBe("image");
-    expect(deferredCall[1].meta.deliveryIntent).toBe("ui_only");
-    expect(deferredCall[1].meta.triggerParentTurn).toBe(false);
-    expect(deferredCall[1].meta.notifyAgentOnFailure).toBe(true);
+    expect(deferredCall![1].taskId).toBe(taskId);
+    expect(deferredCall![1].meta.type).toBe("image-generation");
+    expect(deferredCall![1].meta.mediaKind).toBe("image");
+    expect(deferredCall![1].meta.deliveryIntent).toBe("ui_only");
+    expect(deferredCall![1].meta.triggerParentTurn).toBe(false);
+    expect(deferredCall![1].meta.notifyAgentOnFailure).toBe(true);
   });
 
   it("marks bridge-originated tasks for bridge delivery instead of desktop parent delivery", async () => {
@@ -492,8 +491,8 @@ describe("generate-image tool — single submit returns media placeholder metada
 
     await execute({ prompt: "ocean" }, ctx);
 
-    const deferredCall = busRequest.mock.calls.find(([type]) => type === "deferred:register");
-    expect(deferredCall[1].meta.deliveryTarget).toEqual({
+    const deferredCall = (busRequest.mock.calls as any).find(([type]: any) => type === "deferred:register");
+    expect(deferredCall![1].meta.deliveryTarget).toEqual({
       kind: "bridge",
       platform: "wechat",
       chatId: "wx-user",

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * 验证 master 与 per-session 开关在 agent.systemPrompt 缓存上的解耦契约。
  *
@@ -77,7 +76,7 @@ function makeAgent(agentsDir, rootDir) {
     agentsDir,
     userDir: path.join(rootDir, "user"),
     productDir: path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "lib"),
-  });
+  } as any);
 }
 
 describe("agent.systemPrompt: master / per-session 解耦", () => {

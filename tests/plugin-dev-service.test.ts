@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -17,7 +16,7 @@ function makeBus() {
   };
 }
 
-function writeDevPlugin(root, id, options = {}) {
+function writeDevPlugin(root, id, options: any = {}) {
   const pluginDir = path.join(root, id);
   fs.mkdirSync(path.join(pluginDir, "tools"), { recursive: true });
   fs.writeFileSync(path.join(pluginDir, "manifest.json"), JSON.stringify({
@@ -70,7 +69,7 @@ describe("PluginDevService", () => {
         getDisabledPlugins: () => [],
         getAllowFullAccessPlugins: () => false,
       },
-    });
+    } as any);
     service = new PluginDevService({
       pluginManager,
       devPluginsDir,

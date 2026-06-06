@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * memory-ticker getHealthStatus API 测试
  *
@@ -41,7 +40,7 @@ import {
 } from "../lib/memory/compile.ts";
 import { processDirtySessions } from "../lib/memory/deep-memory.ts";
 
-function writeSession(sessionPath) {
+function writeSession(sessionPath: any) {
   const lines = [
     { type: "message", timestamp: "2026-04-17T10:00:00.000Z", message: { role: "user", content: "hi" } },
     { type: "message", timestamp: "2026-04-17T10:00:10.000Z", message: { role: "assistant", content: "hello" } },
@@ -49,7 +48,7 @@ function writeSession(sessionPath) {
   fs.writeFileSync(sessionPath, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
 }
 
-function makeTicker(tmpDir, summaryManagerOverride) {
+function makeTicker(tmpDir: any, summaryManagerOverride?: any) {
   fs.mkdirSync(path.join(tmpDir, "sessions"), { recursive: true });
   const summaryManager = summaryManagerOverride || {
     rollingSummary: vi.fn().mockResolvedValue("summary"),
@@ -83,7 +82,7 @@ describe("memory-ticker getHealthStatus", () => {
 
   it("exposes initial health status with all null fields", () => {
     const ticker = makeTicker(tmpDir);
-    const h = ticker.getHealthStatus();
+    const h: any = ticker.getHealthStatus();
 
     for (const key of ["rollingSummary", "compileToday", "compileWeek", "compileLongterm", "compileFacts", "deepMemory"]) {
       expect(h[key]).toEqual({
@@ -99,7 +98,7 @@ describe("memory-ticker getHealthStatus", () => {
     const ticker = makeTicker(tmpDir);
     await ticker.tick();
 
-    const h = ticker.getHealthStatus();
+    const h: any = ticker.getHealthStatus();
     expect(h.compileToday.lastSuccessAt).not.toBeNull();
     expect(h.compileWeek.lastSuccessAt).not.toBeNull();
     expect(h.compileLongterm.lastSuccessAt).not.toBeNull();
@@ -113,11 +112,11 @@ describe("memory-ticker getHealthStatus", () => {
   });
 
   it("records lastErrorMsg + increments failCount on step failure", async () => {
-    compileFacts.mockRejectedValueOnce(new Error("boom"));
+    (compileFacts as any).mockRejectedValueOnce(new Error("boom"));
     const ticker = makeTicker(tmpDir);
     await ticker.tick();
 
-    const h = ticker.getHealthStatus();
+    const h: any = ticker.getHealthStatus();
     expect(h.compileFacts.lastErrorMsg).toBe("boom");
     expect(h.compileFacts.lastErrorAt).not.toBeNull();
     expect(h.compileFacts.failCount).toBe(1);
@@ -127,15 +126,15 @@ describe("memory-ticker getHealthStatus", () => {
   });
 
   it("clears error state once a failing step recovers", async () => {
-    compileFacts.mockRejectedValueOnce(new Error("boom1"));
+    (compileFacts as any).mockRejectedValueOnce(new Error("boom1"));
     const ticker = makeTicker(tmpDir);
     await ticker.tick();
-    expect(ticker.getHealthStatus().compileFacts.failCount).toBe(1);
+    expect((ticker.getHealthStatus() as any).compileFacts.failCount).toBe(1);
 
     // 第二次 tick：compileFacts 成功（mock 默认返回）
     await ticker.tick();
 
-    const h = ticker.getHealthStatus();
+    const h: any = ticker.getHealthStatus();
     expect(h.compileFacts.lastErrorMsg).toBeNull();
     expect(h.compileFacts.lastErrorAt).toBeNull();
     expect(h.compileFacts.failCount).toBe(0);
@@ -143,14 +142,14 @@ describe("memory-ticker getHealthStatus", () => {
   });
 
   it("increments failCount on consecutive failures", async () => {
-    compileFacts.mockRejectedValue(new Error("persistent"));
+    (compileFacts as any).mockRejectedValue(new Error("persistent"));
     const ticker = makeTicker(tmpDir);
 
     await ticker.tick();
     await ticker.tick();
     await ticker.tick();
 
-    const h = ticker.getHealthStatus();
+    const h: any = ticker.getHealthStatus();
     expect(h.compileFacts.failCount).toBeGreaterThanOrEqual(2);
     expect(h.compileFacts.lastErrorMsg).toBe("persistent");
   });
@@ -172,16 +171,16 @@ describe("memory-ticker getHealthStatus", () => {
     ticker.notifyTurn(sessionPath);
     await new Promise((r) => setTimeout(r, 50));
 
-    const h = ticker.getHealthStatus();
+    const h: any = ticker.getHealthStatus();
     expect(h.rollingSummary.lastErrorMsg).toBe("llm down");
     expect(h.rollingSummary.failCount).toBeGreaterThanOrEqual(1);
   });
 
   it("returns a deep copy that cannot mutate internal state", () => {
     const ticker = makeTicker(tmpDir);
-    const h1 = ticker.getHealthStatus();
+    const h1: any = ticker.getHealthStatus();
     h1.compileToday.failCount = 999;
-    const h2 = ticker.getHealthStatus();
+    const h2: any = ticker.getHealthStatus();
     expect(h2.compileToday.failCount).toBe(0);
   });
 });

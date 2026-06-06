@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -51,7 +50,7 @@ describe("createWechatAdapter", () => {
       agentId: "hana",
       onMessage: vi.fn(),
       onStatus,
-    });
+    } as any);
 
     expect(onStatus).not.toHaveBeenCalledWith("connected");
     await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith("connected"));
@@ -69,7 +68,7 @@ describe("createWechatAdapter", () => {
       agentId: "hana",
       onMessage: vi.fn(),
       onStatus,
-    });
+    } as any);
 
     await vi.advanceTimersByTimeAsync(8_000);
 
@@ -82,7 +81,7 @@ describe("createWechatAdapter", () => {
     ["text/plain", "note.txt", 4, "file_item"],
   ])("uploads %s buffers and sends the matching OpenClaw-compatible iLink message item", async (mime, filename, itemType, itemKey) => {
     let getUpdatesCount = 0;
-    const fetchMock = vi.fn(async (url, options = {}) => {
+    const fetchMock = vi.fn(async (url, options: any = {}) => {
       const requestUrl = String(url);
       if (requestUrl.includes("ilink/bot/getupdates")) {
         getUpdatesCount += 1;
@@ -118,7 +117,7 @@ describe("createWechatAdapter", () => {
       agentId: "hana",
       onMessage,
       onStatus: vi.fn(),
-    });
+    } as any);
 
     await vi.waitFor(() => expect(onMessage).toHaveBeenCalledOnce());
     expect(adapter.canReply("user-1")).toBe(true);
@@ -201,7 +200,7 @@ describe("createWechatAdapter", () => {
     await restarted.sendReply("user-1", "scheduled ping");
     const sendMessageCall = fetchMock.mock.calls.find(([url]) => String(url).includes("ilink/bot/sendmessage"));
     expect(sendMessageCall).toBeTruthy();
-    expect(JSON.parse(sendMessageCall[1].body).msg.context_token).toBe("ctx-persisted");
+    expect(JSON.parse((sendMessageCall as any)![1].body).msg.context_token).toBe("ctx-persisted");
 
     restarted.stop();
     fs.rmSync(hanaHome, { recursive: true, force: true });

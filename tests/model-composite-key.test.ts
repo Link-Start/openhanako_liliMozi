@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect } from "vitest";
 import { parseModelRef, findModel, modelRefEquals, modelRefKey, requireModelRef } from "../shared/model-ref.ts";
 
@@ -24,9 +23,9 @@ describe("Model composite key", () => {
     });
 
     it("缺 provider 时抛错（严格契约，不按 id 降级）", () => {
-      expect(() => findModel(models, "gpt-4o")).toThrow(/provider/);
-      expect(() => findModel(models, "gpt-4o", "")).toThrow(/provider/);
-      expect(() => findModel(models, { id: "gpt-4o" })).toThrow(/provider/);
+      expect(() => (findModel as any)(models, "gpt-4o")).toThrow(/provider/);
+      expect(() => (findModel as any)(models, "gpt-4o", "")).toThrow(/provider/);
+      expect(() => (findModel as any)(models, { id: "gpt-4o" })).toThrow(/provider/);
     });
 
     it("找不到返回 null（带 provider）", () => {
@@ -35,12 +34,12 @@ describe("Model composite key", () => {
 
     it("null/empty 输入：id 缺失抛错，available 为 null 返 null", () => {
       expect(findModel(null, "gpt-4o", "openai")).toBeNull();
-      expect(() => findModel(models, null)).toThrow(/id/);
-      expect(() => findModel(models, "")).toThrow(/id/);
+      expect(() => (findModel as any)(models, null)).toThrow(/id/);
+      expect(() => (findModel as any)(models, "")).toThrow(/id/);
     });
 
     it("{id, provider} 对象作为第二个参数", () => {
-      const m = findModel(models, { id: "minimax-2.5", provider: "dashscope" });
+      const m = (findModel as any)(models, { id: "minimax-2.5", provider: "dashscope" });
       expect(m.provider).toBe("dashscope");
     });
 

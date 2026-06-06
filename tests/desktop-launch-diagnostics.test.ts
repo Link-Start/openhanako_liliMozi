@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, describe, expect, it } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -40,7 +39,7 @@ describe("desktop launch diagnostics", () => {
     });
 
     expect(diagnostics.rendererLogPath).toBe(path.join(tmpDir, "diagnostics", "desktop-launch", "renderer.log"));
-    const lines = fs.readFileSync(diagnostics.rendererLogPath, "utf-8").trim().split("\n").map(JSON.parse);
+    const lines = fs.readFileSync(diagnostics.rendererLogPath, "utf-8").trim().split("\n").map(JSON.parse as any);
 
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatchObject({

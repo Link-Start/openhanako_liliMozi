@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
@@ -15,6 +14,11 @@ import {
 } from "../plugins/mcp/lib/mcp-stdio-client.ts";
 
 class FakeProcess extends EventEmitter {
+  declare exitCode: any;
+  declare kill: any;
+  declare stderr: any;
+  declare stdin: any;
+  declare stdout: any;
   constructor() {
     super();
     this.exitCode = null;

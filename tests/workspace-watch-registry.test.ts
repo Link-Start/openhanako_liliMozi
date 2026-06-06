@@ -1,8 +1,9 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createWorkspaceWatchRegistry } from "../desktop/workspace-watch-registry.cjs";
 
 class FakeWatcher {
+  declare close: any;
+  declare handlers: any;
   constructor() {
     this.handlers = new Map();
     this.close = vi.fn();

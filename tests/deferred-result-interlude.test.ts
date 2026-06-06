@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 
 import {
@@ -62,7 +61,7 @@ describe("deferred result interlude", () => {
         ],
         raw: { nested: "kept out while better fields exist" },
       },
-    });
+    } as any);
 
     expect(detail).toContain("生成文件");
     expect(detail).toContain("report.md");
@@ -78,7 +77,7 @@ describe("deferred result interlude", () => {
           { label: "generated.png", kind: "image" },
         ],
       },
-    });
+    } as any);
 
     expect(detail).toBe("生成文件：\n- generated.png (image)");
     expect(detail).not.toContain("sessionFiles");

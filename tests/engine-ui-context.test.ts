@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, beforeEach } from "vitest";
 import { HanaEngine } from "../core/engine.ts";
 
@@ -8,7 +7,7 @@ import { HanaEngine } from "../core/engine.ts";
  */
 
 function makeFakeEngine() {
-  const fake = { _uiContextBySession: new Map() };
+  const fake: any = { _uiContextBySession: new Map() };
   fake.setUiContext = HanaEngine.prototype.setUiContext;
   fake.getUiContext = HanaEngine.prototype.getUiContext;
   return fake;

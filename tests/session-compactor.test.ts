@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -87,24 +86,24 @@ describe("session-compactor", () => {
       thinkingLevel: "high",
       streamFn,
       convertToLlm,
-    });
+    } as any);
 
     expect(convertToLlm).toHaveBeenCalledOnce();
     expect(streamFn).toHaveBeenCalledOnce();
-    const [model, context, options] = streamFn.mock.calls[0];
+    const [model, context, options] = (streamFn.mock.calls as any)[0];
     expect(model).toEqual({ id: "model", reasoning: true });
-    expect(context.systemPrompt).toBe("agent system prompt");
-    expect(context.tools).toEqual([
+    expect(context!.systemPrompt).toBe("agent system prompt");
+    expect(context!.tools).toEqual([
       { name: "read", description: "Read files", parameters: { type: "object" } },
     ]);
-    expect(context.messages).toHaveLength(2);
-    expect(context.messages[0].content[0].text).toBe("old history to summarize");
-    expect(JSON.stringify(context.messages)).not.toContain("KEPT_TAIL_SHOULD_NOT_ENTER_SUMMARY");
-    expect(context.messages[1].role).toBe("user");
-    expect(context.messages[1].content[0].text).toContain("<previous-summary>\nprevious checkpoint\n</previous-summary>");
-    expect(context.messages[1].content[0].text).toContain("The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.");
-    expect(context.messages[1].content[0].text).toContain("Additional focus: focus on decisions");
-    expect(context.messages[1].content[0].text).not.toContain("Hana cache-preserving compaction");
+    expect(context!.messages).toHaveLength(2);
+    expect(context!.messages[0].content[0].text).toBe("old history to summarize");
+    expect(JSON.stringify(context!.messages)).not.toContain("KEPT_TAIL_SHOULD_NOT_ENTER_SUMMARY");
+    expect(context!.messages[1].role).toBe("user");
+    expect(context!.messages[1].content[0].text).toContain("<previous-summary>\nprevious checkpoint\n</previous-summary>");
+    expect(context!.messages[1].content[0].text).toContain("The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.");
+    expect(context!.messages[1].content[0].text).toContain("Additional focus: focus on decisions");
+    expect(context!.messages[1].content[0].text).not.toContain("Hana cache-preserving compaction");
     expect(options).toEqual(expect.objectContaining({
       maxTokens: 800,
       reasoning: "high",
@@ -178,7 +177,7 @@ describe("session-compactor", () => {
           sessionPath: "/sessions/current.jsonl",
         },
       },
-    });
+    } as any);
 
     const [entry] = ledger.list({ subsystem: "compaction" }).entries;
     expect(entry).toMatchObject({
@@ -239,10 +238,10 @@ describe("session-compactor", () => {
       thinkingLevel: "off",
       streamFn,
       convertToLlm: vi.fn(async (input) => input),
-    });
+    } as any);
 
     expect(result.summary).toBe("cache summary");
-    expect(streamFn.mock.calls[0][2]).toMatchObject({
+    expect((streamFn.mock.calls as any)[0][2]).toMatchObject({
       reasoning: "medium",
       toolChoice: "none",
     });
@@ -494,7 +493,7 @@ describe("session-compactor", () => {
       extensionRunner: { hasHandlers: vi.fn(() => false) },
     };
 
-    await expect(compactSessionWithCachePreservation(session)).rejects.toThrow(
+    await expect((compactSessionWithCachePreservation as any)(session)).rejects.toThrow(
       "Cache-preserving compaction extension is not installed",
     );
     expect(session.compact).not.toHaveBeenCalled();
@@ -511,7 +510,7 @@ describe("session-compactor", () => {
       },
     };
 
-    await expect(compactSessionWithCachePreservation(session)).rejects.toThrow(
+    await expect((compactSessionWithCachePreservation as any)(session)).rejects.toThrow(
       "This extension ctx is stale after session replacement or reload",
     );
     expect(session.extensionRunner.hasHandlers).not.toHaveBeenCalled();

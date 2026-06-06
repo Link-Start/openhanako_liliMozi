@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * update-settings-tool.js 注册表单元测试
  *
@@ -9,7 +8,7 @@ import { loadLocale } from "../lib/i18n.ts";
 
 // ── Mock 工厂 ──
 
-function makeMockPrefs(initial = {}) {
+function makeMockPrefs( initial: any = {}) {
   const store = { ...initial };
   return {
     getPreferences: () => ({ ...store }),
@@ -33,7 +32,7 @@ function makeMockPrefs(initial = {}) {
   };
 }
 
-function makeMockEngine(overrides = {}) {
+function makeMockEngine( overrides: any = {}) {
   const prefs = makeMockPrefs(overrides.prefsData || {});
   const focusAgentId = overrides.currentAgentId || "focus";
   const eventBus = overrides.eventBus || { request: vi.fn() };
@@ -95,7 +94,7 @@ describe("update-settings-tool", () => {
     createUpdateSettingsTool = mod.createUpdateSettingsTool;
   });
 
-  function buildTool(engineOpts = {}, confirmAction = "confirmed") {
+  function buildTool( engineOpts: any = {}, confirmAction = "confirmed") {
     const engine = makeMockEngine(engineOpts);
     const confirmStore = makeMockConfirmStore(confirmAction);
     const tool = createUpdateSettingsTool({

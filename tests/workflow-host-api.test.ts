@@ -1,9 +1,8 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import { createHostApi } from "../lib/workflow/host-api.ts";
 import { createLimiter } from "../lib/workflow/concurrency.ts";
 
-export function makeDeps(over = {}) {
+export function makeDeps( over: any = {}) {
   return {
     executeIsolated: over.executeIsolated || (async () => ({ replyText: "ok", error: null })),
     baseIsoOpts: over.baseIsoOpts || { agentId: "a1", parentSessionPath: "/s.jsonl", cwd: "/w" },

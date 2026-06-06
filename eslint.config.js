@@ -128,17 +128,6 @@ export default [
     },
   },
 
-  // Remaining migrated JS→TS surfaces: allow @ts-nocheck until fully typed
-  {
-    files: [
-      'plugins/**/*.ts',
-      'tests/**/*.{ts,tsx}',
-    ],
-    rules: {
-      '@typescript-eslint/ban-ts-comment': ['error', { 'ts-nocheck': false }],
-    },
-  },
-
   // Downgrade noisy recommended rules to warnings (non-architectural, fix incrementally)
   {
     rules: {

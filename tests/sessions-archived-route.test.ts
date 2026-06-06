@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
@@ -169,13 +168,13 @@ describe("archive route: mtime semantics", () => {
     engine.taskRegistry.registerHandler("subagent", { abort: abortSubagent });
     engine.taskRegistry.register("subagent-running", { type: "subagent", parentSessionPath: src });
 
-    engine.deferredResults = new DeferredResultStore();
+    engine.deferredResults = new (DeferredResultStore as any)();
     engine.deferredResults.defer("pending-active", src, { type: "subagent" });
     engine.deferredResults.defer("resolved-active", src, { type: "subagent" });
     engine.deferredResults.resolve("resolved-active", "done");
     engine.deferredResults.defer("pending-archived-key", dest, { type: "subagent" });
 
-    engine.subagentRuns = new SubagentRunStore();
+    engine.subagentRuns = new (SubagentRunStore as any)();
     engine.subagentRuns.register("subagent-running", { parentSessionPath: src });
 
     const res = await app.request("/api/sessions/archive", {
@@ -432,7 +431,7 @@ describe("POST /api/sessions/archived/delete", () => {
   });
 
   it("suppresses deferred delivery keyed by active or archived path before permanent delete", async () => {
-    engine.deferredResults = new DeferredResultStore();
+    engine.deferredResults = new (DeferredResultStore as any)();
     engine.deferredResults.defer("pending-active", activeKey, { type: "subagent" });
     engine.deferredResults.defer("resolved-archived", archPath, { type: "subagent" });
     engine.deferredResults.resolve("resolved-archived", "done");

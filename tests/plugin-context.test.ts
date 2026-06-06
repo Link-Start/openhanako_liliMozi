@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import { createPluginContext } from "../core/plugin-context.ts";
 
@@ -15,7 +14,7 @@ describe("createPluginContext", () => {
       pluginDir: "/plugins/test-plugin",
       dataDir: "/plugin-data/test-plugin",
       bus,
-    });
+    } as any);
     expect(ctx.pluginId).toBe("test-plugin");
     expect(ctx.pluginDir).toBe("/plugins/test-plugin");
     expect(ctx.dataDir).toBe("/plugin-data/test-plugin");
@@ -51,7 +50,7 @@ describe("createPluginContext", () => {
           studioId: "studio_scope",
         },
       },
-    });
+    } as any);
 
     expect(ctx.serverId).toBe("server_scope");
     expect(ctx.serverNodeId).toBe("node_scope");
@@ -92,7 +91,7 @@ describe("createPluginContext", () => {
         connectionKind: "local",
         credentialKind: "loopback_token",
       },
-    });
+    } as any);
 
     const file = ctx.registerSessionFile({
       sessionPath: "/sessions/a.jsonl",
@@ -120,7 +119,7 @@ describe("createPluginContext", () => {
       const ctx = createPluginContext({
         pluginId: "x", pluginDir: "/tmp", dataDir: tmpDir,
         bus: { emit() {}, subscribe() {}, request() {}, hasHandler() {} },
-      });
+      } as any);
       ctx.config.set("foo", 42);
       expect(ctx.config.get("foo")).toBe(42);
       const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, "config.json"), "utf-8"));
@@ -134,7 +133,7 @@ describe("createPluginContext", () => {
     const ctx = createPluginContext({
       pluginId: "my-plug", pluginDir: "/tmp", dataDir: "/tmp",
       bus: { emit() {}, subscribe() {}, request() {}, hasHandler() {} },
-    });
+    } as any);
     expect(typeof ctx.log.info).toBe("function");
     expect(typeof ctx.log.error).toBe("function");
   });
@@ -147,7 +146,7 @@ describe("createPluginContext", () => {
         pluginId: "my-plug", pluginDir: "/tmp", dataDir: "/tmp",
         bus: { emit() {}, subscribe() {}, request() {}, hasHandler() {} },
         logSink,
-      });
+      } as any);
       ctx.log.info("hello", { token: "secret-token", count: 2 });
       expect(logSink).toHaveBeenCalledWith(expect.objectContaining({
         pluginId: "my-plug",
@@ -166,7 +165,7 @@ describe("createPluginContext with accessLevel", () => {
     const ctx = createPluginContext({
       pluginId: "test", pluginDir: "/tmp/test",
       dataDir: "/tmp/data", bus, accessLevel: "full-access",
-    });
+    } as any);
     expect(typeof ctx.bus.handle).toBe("function");
     expect(typeof ctx.bus.request).toBe("function");
     expect(typeof ctx.bus.emit).toBe("function");
@@ -179,7 +178,7 @@ describe("createPluginContext with accessLevel", () => {
     const ctx = createPluginContext({
       pluginId: "test", pluginDir: "/tmp/test",
       dataDir: "/tmp/data", bus, accessLevel: "restricted",
-    });
+    } as any);
     expect(ctx.bus.handle).toBeUndefined();
     expect(typeof ctx.bus.request).toBe("function");
     expect(typeof ctx.bus.emit).toBe("function");
@@ -193,7 +192,7 @@ describe("createPluginContext with accessLevel", () => {
     const ctx = createPluginContext({
       pluginId: "test", pluginDir: "/tmp/test",
       dataDir: "/tmp/data", bus, accessLevel: "restricted",
-    });
+    } as any);
     expect(Object.isFrozen(ctx.bus)).toBe(true);
     expect(() => { ctx.bus.handle = () => {}; }).toThrow();
   });
@@ -203,7 +202,7 @@ describe("createPluginContext with accessLevel", () => {
     const ctx = createPluginContext({
       pluginId: "test", pluginDir: "/tmp/test",
       dataDir: "/tmp/data", bus,
-    });
+    } as any);
     expect(ctx.bus.handle).toBeUndefined();
   });
 
@@ -213,7 +212,7 @@ describe("createPluginContext with accessLevel", () => {
     const ctx = createPluginContext({
       pluginId: "test", pluginDir: "/tmp/test",
       dataDir: "/tmp/data", bus, accessLevel: "restricted",
-    });
+    } as any);
 
     await expect(ctx.bus.request("usage:list", {})).rejects.toMatchObject({
       code: "FORBIDDEN",
@@ -228,7 +227,7 @@ describe("createPluginContext with accessLevel", () => {
       pluginId: "test", pluginDir: "/tmp/test",
       dataDir: "/tmp/data", bus, accessLevel: "restricted",
       permissions: ["usage.read"],
-    });
+    } as any);
 
     await expect(ctx.bus.request("usage:list", {})).resolves.toMatchObject({
       entries: [{ requestId: "req-1" }],
@@ -245,7 +244,7 @@ describe("createPluginContext with accessLevel", () => {
     const ctx = createPluginContext({
       pluginId: "test", pluginDir: "/tmp/test",
       dataDir: "/tmp/data", bus, accessLevel: "restricted",
-    });
+    } as any);
     const events = [];
     const off = ctx.bus.subscribe((event) => events.push(event));
     bus.emit({ type: "llm_usage", entry: { requestId: "req-1" } }, null);

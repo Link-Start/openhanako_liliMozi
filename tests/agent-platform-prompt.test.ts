@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -24,7 +23,7 @@ function makeAgent(locale) {
   fs.mkdirSync(userDir, { recursive: true });
   fs.writeFileSync(path.join(productDir, "yuan", "hanako.md"), "Yuan prompt", "utf-8");
 
-  const agent = new Agent({ id: "hana", agentsDir, productDir, userDir });
+  const agent = new Agent({ id: "hana", agentsDir, productDir, userDir } as any);
   agent._config = {
     locale,
     agent: { yuan: "hanako" },

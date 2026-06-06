@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect } from 'vitest';
 import {
   BLOCK_EXTRACTORS,
@@ -127,12 +126,12 @@ describe('stage_files', () => {
 
 describe('present_files', () => {
   it('is the same function reference as stage_files', () => {
-    expect(BLOCK_EXTRACTORS.present_files).toBe(BLOCK_EXTRACTORS.stage_files);
+    expect((BLOCK_EXTRACTORS as any).present_files).toBe(BLOCK_EXTRACTORS.stage_files);
   });
 
   it('produces identical output to stage_files', () => {
     const details = { filePath: '/a/x.py', label: 'x', ext: 'py' };
-    expect(BLOCK_EXTRACTORS.present_files(details)).toEqual(BLOCK_EXTRACTORS.stage_files(details));
+    expect((BLOCK_EXTRACTORS as any).present_files(details)).toEqual(BLOCK_EXTRACTORS.stage_files(details));
   });
 });
 
@@ -140,7 +139,7 @@ describe('present_files', () => {
 
 describe('image-gen media generation', () => {
   it('extracts one pending media_generation block per submitted image task', () => {
-    const blocks = extractBlocks('image-gen_generate-image', {
+    const blocks = (extractBlocks as any)('image-gen_generate-image', {
       mediaGeneration: {
         kind: 'image',
         batchId: 'batch-1',
@@ -349,7 +348,7 @@ describe('browser', () => {
   it('screenshot without mimeType: defaults to image/jpeg', () => {
     const toolResult = { content: [{ type: 'image', data: 'abc' }] };
     const result = extractor({ action: 'screenshot' }, toolResult);
-    expect(result[0].mimeType).toBe('image/jpeg');
+    expect((result[0] as any).mimeType).toBe('image/jpeg');
   });
 
   it('non-screenshot action: returns null', () => {
@@ -384,7 +383,7 @@ describe('computer session confirmation extraction', () => {
       scope: 'app',
     };
 
-    const blocks = extractBlocks('computer', {
+    const blocks = (extractBlocks as any)('computer', {
       action: 'start',
       confirmation: {
         kind: 'computer_app_approval',
@@ -542,19 +541,19 @@ describe('update_settings', () => {
 
   it('defaults cardType to list, currentValue/proposedValue to empty string', () => {
     const result = extractor({ settingKey: 'lang' });
-    expect(result[0].cardType).toBe('list');
-    expect(result[0].currentValue).toBe('');
-    expect(result[0].proposedValue).toBe('');
+    expect((result[0] as any).cardType).toBe('list');
+    expect((result[0] as any).currentValue).toBe('');
+    expect((result[0] as any).proposedValue).toBe('');
   });
 
   it('label falls back to settingKey when label is not provided', () => {
     const result = extractor({ settingKey: 'lang' });
-    expect(result[0].label).toBe('lang');
+    expect((result[0] as any).label).toBe('lang');
   });
 
   it('confirmed false: status is rejected', () => {
     const result = extractor({ settingKey: 'theme', confirmed: false });
-    expect(result[0].status).toBe('rejected');
+    expect((result[0] as any).status).toBe('rejected');
   });
 
   it('no settingKey: returns null', () => {
@@ -567,7 +566,7 @@ describe('update_settings', () => {
 
 describe('subagent', () => {
   it("subagent: 正常", () => {
-    const blocks = extractBlocks("subagent", {
+    const blocks = (extractBlocks as any)("subagent", {
       taskId: "t1",
       task: "任务：整理桌面\n\n请独立完成",
       taskTitle: "任务：整理桌面",
@@ -589,13 +588,13 @@ describe('subagent', () => {
   });
 
   it("subagent: 展示 label 透传到块，旧 reuseInstance 可兼容映射", () => {
-    const blocks = extractBlocks("subagent", {
+    const blocks = (extractBlocks as any)("subagent", {
       taskId: "t1", taskTitle: "x", sessionPath: "/s/t.jsonl",
       streamStatus: "running", label: "探索一",
     });
     expect(blocks[0]).toMatchObject({ type: "subagent", label: "探索一" });
 
-    const legacy = extractBlocks("subagent", {
+    const legacy = (extractBlocks as any)("subagent", {
       taskId: "t2", taskTitle: "x", sessionPath: "/s/t.jsonl",
       streamStatus: "running", reuseInstance: "探索",
     });
@@ -604,7 +603,7 @@ describe('subagent', () => {
   });
 
   it("subagent: 优先读取显式 executor metadata", () => {
-    const blocks = extractBlocks("subagent", {
+    const blocks = (extractBlocks as any)("subagent", {
       taskId: "t1",
       task: "任务：do stuff\n\n详细要求",
       taskTitle: "任务：do stuff",
@@ -627,7 +626,7 @@ describe('subagent', () => {
   });
 
   it("subagent: done 状态", () => {
-    const blocks = extractBlocks("subagent", {
+    const blocks = (extractBlocks as any)("subagent", {
       taskId: "t2",
       task: "任务：done task\n\n详细要求",
       taskTitle: "任务：done task",
@@ -639,11 +638,11 @@ describe('subagent', () => {
   });
 
   it("subagent: 无 taskId 返回空", () => {
-    expect(extractBlocks("subagent", {})).toEqual([]);
+    expect((extractBlocks as any)("subagent", {})).toEqual([]);
   });
 
   it("subagent: 最小字段", () => {
-    const blocks = extractBlocks("subagent", { taskId: "t3" });
+    const blocks = (extractBlocks as any)("subagent", { taskId: "t3" });
     expect(blocks[0]).toMatchObject({ type: "subagent", taskId: "t3", task: "", taskTitle: "", agentId: null, streamKey: "", streamStatus: "running" });
   });
 });
@@ -673,7 +672,7 @@ describe('workflow', () => {
 describe('extractBlocks: plugin card extraction', () => {
   it('details.card with pluginId produces a plugin_card block', () => {
     const details = { card: { pluginId: 'fm', route: '/k', title: 'Chart' } };
-    const blocks = extractBlocks('unknown_tool', details);
+    const blocks = (extractBlocks as any)('unknown_tool', details);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toEqual({
       type: 'plugin_card',
@@ -683,7 +682,7 @@ describe('extractBlocks: plugin card extraction', () => {
 
   it('preserves existing card type when specified', () => {
     const details = { card: { pluginId: 'fm', type: 'native', route: '/x' } };
-    const blocks = extractBlocks('unknown_tool', details);
+    const blocks = (extractBlocks as any)('unknown_tool', details);
     expect(blocks[0].card.type).toBe('native');
   });
 
@@ -699,7 +698,7 @@ describe('extractBlocks: plugin card extraction', () => {
         files: [{ filePath: '/tmp/a.png' }],
       },
     };
-    const blocks = extractBlocks('unknown_tool', details);
+    const blocks = (extractBlocks as any)('unknown_tool', details);
 
     expect(blocks[0].card).toEqual({
       pluginId: 'fm',
@@ -710,12 +709,12 @@ describe('extractBlocks: plugin card extraction', () => {
   });
 
   it('unknown tool with no card: returns empty array', () => {
-    const blocks = extractBlocks('nonexistent_tool', {});
+    const blocks = (extractBlocks as any)('nonexistent_tool', {});
     expect(blocks).toEqual([]);
   });
 
   it('unknown tool with null details: returns empty array', () => {
-    const blocks = extractBlocks('nonexistent_tool', null);
+    const blocks = (extractBlocks as any)('nonexistent_tool', null);
     expect(blocks).toEqual([]);
   });
 });
@@ -728,7 +727,7 @@ describe('extractBlocks: tool block + plugin card coexistence', () => {
       files: [{ filePath: '/a/doc.pdf', label: 'doc', ext: 'pdf' }],
       card: { pluginId: 'viewer', route: '/view', type: 'iframe' },
     };
-    const blocks = extractBlocks('stage_files', details);
+    const blocks = (extractBlocks as any)('stage_files', details);
     expect(blocks).toHaveLength(2);
     expect(blocks[0].type).toBe('file');
     expect(blocks[1].type).toBe('plugin_card');
@@ -739,7 +738,7 @@ describe('extractBlocks: tool block + plugin card coexistence', () => {
       skillName: 'my-skill',
       card: { pluginId: 'skill-ui', route: '/s' },
     };
-    const blocks = extractBlocks('install_skill', details);
+    const blocks = (extractBlocks as any)('install_skill', details);
     expect(blocks).toHaveLength(2);
     expect(blocks[0].type).toBe('skill');
     expect(blocks[1].type).toBe('plugin_card');

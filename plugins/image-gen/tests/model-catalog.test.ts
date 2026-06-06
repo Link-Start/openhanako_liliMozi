@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect } from "vitest";
 import {
   MODEL_CATALOG,
@@ -25,7 +24,7 @@ describe("MODEL_CATALOG", () => {
 
   it("has no more than one explicit default per provider", () => {
     for (const [, models] of Object.entries(MODEL_CATALOG)) {
-      expect(models.filter(m => m.default).length).toBeLessThanOrEqual(1);
+      expect(models.filter(m => (m as any).default).length).toBeLessThanOrEqual(1);
     }
   });
 });

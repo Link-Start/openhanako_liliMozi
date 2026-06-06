@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import {
   MODEL_AUDIO_TRANSPORTS,
@@ -83,8 +82,8 @@ describe("model audio capabilities", () => {
     const projected = withHanaAudioInputCompat(model, true);
 
     expect(projected).not.toBe(model);
-    expect(projected.compat.hanaAudioInput).toBe(true);
-    expect(model.compat.hanaAudioInput).toBeUndefined();
+    expect((projected.compat as any).hanaAudioInput).toBe(true);
+    expect((model.compat as any).hanaAudioInput).toBeUndefined();
     expect(resolveModelAudioInputTransport(projected)).toBe(MODEL_AUDIO_TRANSPORTS.UNSUPPORTED);
   });
 });

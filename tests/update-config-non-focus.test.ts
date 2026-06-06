@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -22,13 +21,13 @@ describe("updateConfig with agentId", () => {
     return dir;
   }
 
-  function makeDeps(overrides = {}) {
-    const focusAgent = {
+  function makeDeps( overrides: any = {}) {
+    const focusAgent: any = {
       id: "focus",
       config: { models: { chat: { id: "focus-chat", provider: "openai" } } },
       updateConfig: vi.fn(),
     };
-    const targetAgent = {
+    const targetAgent: any = {
       id: "target",
       config: { models: { chat: { id: "target-chat", provider: "deepseek" } } },
       updateConfig: vi.fn(),
@@ -133,7 +132,7 @@ describe("updateConfig with agentId", () => {
   });
 
   it("setSharedModels 同步当前 agent 的小工具和大工具模型内存态", () => {
-    let prefs = {};
+    let prefs: any = {};
     const { focusAgent, deps } = makeDeps({
       getPrefs: () => ({
         getPreferences: () => prefs,
@@ -249,7 +248,7 @@ describe("updateConfig with agentId", () => {
   });
 
   it("setHeartbeatMaster only restarts agents that explicitly opted in", () => {
-    let prefs = {};
+    let prefs: any = {};
     const focusHb = { start: vi.fn(), stop: vi.fn() };
     const targetHb = { start: vi.fn(), stop: vi.fn() };
     const { focusAgent, targetAgent, deps } = makeDeps({
@@ -274,7 +273,7 @@ describe("updateConfig with agentId", () => {
   });
 
   it("setSharedModels stores and clears auxiliary vision without mutating utility or memory runtime state", () => {
-    let prefs = {};
+    let prefs: any = {};
     const { focusAgent, deps } = makeDeps({
       getPrefs: () => ({
         getPreferences: () => prefs,

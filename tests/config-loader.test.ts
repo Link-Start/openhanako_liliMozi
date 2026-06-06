@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * config-loader.js 单元测试
  *

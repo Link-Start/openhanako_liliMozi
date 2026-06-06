@@ -1,4 +1,3 @@
-// @ts-nocheck
 // plugins/image-gen/index.js
 import path from "node:path";
 import fs from "node:fs";
@@ -14,6 +13,8 @@ import { geminiImageAdapter } from "./adapters/gemini.ts";
 import { submitImageGeneration } from "./lib/submit-image.ts";
 
 export default class ImageGenPlugin {
+  declare ctx: any;
+  declare register: any;
   async onload() {
     const { dataDir, bus, log } = this.ctx;
 
@@ -69,7 +70,7 @@ export default class ImageGenPlugin {
       return { adapters: registry.list().map((a) => ({ id: a.id, name: a.name, types: a.types })) };
     }));
 
-    this.register(bus.handle("media-gen:submit-image", async (payload = {}) => {
+    this.register(bus.handle("media-gen:submit-image", async ( payload: any = {}) => {
       const input = payload.input && typeof payload.input === "object" ? payload.input : payload;
       const sessionPath = typeof payload.sessionPath === "string" && payload.sessionPath.trim()
         ? payload.sessionPath.trim()
@@ -85,14 +86,14 @@ export default class ImageGenPlugin {
           },
           metadata: payload.metadata || null,
           deliveryTarget: payload.deliveryTarget === undefined ? null : payload.deliveryTarget,
-        });
+        } as any);
       } catch (err) {
         return { ok: false, error: err?.message || String(err) };
       }
     }));
 
     // Bus handlers — task CRUD (for external panels like dreamina)
-    this.register(bus.handle("media-gen:get-tasks", ({ adapterId, batchId, status } = {}) => {
+    this.register(bus.handle("media-gen:get-tasks", ({ adapterId, batchId, status }: any = {}) => {
       let tasks = store.listAll();
       if (adapterId) tasks = tasks.filter((t) => t.adapterId === adapterId);
       if (batchId) tasks = tasks.filter((t) => t.batchId === batchId);
@@ -105,7 +106,7 @@ export default class ImageGenPlugin {
     }));
 
     this.register(bus.handle("media-gen:update-task", ({ taskId, fields }) => {
-      const allowed = {};
+      const allowed: any = {};
       if (typeof fields?.favorited === "boolean") allowed.favorited = fields.favorited;
       store.update(taskId, allowed);
       return { ok: true };

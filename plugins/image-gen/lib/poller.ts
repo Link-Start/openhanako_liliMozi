@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * image-gen/lib/poller.js
  *
@@ -35,6 +34,18 @@ export function shouldCheckThisTick(ageMs, tickCount) {
 }
 
 export class Poller {
+  declare _active: any;
+  declare _bus: any;
+  declare _cancelled: any;
+  declare _dataDir: any;
+  declare _errorCounts: any;
+  declare _generatedDir: any;
+  declare _log: any;
+  declare _registerSessionFile: any;
+  declare _registry: any;
+  declare _store: any;
+  declare _tickCount: any;
+  declare _timer: any;
   /**
    * @param {{
    *   store: import("./task-store.ts").TaskStore,
@@ -194,7 +205,7 @@ export class Poller {
     const filePath = pathJoin(this._generatedDir, files[0]);
     const size = await readImageSize(filePath).catch(() => null);
     return size
-      ? { imageWidth: size.width, imageHeight: size.height }
+      ? { imageWidth: (size as any).width, imageHeight: (size as any).height }
       : { imageWidth: null, imageHeight: null };
   }
 

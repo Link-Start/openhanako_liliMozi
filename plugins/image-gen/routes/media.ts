@@ -1,4 +1,3 @@
-// @ts-nocheck
 // plugins/image-gen/routes/media.js
 import fs from "fs";
 import path from "path";
@@ -150,8 +149,8 @@ function adapterAvailableForModel(providerId, model, ctx) {
 }
 
 function annotateAdapterAvailability(providers, ctx) {
-  const next = {};
-  for (const [providerId, provider] of Object.entries(providers || {})) {
+  const next: any = {};
+  for (const [providerId, provider] of Object.entries(providers || {}) as [string, any][]) {
     const models = (provider?.models || [])
       .map((model) => ({
         ...model,
@@ -194,7 +193,7 @@ async function validateDefaultImageModelConfig(values, ctx) {
 
 /** Open a file with the system default application (cross-platform). */
 function openWithSystem(filePath) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const p = process.platform;
     let cmd, args;
     if (p === "darwin") {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * plugins/image-gen/tools/generate-video.js
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -95,7 +94,7 @@ describe("agent phone projection", () => {
       state: "viewed",
       summary: "已查看",
       timestamp: "2026-05-12T12:00:00.000Z",
-    });
+    } as any);
 
     await updateAgentPhoneProjectionMeta({
       agentDir,
@@ -106,7 +105,7 @@ describe("agent phone projection", () => {
     });
 
     const projection = readAgentPhoneProjection(getAgentPhoneProjectionPath(agentDir, "ch_crew"));
-    expect(projection.meta.toolMode).toBe("write");
+    expect((projection.meta as any).toolMode).toBe("write");
     expect(projection.activities.map((activity) => activity.state)).toEqual(["viewed"]);
   });
 
@@ -140,8 +139,8 @@ describe("agent phone projection", () => {
       resetAt: "2026-05-24T03:00:00.000Z",
       resetBy: "hana",
     });
-    expect(projection.meta.phoneSessionFile).toBeUndefined();
-    expect(projection.meta.promptSnapshot).toBeUndefined();
-    expect(projection.meta.toolNames).toBeUndefined();
+    expect((projection.meta as any).phoneSessionFile).toBeUndefined();
+    expect((projection.meta as any).promptSnapshot).toBeUndefined();
+    expect((projection.meta as any).toolNames).toBeUndefined();
   });
 });

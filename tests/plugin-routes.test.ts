@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import crypto from "crypto";
@@ -56,7 +55,7 @@ describe("plugin route proxy", () => {
 
 // ── Management API tests ──
 
-function mockEngine(overrides = {}) {
+function mockEngine( overrides: any = {}) {
   const routeRegistry = new Map();
   const allowFullAccess = overrides.allowFullAccess ?? false;
   return {
@@ -64,7 +63,7 @@ function mockEngine(overrides = {}) {
     getAgent: overrides.getAgent || (() => ({ id: "hanako" })),
     syncPluginExtensions: vi.fn(),
     pluginManager: {
-      listPlugins: (opts = {}) => {
+      listPlugins: ( opts: any = {}) => {
         const plugins = overrides.plugins || [];
         return opts.source
           ? plugins.filter((plugin) => (plugin.source || "community") === opts.source)
@@ -119,7 +118,7 @@ function createAppWithProductionPluginTicketBypass(engine) {
         verifyPluginIframeTicketForHostRequest(c, engine, { requireTicket: true });
       } catch (err) {
         if (err instanceof PluginIframeTicketError) {
-          return c.json({ error: err.code, detail: err.message }, err.status);
+          return c.json({ error: err.code, detail: err.message }, err.status as any);
         }
         throw err;
       }
@@ -145,7 +144,7 @@ function createAppWithProductionPluginResourceAuth(engine) {
         verifyPluginIframeTicketForHostRequest(c, engine, { requireTicket: true });
       } catch (err) {
         if (err instanceof PluginIframeTicketError) {
-          return c.json({ error: err.code, detail: err.message }, err.status);
+          return c.json({ error: err.code, detail: err.message }, err.status as any);
         }
         throw err;
       }
@@ -164,7 +163,7 @@ function createAppWithProductionPluginResourceAuth(engine) {
         }
       } catch (err) {
         if (err instanceof PluginAssetSessionError) {
-          return c.json({ error: err.code, detail: err.message }, err.status);
+          return c.json({ error: err.code, detail: err.message }, err.status as any);
         }
         throw err;
       }
@@ -205,7 +204,7 @@ function makeStoredZip(files) {
 
   for (const [name, content] of Object.entries(files)) {
     const nameBuf = Buffer.from(name);
-    const data = Buffer.from(content);
+    const data = Buffer.from(content as string);
     const crc = crc32(data);
 
     const local = Buffer.alloc(30);
@@ -361,7 +360,7 @@ describe("plugin management API", () => {
 
   describe("PUT /plugins/:id/enabled", () => {
     it("enables a plugin", async () => {
-      const enableFn = vi.fn().mockResolvedValue();
+      const enableFn = (vi.fn().mockResolvedValue as any)();
       const engine = mockEngine({ enablePlugin: enableFn });
       const app = createApp(engine);
       const res = await app.request("/api/plugins/p1/enabled", {
@@ -375,7 +374,7 @@ describe("plugin management API", () => {
     });
 
     it("disables a plugin", async () => {
-      const disableFn = vi.fn().mockResolvedValue();
+      const disableFn = (vi.fn().mockResolvedValue as any)();
       const engine = mockEngine({ disablePlugin: disableFn });
       const app = createApp(engine);
       const res = await app.request("/api/plugins/p1/enabled", {
@@ -402,7 +401,7 @@ describe("plugin management API", () => {
 
   describe("plugin proxy route namespaces", () => {
     it("dispatches plugin settings routes without hitting plugin management enablement", async () => {
-      const enableFn = vi.fn().mockResolvedValue();
+      const enableFn = (vi.fn().mockResolvedValue as any)();
       const engine = mockEngine({ enablePlugin: enableFn });
       const pluginApp = new Hono();
       pluginApp.put("/settings/enabled", async (c) => {
@@ -645,10 +644,10 @@ describe("plugin management API", () => {
           ["/api/plugins/demo/assets/.secret", 404],
           ["/api/plugins/demo/assets/dist/app.js.map", 404],
         ]) {
-          const res = await app.request(unsafePath, {
+          const res = await app.request(unsafePath as string, {
             headers: { Cookie: cookie },
           });
-          expect(res.status, unsafePath).toBe(expectedStatus);
+          expect(res.status, unsafePath as string).toBe(expectedStatus);
         }
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -806,7 +805,7 @@ describe("plugin management API", () => {
           listCapabilities: () => [{ type: "task:list", available: true }],
         },
       });
-      engine.taskRegistry = {
+      (engine as any).taskRegistry = {
         listAll: () => [{ taskId: "t1", type: "render", status: "running" }],
         listSchedules: () => [{ scheduleId: "daily", type: "digest", enabled: true }],
       };
@@ -851,7 +850,7 @@ describe("plugin management API", () => {
       const engine = mockEngine({
         plugins: [{ id: "demo", name: "Demo", version: "0.9.0", status: "loaded" }],
       });
-      engine.pluginMarketplace = {
+      (engine as any).pluginMarketplace = {
         load: async () => ({ source: { kind: "file", configured: true }, schemaVersion: 1, plugins: [plugin], warnings: [] }),
         getReadme: async () => "# Demo",
         getPlugin: async () => plugin,
@@ -895,7 +894,7 @@ describe("plugin management API", () => {
       const engine = mockEngine({
         plugins: [{ id: "demo", pluginKey: "dev:demo", source: "dev", name: "Demo Dev", version: "9.0.0", status: "loaded" }],
       });
-      engine.pluginMarketplace = {
+      (engine as any).pluginMarketplace = {
         load: async () => ({ source: { kind: "file", configured: true }, schemaVersion: 1, plugins: [plugin], warnings: [] }),
         getReadme: async () => "# Demo",
         getPlugin: async () => plugin,
@@ -959,7 +958,7 @@ describe("plugin management API", () => {
             installPlugin,
           },
         });
-        engine.pluginMarketplace = {
+        (engine as any).pluginMarketplace = {
           load: async () => ({ source: { kind: "url", configured: true }, schemaVersion: 1, plugins: [plugin], warnings: [] }),
           getReadme: async () => "# Demo",
           getPlugin: async () => plugin,
@@ -1051,7 +1050,7 @@ describe("plugin management API", () => {
             listPlugins: () => [{ id: "demo", name: "Demo", version: "1.5.0", status: "loaded" }],
           },
         });
-        engine.pluginMarketplace = {
+        (engine as any).pluginMarketplace = {
           load: async () => ({ source: { kind: "url", configured: true }, schemaVersion: 1, plugins: [plugin], warnings: [] }),
           getReadme: async () => "# Demo",
           getPlugin: async () => plugin,
@@ -1192,7 +1191,7 @@ describe("plugin management API", () => {
             installPlugin,
           },
         });
-        engine.pluginMarketplace = {
+        (engine as any).pluginMarketplace = {
           load: async () => ({ source: { kind: "url", configured: true }, schemaVersion: 1, plugins: [plugin], warnings: [] }),
           getReadme: async () => "# Demo",
           getPlugin: async () => plugin,
@@ -1217,7 +1216,7 @@ describe("plugin management API", () => {
 
   describe("PUT /plugins/settings", () => {
     it("calls setFullAccess and returns plugin list", async () => {
-      const setFn = vi.fn().mockResolvedValue();
+      const setFn = (vi.fn().mockResolvedValue as any)();
       const engine = mockEngine({
         setFullAccess: setFn,
         plugins: [
@@ -1539,7 +1538,7 @@ describe("plugin management API", () => {
             installPlugin,
           },
         });
-        engine.registerSessionFile = registerSessionFile;
+        (engine as any).registerSessionFile = registerSessionFile;
         const app = createApp(engine);
 
         const res = await app.request("/api/plugins/install", {
@@ -1758,8 +1757,8 @@ describe("plugin management API", () => {
 
     it("maps PluginDevService errors to their status code", async () => {
       const err = new Error("outside allowed roots");
-      err.status = 403;
-      err.code = "PLUGIN_DEV_SOURCE_OUTSIDE_ALLOWED_ROOTS";
+      (err as any).status = 403;
+      (err as any).code = "PLUGIN_DEV_SOURCE_OUTSIDE_ALLOWED_ROOTS";
       const engine = mockEngine({
         pluginDevService: {
           installFromSource: vi.fn(async () => { throw err; }),

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -19,9 +18,9 @@ function dirent(name, directory = true) {
   };
 }
 
-function fakeSpawnFactory({ code = 0, stdout = "", stderr = "" } = {}) {
+function fakeSpawnFactory({ code = 0, stdout = "", stderr = "" }: any = {}) {
   return vi.fn((_file, _args, _opts) => {
-    const child = new EventEmitter();
+    const child: any = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     queueMicrotask(() => {
@@ -37,7 +36,7 @@ function fakeSpawnSequence(results) {
   const queue = [...results];
   return vi.fn((_file, _args, _opts) => {
     const next = queue.shift() || { code: 0, stdout: "", stderr: "" };
-    const child = new EventEmitter();
+    const child: any = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     queueMicrotask(() => {
@@ -273,7 +272,7 @@ describe("Windows legacy sandbox migration", () => {
 
   it("reports timed out and spawn-error helpers as failed", async () => {
     const timeoutSpawn = vi.fn((_file, _args, _opts) => {
-      const child = new EventEmitter();
+      const child: any = new EventEmitter();
       child.stdout = new EventEmitter();
       child.stderr = new EventEmitter();
       child.kill = vi.fn();

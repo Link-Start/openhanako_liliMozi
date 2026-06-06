@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -48,7 +47,7 @@ describe("Agent yuan repair state", () => {
       agentsDir,
       productDir,
       userDir,
-    });
+    } as any);
 
     agent.loadConfigOnly();
 
@@ -68,7 +67,7 @@ describe("Agent yuan repair state", () => {
       agentsDir,
       productDir,
       userDir,
-    });
+    } as any);
 
     agent.loadConfigOnly();
 

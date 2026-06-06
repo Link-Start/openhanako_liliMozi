@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../lib/pi-sdk/index.ts";
 import { replayLatestUserTurn } from "../core/session-turn-actions.ts";
@@ -19,10 +18,10 @@ function makeNavigableSession(manager) {
 describe("replayLatestUserTurn", () => {
   it("branches before the latest user message and replays the original prompt", async () => {
     const manager = SessionManager.inMemory("/workspace");
-    manager.appendMessage({ role: "user", content: [{ type: "text", text: "old" }] });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "old answer" }] });
-    const latestUserId = manager.appendMessage({ role: "user", content: [{ type: "text", text: "try again" }] });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] });
+    manager.appendMessage({ role: "user", content: [{ type: "text", text: "old" }] } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "old answer" }] } as any);
+    const latestUserId = manager.appendMessage({ role: "user", content: [{ type: "text", text: "try again" }] } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] } as any);
     const session = makeNavigableSession(manager);
     const submit = vi.fn(async () => ({ text: "new answer", toolMedia: [] }));
     const engine = {
@@ -56,8 +55,8 @@ describe("replayLatestUserTurn", () => {
     const latestUserId = manager.appendMessage({
       role: "user",
       content: [{ type: "text", text: "[attached_image: /tmp/a.png]\nold text" }],
-    });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] });
+    } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] } as any);
     const session = makeNavigableSession(manager);
     const submit = vi.fn(async () => ({ text: "new answer", toolMedia: [] }));
     const readFile = vi.fn(async () => Buffer.from("png-by-filename"));
@@ -87,8 +86,8 @@ describe("replayLatestUserTurn", () => {
     const latestUserId = manager.appendMessage({
       role: "user",
       content: [{ type: "text", text: "[attached_image: /tmp/a.png]\nold text" }],
-    });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] });
+    } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] } as any);
     const session = makeNavigableSession(manager);
     const submit = vi.fn(async () => ({ text: "new answer", toolMedia: [] }));
     const readFile = vi.fn(async () => Buffer.from("png-by-filename"));
@@ -119,8 +118,8 @@ describe("replayLatestUserTurn", () => {
         { type: "text", text: "[attached_image: /tmp/a.png]\nold text" },
         { type: "image", data: "BASE64_A", mimeType: "image/png" },
       ],
-    });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] });
+    } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] } as any);
     const session = makeNavigableSession(manager);
     const submit = vi.fn(async () => ({ text: "new answer", toolMedia: [] }));
     const readFile = vi.fn();
@@ -145,9 +144,9 @@ describe("replayLatestUserTurn", () => {
 
   it("rejects a stale source entry instead of replaying the wrong turn", async () => {
     const manager = SessionManager.inMemory("/workspace");
-    const staleUserId = manager.appendMessage({ role: "user", content: [{ type: "text", text: "first" }] });
-    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "first answer" }] });
-    manager.appendMessage({ role: "user", content: [{ type: "text", text: "latest" }] });
+    const staleUserId = manager.appendMessage({ role: "user", content: [{ type: "text", text: "first" }] } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "first answer" }] } as any);
+    manager.appendMessage({ role: "user", content: [{ type: "text", text: "latest" }] } as any);
     const session = makeNavigableSession(manager);
     const submit = vi.fn();
     const engine = {

@@ -1,9 +1,8 @@
-// @ts-nocheck
 import { describe, expect, it } from "vitest";
 import { authorizeCapability, capabilityDecisionSummary } from "../core/capability-policy.ts";
 import { normalizePrincipal } from "../core/security-principal.ts";
 
-function devicePrincipal(overrides = {}) {
+function devicePrincipal( overrides: any = {}) {
   return normalizePrincipal({
     kind: "device",
     userId: "user_1",
@@ -18,7 +17,7 @@ function devicePrincipal(overrides = {}) {
   });
 }
 
-function grant(overrides = {}) {
+function grant( overrides: any = {}) {
   return {
     schemaVersion: 1,
     grantId: "grant_1",
@@ -112,6 +111,6 @@ describe("capability policy", () => {
       principalId: devicePrincipal().principalId,
       grantId: "grant_1",
     });
-    expect(summary.scopes).toBeUndefined();
+    expect((summary as any).scopes).toBeUndefined();
   });
 });

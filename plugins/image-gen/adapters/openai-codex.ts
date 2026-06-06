@@ -1,4 +1,3 @@
-// @ts-nocheck
 // plugins/image-gen/adapters/openai-codex.js
 import fs from "fs";
 import path from "path";
@@ -194,7 +193,7 @@ export const openaiCodexImageAdapter = {
     const providerDefaults = allDefaults[PROVIDER_ID] || {};
     const outputFormat = params.format || providerDefaults?.format || "png";
 
-    const tool = {
+    const tool: any = {
       type: "image_generation",
       output_format: outputFormat,
     };
@@ -205,7 +204,7 @@ export const openaiCodexImageAdapter = {
     if (quality) tool.quality = quality;
     if (providerDefaults?.background) tool.background = providerDefaults.background;
 
-    const content = [{ type: "input_text", text: params.prompt }];
+    const content: any[] = [{ type: "input_text", text: params.prompt }];
     for (const imageUrl of normalizeImages(params.image)) {
       content.push({ type: "input_image", image_url: imageUrl });
     }

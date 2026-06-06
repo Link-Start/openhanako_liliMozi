@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -118,12 +117,12 @@ describe("DmRouter agent phone session", () => {
     await router._processReply("bob", "alice");
 
     expect(runAgentPhoneSessionMock).toHaveBeenCalledOnce();
-    expect(runAgentPhoneSessionMock.mock.calls[0][2]).toMatchObject({
+    expect((runAgentPhoneSessionMock.mock.calls as any)[0][2]).toMatchObject({
       conversationId: "dm:bob",
       conversationType: "dm",
       toolMode: "write",
     });
-    const phonePrompt = runAgentPhoneSessionMock.mock.calls[0][1][0].text;
+    const phonePrompt = (runAgentPhoneSessionMock.mock.calls as any)[0][1][0].text;
     expect(phonePrompt).toContain("Reflect");
     expect(phonePrompt).toContain("<reflect>");
     expect(phonePrompt).toContain("实际发到私聊的回复正文");
@@ -132,7 +131,7 @@ describe("DmRouter agent phone session", () => {
     expect(phonePrompt).toContain("20");
     expect(phonePrompt).toContain("80");
     expect(phonePrompt).not.toContain("只在能推进话题时回复");
-    expect(runAgentPhoneSessionMock.mock.calls[0][2]).not.toHaveProperty("maxTokens");
+    expect((runAgentPhoneSessionMock.mock.calls as any)[0][2]).not.toHaveProperty("maxTokens");
     expect(activityRecord.mock.calls.map((call) => call[0].state)).toEqual(
       expect.arrayContaining(["viewed", "replying", "idle"]),
     );

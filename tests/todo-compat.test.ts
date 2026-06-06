@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * todo-compat.js — legacy format migration pure function tests
  *
@@ -118,7 +117,7 @@ describe("migrateLegacyTodos", () => {
 
   it("丢弃不可 JSON 序列化的损坏 item 时不抛错", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const circular = { foo: "bar" };
+    const circular: any = { foo: "bar" };
     circular.self = circular;
     let result;
 
@@ -383,9 +382,9 @@ describe("extractLatestTodos", () => {
 
   it("跳过不可 JSON 序列化的坏快照时不抛错", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const badToolDetails = { todos: "not array" };
+    const badToolDetails: any = { todos: "not array" };
     badToolDetails.self = badToolDetails;
-    const badStateDetails = { todos: "also not array" };
+    const badStateDetails: any = { todos: "also not array" };
     badStateDetails.self = badStateDetails;
     const messages = [
       {

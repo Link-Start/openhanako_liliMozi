@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -151,14 +150,14 @@ describe("SessionSummaryManager reset support", () => {
       RESOLVED_MODEL,
     );
 
-    const userContent = callText.mock.calls[0][0].messages[0].content;
+    const userContent = (callText as any).mock.calls[0][0].messages[0].content;
     expect(userContent).not.toContain("old summary");
     expect(manager.getSummary("s1").summary).toContain("新事实");
   });
 
   it("does not save a rolling summary that started before reset and finishes after reset", async () => {
     const manager = new SessionSummaryManager(summariesDir);
-    callText.mockImplementationOnce(async () => {
+    (callText as any).mockImplementationOnce(async () => {
       writeCompiledResetMarker(tmpDir, "2026-04-29T08:00:00.000Z");
       return "## 重要事实\n旧事实\n\n## 事情经过\n旧事件";
     });

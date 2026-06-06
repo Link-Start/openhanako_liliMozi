@@ -1,9 +1,8 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DeferredResultStore } from "../lib/deferred-result-store.ts";
 
 function createMockBus() {
-  const handlers = {};
+  const handlers: any = {};
   return {
     emit: vi.fn(),
     handle: (type, fn) => { handlers[type] = fn; return () => delete handlers[type]; },
@@ -41,7 +40,7 @@ describe("Deferred Result bus handlers", () => {
 
   beforeEach(() => {
     bus = createMockBus();
-    store = new DeferredResultStore(bus);
+    store = new (DeferredResultStore as any)(bus);
     registerHandlers(store, bus);
   });
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // tests/plugin-ui-contributions.test.js
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
@@ -33,7 +32,7 @@ function createPluginWithPage(dir, id = 'test-page-plugin') {
   `);
 }
 
-function makePM(communityDir) {
+function makePM(communityDir: any) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hana-data-'));
   const builtinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hana-builtin-'));
   return new PluginManager({
@@ -44,7 +43,7 @@ function makePM(communityDir) {
       getAllowFullAccessPlugins: () => true,
       getDisabledPlugins: () => [],
     },
-  });
+  } as any);
 }
 
 describe('Plugin UI Contributions', () => {
@@ -203,7 +202,7 @@ describe('Plugin UI Contributions', () => {
           getAllowFullAccessPlugins: () => false,
           getDisabledPlugins: () => [],
         },
-      });
+      } as any);
       await pm.loadAll();
 
       expect(pm.listPlugins().find(p => p.id === 'mcp')?.hidden).toBe(true);

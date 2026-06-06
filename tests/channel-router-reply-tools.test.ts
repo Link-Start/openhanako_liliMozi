@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -56,7 +55,7 @@ describe("ChannelRouter reply tool boundary", () => {
 
     expect(result).toMatchObject({ replied: false, missingDecision: true });
     expect(runAgentPhoneSessionMock).toHaveBeenCalledOnce();
-    const options = runAgentPhoneSessionMock.mock.calls[0][2];
+    const options = (runAgentPhoneSessionMock.mock.calls as any)[0][2];
     expect(options).toMatchObject({
       engine,
       conversationId: "ch_crew",
@@ -64,7 +63,7 @@ describe("ChannelRouter reply tool boundary", () => {
       toolMode: "read_only",
     });
     expect(options).not.toHaveProperty("allowedBaseToolNames");
-    expect(options.extraCustomTools.map((tool) => tool.name)).toEqual(
+    expect(options.extraCustomTools.map((tool: any) => tool.name)).toEqual(
       expect.arrayContaining(["channel_read_context", "channel_reply", "channel_pass"]),
     );
     expect(callTextMock).not.toHaveBeenCalled();
@@ -98,8 +97,8 @@ describe("ChannelRouter reply tool boundary", () => {
       "user: 大家怎么看？",
     );
 
-    const rounds = runAgentPhoneSessionMock.mock.calls[0][1];
-    const phonePrompt = rounds[0].text;
+    const rounds = (runAgentPhoneSessionMock.mock.calls as any)[0][1];
+    const phonePrompt = rounds![0].text;
     expect(phonePrompt).not.toContain("<mood>");
     expect(phonePrompt).not.toContain("</mood>");
     expect(phonePrompt).toContain("PULSE");
@@ -109,7 +108,7 @@ describe("ChannelRouter reply tool boundary", () => {
     expect(phonePrompt).toContain("内容很长");
     expect(phonePrompt).toContain("20");
     expect(phonePrompt).toContain("80");
-    expect(runAgentPhoneSessionMock.mock.calls[0][2]).not.toHaveProperty("maxTokens");
+    expect((runAgentPhoneSessionMock.mock.calls as any)[0][2]).not.toHaveProperty("maxTokens");
 
     fs.rmSync(root, { recursive: true, force: true });
   });
@@ -148,7 +147,7 @@ describe("ChannelRouter reply tool boundary", () => {
       { mentionedAgents: ["yui"], mentionTargeted: false },
     );
 
-    const phonePrompt = runAgentPhoneSessionMock.mock.calls[0][1][0].text;
+    const phonePrompt = (runAgentPhoneSessionMock.mock.calls as any)[0][1][0].text;
     expect(phonePrompt).toContain("这轮消息明确 @ 了 Yui");
     expect(phonePrompt).toContain("不要抢答");
     expect(phonePrompt).toContain("channel_pass");
@@ -193,7 +192,7 @@ describe("ChannelRouter reply tool boundary", () => {
       "user: 大家怎么看？",
     );
 
-    expect(runAgentPhoneSessionMock.mock.calls[0][2]).toMatchObject({
+    expect((runAgentPhoneSessionMock.mock.calls as any)[0][2]).toMatchObject({
       modelOverride: { id: "deepseek-v4-flash", provider: "deepseek" },
     });
 
@@ -221,7 +220,7 @@ describe("ChannelRouter reply tool boundary", () => {
       "user: @Hanako please reply OK",
     );
 
-    expect(runAgentPhoneSessionMock.mock.calls[0][2]).toMatchObject({
+    expect((runAgentPhoneSessionMock.mock.calls as any)[0][2]).toMatchObject({
       toolMode: "write",
     });
     fs.rmSync(root, { recursive: true, force: true });
@@ -251,7 +250,7 @@ describe("ChannelRouter reply tool boundary", () => {
       },
     );
 
-    const phonePrompt = runAgentPhoneSessionMock.mock.calls[0][1][0].text;
+    const phonePrompt = (runAgentPhoneSessionMock.mock.calls as any)[0][1][0].text;
     expect(phonePrompt).toContain("本次投递窗口内未处理的新消息");
     expect(phonePrompt).toContain("不是频道全部历史");
     expect(phonePrompt).toContain("较早的 5 条未读消息没有放入本次投递窗口");
@@ -264,8 +263,8 @@ describe("ChannelRouter reply tool boundary", () => {
   it("emits a complete incremental message from the channel_reply tool, not raw model text", async () => {
     runAgentSessionMock.mockClear();
     runAgentPhoneSessionMock.mockClear();
-    runAgentPhoneSessionMock.mockImplementationOnce(async (_agentId, _rounds, options) => {
-      const replyTool = options.extraCustomTools.find((tool) => tool.name === "channel_reply");
+    (runAgentPhoneSessionMock as any).mockImplementationOnce(async (_agentId: any, _rounds: any, options: any) => {
+      const replyTool = options.extraCustomTools.find((tool: any) => tool.name === "channel_reply");
       await replyTool.execute("tool-call-1", {
         mood: "我想接一下这个球。",
         content: "工具发出的 OK",
@@ -325,8 +324,8 @@ describe("ChannelRouter reply tool boundary", () => {
   it("keeps a committed channel_reply decision when the phone session aborts after posting", async () => {
     runAgentSessionMock.mockClear();
     runAgentPhoneSessionMock.mockClear();
-    runAgentPhoneSessionMock.mockImplementationOnce(async (_agentId, _rounds, options) => {
-      const replyTool = options.extraCustomTools.find((tool) => tool.name === "channel_reply");
+    (runAgentPhoneSessionMock as any).mockImplementationOnce(async (_agentId: any, _rounds: any, options: any) => {
+      const replyTool = options.extraCustomTools.find((tool: any) => tool.name === "channel_reply");
       await replyTool.execute("tool-call-1", { content: "已经写入频道的回复" });
       const err = new Error("delivery aborted after channel reply");
       err.name = "AbortError";
@@ -380,9 +379,9 @@ describe("ChannelRouter reply tool boundary", () => {
   it("refuses channel_reply when the running agent has been removed from the channel", async () => {
     runAgentSessionMock.mockClear();
     runAgentPhoneSessionMock.mockClear();
-    runAgentPhoneSessionMock.mockImplementationOnce(async (_agentId, _rounds, options) => {
+    (runAgentPhoneSessionMock as any).mockImplementationOnce(async (_agentId: any, _rounds: any, options: any) => {
       expect(options.returnDiagnostics).toBe(true);
-      const replyTool = options.extraCustomTools.find((tool) => tool.name === "channel_reply");
+      const replyTool = options.extraCustomTools.find((tool: any) => tool.name === "channel_reply");
       const result = await replyTool.execute("tool-call-1", {
         content: "这条幽灵消息不应该写入频道",
       });
@@ -453,8 +452,8 @@ describe("ChannelRouter reply tool boundary", () => {
   it("treats channel_pass as an explicit viewed-without-reply decision", async () => {
     runAgentSessionMock.mockClear();
     runAgentPhoneSessionMock.mockClear();
-    runAgentPhoneSessionMock.mockImplementationOnce(async (_agentId, _rounds, options) => {
-      const passTool = options.extraCustomTools.find((tool) => tool.name === "channel_pass");
+    (runAgentPhoneSessionMock as any).mockImplementationOnce(async (_agentId: any, _rounds: any, options: any) => {
+      const passTool = options.extraCustomTools.find((tool: any) => tool.name === "channel_pass");
       await passTool.execute("tool-call-1", {
         mood: "这个话题别人已经接住了。",
         reason: "没有新的补充",
@@ -508,7 +507,7 @@ describe("ChannelRouter reply tool boundary", () => {
   it("retries once with repair guidance before treating a missing channel decision as skipped", async () => {
     runAgentSessionMock.mockClear();
     runAgentPhoneSessionMock.mockClear();
-    runAgentPhoneSessionMock
+    (runAgentPhoneSessionMock as any)
       .mockResolvedValueOnce({
         text: "普通文本不应进入频道",
         diagnostics: {
@@ -569,7 +568,7 @@ describe("ChannelRouter reply tool boundary", () => {
       repairAttempts: 1,
     });
     expect(runAgentPhoneSessionMock).toHaveBeenCalledTimes(2);
-    expect(runAgentPhoneSessionMock.mock.calls[1][1][0].text).toContain("上一轮手机处理没有调用 channel_reply 或 channel_pass");
+    expect((runAgentPhoneSessionMock.mock.calls as any)[1][1][0].text).toContain("上一轮手机处理没有调用 channel_reply 或 channel_pass");
     const states = activityRecord.mock.calls.map((call) => call[0].state);
     expect(states).toContain("retrying");
     const errorActivity = activityRecord.mock.calls.find((call) => call[0].state === "error")?.[0];
@@ -590,8 +589,8 @@ describe("ChannelRouter reply tool boundary", () => {
   it("records per-agent phone activity while processing channel messages", async () => {
     runAgentSessionMock.mockClear();
     runAgentPhoneSessionMock.mockClear();
-    runAgentPhoneSessionMock.mockImplementationOnce(async (_agentId, _rounds, options) => {
-      const replyTool = options.extraCustomTools.find((tool) => tool.name === "channel_reply");
+    (runAgentPhoneSessionMock as any).mockImplementationOnce(async (_agentId: any, _rounds: any, options: any) => {
+      const replyTool = options.extraCustomTools.find((tool: any) => tool.name === "channel_reply");
       await replyTool.execute("tool-call-1", { content: "OK" });
       return "";
     });

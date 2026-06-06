@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Bridge 出站清洗：stripInternalTags + StreamCleaner + 快照清洗 测试
  *
@@ -453,7 +452,7 @@ describe("delivery 集成 — block 模式（QQ #1308）", () => {
       sendBlockReply: vi.fn(async (_chatId, text) => { sent.push(text); }),
       sendReply: vi.fn(async (_chatId, text) => { sent.push(text); }),
     };
-    const delivery = bm._createStreamDelivery({ adapter, chatId: "c1", isGroup: false, platform: "qq" });
+    const delivery = bm._createStreamDelivery({ adapter, chatId: "c1", isGroup: false, platform: "qq" } as any);
 
     // 模拟流式：正文 + 裸闭合 </think> + 后续正文
     for (const d of ["第一段回复\n", "</think>", "第二段回复\n"]) delivery.onDelta?.(d, "");
@@ -473,7 +472,7 @@ describe("delivery 集成 — block 模式（QQ #1308）", () => {
       sendBlockReply: vi.fn(async (_chatId, text) => { sent.push(text); }),
       sendReply: vi.fn(async (_chatId, text) => { sent.push(text); }),
     };
-    const delivery = bm._createStreamDelivery({ adapter, chatId: "c1", isGroup: false, platform: "qq" });
+    const delivery = bm._createStreamDelivery({ adapter, chatId: "c1", isGroup: false, platform: "qq" } as any);
     for (const d of ['正文<tool_calls><invoke name="bash">', '<parameter name="command">ls\n']) {
       delivery.onDelta?.(d, "");
     }
@@ -497,7 +496,7 @@ describe("delivery 集成 — edit_message 模式（飞书 #1293）", () => {
       finishStreamReply: vi.fn(async (_c, _s, text) => { updates.push(text); }),
       sendReply: vi.fn(async (_c, text) => { updates.push(text); }),
     };
-    const delivery = bm._createStreamDelivery({ adapter, chatId: "c1", isGroup: false, platform: "feishu" });
+    const delivery = bm._createStreamDelivery({ adapter, chatId: "c1", isGroup: false, platform: "feishu" } as any);
 
     const full = '<t>05-28 17:13</t>这是回复<tool_calls><invoke name="bash"><parameter name="command">ls</parameter></invoke></tool_calls>结束';
     delivery.onDelta?.(full, full);

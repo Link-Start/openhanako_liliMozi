@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -17,16 +16,16 @@ const emitSessionShutdownMock = vi.fn(async (session) => {
 });
 
 vi.mock("../lib/pi-sdk/index.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal() as any;
   return {
     ...actual,
-    createAgentSession: (...args) => createAgentSessionMock(...args),
+    createAgentSession: (...args: any[]) => createAgentSessionMock(...args),
     SessionManager: {
       ...actual.SessionManager,
-      create: (...args) => sessionManagerCreateMock(...args),
-      open: (...args) => sessionManagerOpenMock(...args),
+      create: (...args: any[]) => sessionManagerCreateMock(...args),
+      open: (...args: any[]) => sessionManagerOpenMock(...args),
     },
-    emitSessionShutdown: (...args) => emitSessionShutdownMock(...args),
+    emitSessionShutdown: (...args: any[]) => (emitSessionShutdownMock as any)(...args),
   };
 });
 
@@ -114,11 +113,11 @@ describe("runAgentSession teardown", () => {
     const cwd = path.join(rootDir, "cwd");
     fs.mkdirSync(cwd, { recursive: true });
     const agent = makeAgent(rootDir);
-    agent.memoryMasterEnabled = true;
+    (agent as any).memoryMasterEnabled = true;
     const plainTool = { name: "plain_custom" };
     const memoryTool = { name: "search_memory" };
     agent.tools = [plainTool];
-    agent.getToolsSnapshot = vi.fn(({ forceMemoryEnabled } = {}) => (
+    (agent as any).getToolsSnapshot = vi.fn(({ forceMemoryEnabled }: any = {}) => (
       forceMemoryEnabled ? [plainTool, memoryTool] : [plainTool]
     ));
 
@@ -153,7 +152,7 @@ describe("runAgentSession teardown", () => {
 
     await runAgentSession("agent-a", [{ text: "hello", capture: true }], { engine });
 
-    expect(agent.getToolsSnapshot).toHaveBeenCalledWith({ forceMemoryEnabled: true });
+    expect((agent as any).getToolsSnapshot).toHaveBeenCalledWith({ forceMemoryEnabled: true });
     expect(buildTools.mock.calls[0][1].map((tool) => tool.name)).toEqual([
       "plain_custom",
       "search_memory",
@@ -198,8 +197,8 @@ describe("runAgentSession teardown", () => {
 
     await runAgentSession("agent-a", [{ text: "hello", capture: true }], { engine, readOnly: true });
 
-    const buildOpts = buildTools.mock.calls[0][2];
-    expect(buildOpts.getPermissionMode()).toBe("read_only");
+    const buildOpts = (buildTools.mock.calls[0] as any)[2];
+    expect(buildOpts!.getPermissionMode()).toBe("read_only");
     expect(createAgentSessionMock.mock.calls[0][0].tools.map((tool) => tool.name)).toEqual([
       "read",
       "write",
@@ -326,7 +325,7 @@ describe("runAgentSession teardown", () => {
     fs.mkdirSync(cwd, { recursive: true });
     const agent = makeAgent(rootDir);
     agent.tools = [{ name: "channel" }, { name: "search_memory" }, { name: "record_experience" }];
-    agent.getToolsSnapshot = vi.fn(() => agent.tools);
+    (agent as any).getToolsSnapshot = vi.fn(() => agent.tools);
 
     const buildTools = vi.fn((_cwd, customTools) => ({
       tools: [{ name: "read" }, { name: "write" }],
@@ -371,8 +370,8 @@ describe("runAgentSession teardown", () => {
       ],
     });
 
-    const buildOpts = buildTools.mock.calls[0][2];
-    expect(buildOpts.getPermissionMode()).toBe("read_only");
+    const buildOpts = (buildTools.mock.calls[0] as any)[2];
+    expect(buildOpts!.getPermissionMode()).toBe("read_only");
     expect(createAgentSessionMock.mock.calls[0][0].tools.map((tool) => tool.name)).toEqual([
       "read",
       "write",
@@ -398,7 +397,7 @@ describe("runAgentSession teardown", () => {
     fs.mkdirSync(cwd, { recursive: true });
     const agent = makeAgent(rootDir);
     agent.tools = [{ name: "channel" }, { name: "search_memory" }, { name: "record_experience" }, { name: "web_fetch" }];
-    agent.getToolsSnapshot = vi.fn(() => agent.tools);
+    (agent as any).getToolsSnapshot = vi.fn(() => agent.tools);
 
     const buildTools = vi.fn((_cwd, customTools) => ({
       tools: [{ name: "read" }, { name: "write" }],
@@ -585,7 +584,7 @@ describe("runAgentSession teardown", () => {
       modelOverrideRequested: { id: "deepseek-v4-flash", provider: "deepseek" },
     });
     const projection = readAgentPhoneProjection(getAgentPhoneProjectionPath(agent.agentDir, "ch_crew"));
-    expect(projection.meta.effectiveModel).toMatchObject({
+    expect((projection.meta as any).effectiveModel).toMatchObject({
       id: "deepseek-v4-flash",
       provider: "deepseek",
     });

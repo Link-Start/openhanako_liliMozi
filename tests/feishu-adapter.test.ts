@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +11,7 @@ const mockFileCreate = vi.fn();
 const mockWsStart = vi.fn();
 const mockWsClose = vi.fn();
 
-let registeredHandlers = {};
+let registeredHandlers: any = {};
 let mockWsInstances = [];
 
 vi.mock("@larksuiteoapi/node-sdk", () => {
@@ -24,6 +23,7 @@ vi.mock("@larksuiteoapi/node-sdk", () => {
   }
 
   class MockWSClient {
+    declare wsConfig: any;
     constructor() {
       this.wsConfig = { wsInstance: { readyState: 1 } };
       mockWsInstances.push(this);
@@ -39,6 +39,8 @@ vi.mock("@larksuiteoapi/node-sdk", () => {
   }
 
   class MockClient {
+    declare contact: any;
+    declare im: any;
     constructor() {
       this.contact = {
         user: {
@@ -460,7 +462,7 @@ describe("createFeishuAdapter", () => {
       onMessage: vi.fn(),
     });
 
-    const buffer = await adapter.downloadImage("img_uploaded_key_001");
+    const buffer = await (adapter as any).downloadImage("img_uploaded_key_001");
 
     expect(buffer).toEqual(imageBuffer);
     expect(mockImageGet).toHaveBeenCalledWith({
@@ -653,7 +655,7 @@ describe("createFeishuAdapter", () => {
 
   it("wraps Feishu upload API failures with code and log id", async () => {
     const err = new Error("Request failed with status code 400");
-    err.response = {
+    (err as any).response = {
       data: {
         code: 234011,
         msg: "Can't regonnize the image format.",
@@ -679,7 +681,7 @@ describe("createFeishuAdapter", () => {
   it("wraps Feishu message send API failures with code and log id", async () => {
     mockImageCreate.mockResolvedValue({ image_key: "img_key_001" });
     const err = new Error("Request failed with status code 400");
-    err.response = {
+    (err as any).response = {
       data: {
         code: 230002,
         msg: "The bot can not be outside the group.",

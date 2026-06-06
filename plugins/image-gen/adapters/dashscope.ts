@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   createLocalTaskId,
   downloadImageUrls,
@@ -19,7 +18,7 @@ function resolveDashScopeBaseUrl(baseUrl) {
   return `${base}/api/v1`;
 }
 
-async function getCredentials(ctx, params = {}) {
+async function getCredentials(ctx, params: any = {}) {
   const providerId = params.credentialProviderId || params.providerId || "dashscope";
   const creds = await ctx.bus.request("provider:credentials", { providerId });
   if (creds.error || !creds.apiKey) {
@@ -87,7 +86,7 @@ function parseDashScopeImageValue(value) {
 }
 
 function buildMessages(prompt, images) {
-  const content = [{ text: prompt }];
+  const content: any[] = [{ text: prompt }];
   for (const image of images) content.push({ image });
   return [{ role: "user", content }];
 }
@@ -108,7 +107,7 @@ function normalizeDashScopeSize(value) {
 
 function generationParameters(params, family) {
   const size = normalizeDashScopeSize(params.size || params.resolution);
-  const parameters = {
+  const parameters: any = {
     n: 1,
     ...(size ? { size } : {}),
   };

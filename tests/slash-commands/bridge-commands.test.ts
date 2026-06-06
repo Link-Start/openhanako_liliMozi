@@ -1,10 +1,9 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest";
 import { bridgeCommands } from "../../core/slash-commands/bridge-commands.ts";
 import { SlashCommandRegistry } from "../../core/slash-command-registry.ts";
 import { SlashCommandDispatcher } from "../../core/slash-command-dispatcher.ts";
 
-function makeCtx(overrides = {}) {
+function makeCtx( overrides: any = {}) {
   return {
     sessionRef: { kind: "bridge", agentId: "a1", sessionKey: "tg_dm_x@a1" },
     sessionOps: {
@@ -30,18 +29,18 @@ describe("/stop", () => {
     const ctx = makeCtx();
     const r = await stop.handler(ctx);
     expect(ctx.sessionOps.abort).toHaveBeenCalledWith(ctx.sessionRef);
-    expect(r?.silent).toBe(true);
+    expect((r as any)?.silent).toBe(true);
   });
   it("returns reply when nothing to abort", async () => {
     const ctx = makeCtx({ sessionOps: { isStreaming: () => false, abort: vi.fn(async () => false) } });
     const r = await stop.handler(ctx);
-    expect(r.reply).toMatch(/当前无活动/);
+    expect((r as any).reply).toMatch(/当前无活动/);
   });
   it("returns reply when abort reports failure even while streaming was observed", async () => {
     // 防 regression：TOCTOU 假阳性时 abort=false 仍须走 fallback reply
     const ctx = makeCtx({ sessionOps: { isStreaming: () => true, abort: vi.fn(async () => false) } });
     const r = await stop.handler(ctx);
-    expect(r.reply).toMatch(/当前无活动/);
+    expect((r as any).reply).toMatch(/当前无活动/);
   });
 });
 
@@ -51,17 +50,17 @@ describe("/new", () => {
     const ctx = makeCtx();
     const r = await cmd.handler(ctx);
     expect(ctx.sessionOps.rotate).toHaveBeenCalledWith(ctx.sessionRef);
-    expect(r.reply).toMatch(/已开启新会话.*归档/);
+    expect((r as any).reply).toMatch(/已开启新会话.*归档/);
   });
   it("reports no-history status distinctly", async () => {
     const ctx = makeCtx({ sessionOps: { rotate: vi.fn(async () => ({ status: "no-history" })) } });
     const r = await cmd.handler(ctx);
-    expect(r.reply).toMatch(/无历史/);
+    expect((r as any).reply).toMatch(/无历史/);
   });
   it("reports not-found status distinctly", async () => {
     const ctx = makeCtx({ sessionOps: { rotate: vi.fn(async () => ({ status: "not-found" })) } });
     const r = await cmd.handler(ctx);
-    expect(r.reply).toMatch(/未找到/);
+    expect((r as any).reply).toMatch(/未找到/);
   });
 });
 
@@ -71,12 +70,12 @@ describe("/reset", () => {
     const ctx = makeCtx();
     const r = await cmd.handler(ctx);
     expect(ctx.sessionOps.delete).toHaveBeenCalledWith(ctx.sessionRef);
-    expect(r.reply).toMatch(/已重置/);
+    expect((r as any).reply).toMatch(/已重置/);
   });
   it("reports not-found status distinctly", async () => {
     const ctx = makeCtx({ sessionOps: { delete: vi.fn(async () => ({ status: "not-found" })) } });
     const r = await cmd.handler(ctx);
-    expect(r.reply).toMatch(/未找到/);
+    expect((r as any).reply).toMatch(/未找到/);
   });
 
   it("/clear dispatches to the same reset handler and deletes the current session", async () => {
@@ -125,7 +124,7 @@ describe("/compact", () => {
     expect(ctx.reply.mock.calls[0][0]).toMatch(/正在压缩/);
     expect(ctx.reply.mock.calls[1][0]).toMatch(/9000.*3200.*tokens/);
     // handler 自己调了 reply，走 silent 避免 dispatcher 再回一遍
-    expect(r?.silent).toBe(true);
+    expect((r as any)?.silent).toBe(true);
   });
 
   it("falls back to generic '已压缩' message when usage unavailable", async () => {
@@ -145,7 +144,7 @@ describe("/compact", () => {
     const r = await cmd.handler(ctx);
     expect(ctx.reply).toHaveBeenCalledTimes(2);
     expect(ctx.reply.mock.calls[1][0]).toMatch(/压缩失败.*inject failed/);
-    expect(r?.silent).toBe(true);
+    expect((r as any)?.silent).toBe(true);
   });
 });
 
@@ -172,7 +171,7 @@ describe("/fresh-compact", () => {
     expect(ctx.reply).toHaveBeenCalledTimes(2);
     expect(ctx.reply.mock.calls[0][0]).toMatch(/fresh-compact/);
     expect(ctx.reply.mock.calls[1][0]).toMatch(/10000.*4200.*tokens/);
-    expect(r?.silent).toBe(true);
+    expect((r as any)?.silent).toBe(true);
   });
 
   it("rejects fresh-compact while bridge is attached to a desktop session", async () => {
@@ -184,7 +183,7 @@ describe("/fresh-compact", () => {
 
     const r = await cmd.handler(ctx);
 
-    expect(r.reply).toMatch(/接管桌面会话期间/);
+    expect((r as any).reply).toMatch(/接管桌面会话期间/);
     expect(ctx.sessionOps.freshCompact).not.toHaveBeenCalled();
   });
 });
