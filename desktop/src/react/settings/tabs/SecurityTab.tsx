@@ -1,12 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSettingsStore } from '../store';
 import { autoSaveConfig, t } from '../helpers';
 import { hanaFetch } from '../api';
 import { loadSettingsConfig } from '../actions';
 import { Toggle } from '../widgets/Toggle';
+import { SelectWidget } from '@/ui';
+import { readConfigBoolean } from '../resource-state';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { ExpandableRow } from '../components/ExpandableRow';
+import { ArchivedSessionsModal } from '../../components/ArchivedSessionsModal';
 import styles from '../Settings.module.css';
 
 interface Checkpoint {
@@ -30,16 +33,75 @@ const SIZE_OPTIONS = [
   { value: 10240, label: '10 MB' },
 ];
 
+type NetworkProxyMode = 'system' | 'manual' | 'direct';
+
+interface NetworkProxyConfig {
+  mode: NetworkProxyMode;
+  httpProxy: string;
+  httpsProxy: string;
+  wsProxy: string;
+  wssProxy: string;
+  noProxy: string;
+}
+
+type NetworkProxyTextField = Exclude<keyof NetworkProxyConfig, 'mode'>;
+
+const DEFAULT_NETWORK_PROXY: NetworkProxyConfig = {
+  mode: 'system',
+  httpProxy: '',
+  httpsProxy: '',
+  wsProxy: '',
+  wssProxy: '',
+  noProxy: 'localhost, 127.0.0.1, ::1',
+};
+
+function normalizeNetworkProxyDraft(value: Partial<NetworkProxyConfig> | null | undefined): NetworkProxyConfig {
+  const mode = value?.mode === 'manual' || value?.mode === 'direct' ? value.mode : 'system';
+  return {
+    ...DEFAULT_NETWORK_PROXY,
+    ...(value || {}),
+    mode,
+    httpProxy: value?.httpProxy || '',
+    httpsProxy: value?.httpsProxy || '',
+    wsProxy: value?.wsProxy || '',
+    wssProxy: value?.wssProxy || '',
+    noProxy: value?.noProxy || DEFAULT_NETWORK_PROXY.noProxy,
+  };
+}
+
 export function SecurityTab() {
-  const { settingsConfig, showToast } = useSettingsStore();
-  const sandboxEnabled = settingsConfig?.sandbox !== false;
-  const fileBackup = settingsConfig?.file_backup || { enabled: false, retention_days: 1, max_file_size_kb: 1024 };
+  const settingsConfig = useSettingsStore(s => s.settingsConfig);
+  const platformName = useSettingsStore(s => s.platformName);
+  const showToast = useSettingsStore(s => s.showToast);
+  // 默认开（!== false）：和后端 preferences-manager.getSandboxNetwork / engine.getSandboxNetwork 保持一致。
+  // 见 core/preferences-manager.js:86 和 commit 51ecc435。
+  const sandboxEnabled = readConfigBoolean(settingsConfig, cfg => cfg.sandbox, true);
+  const isWindows = platformName === 'win32';
+  const sandboxNetworkEnabled = settingsConfig
+    ? isWindows || readConfigBoolean(settingsConfig, cfg => cfg.sandbox_network, true)
+    : undefined;
+  const sandboxNetworkDisabled = sandboxEnabled !== true || isWindows;
+  const fileBackupEnabled = readConfigBoolean(settingsConfig, cfg => cfg.file_backup?.enabled, false);
+  const fileBackup = settingsConfig?.file_backup || { enabled: fileBackupEnabled, retention_days: 1, max_file_size_kb: 1024 };
 
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [proxyDraft, setProxyDraft] = useState<NetworkProxyConfig>(
+    () => normalizeNetworkProxyDraft(settingsConfig?.network_proxy),
+  );
+
+  useEffect(() => {
+    setProxyDraft(normalizeNetworkProxyDraft(settingsConfig?.network_proxy));
+  }, [settingsConfig?.network_proxy]);
 
   const handleSandboxToggle = useCallback(async (on: boolean) => {
     await autoSaveConfig({ sandbox: on }, { silent: true });
+    await loadSettingsConfig();
+  }, []);
+
+  const handleSandboxNetworkToggle = useCallback(async (on: boolean) => {
+    await autoSaveConfig({ sandbox_network: on }, { silent: true });
     await loadSettingsConfig();
   }, []);
 
@@ -49,19 +111,36 @@ export function SecurityTab() {
     await loadSettingsConfig();
   }, []);
 
-  const handleRetentionChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const days = parseInt(e.target.value, 10);
+  const handleRetentionChange = useCallback(async (value: string) => {
+    const days = parseInt(value, 10);
     const current = useSettingsStore.getState().settingsConfig?.file_backup || {};
     await autoSaveConfig({ file_backup: { ...current, retention_days: days } }, { silent: true });
     await loadSettingsConfig();
   }, []);
 
-  const handleMaxSizeChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const kb = parseInt(e.target.value, 10);
+  const handleMaxSizeChange = useCallback(async (value: string) => {
+    const kb = parseInt(value, 10);
     const current = useSettingsStore.getState().settingsConfig?.file_backup || {};
     await autoSaveConfig({ file_backup: { ...current, max_file_size_kb: kb } }, { silent: true });
     await loadSettingsConfig();
   }, []);
+
+  const handleProxyFieldChange = useCallback((field: NetworkProxyTextField, value: string) => {
+    setProxyDraft(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleProxyModeChange = useCallback((mode: string) => {
+    setProxyDraft(prev => ({ ...prev, mode: mode as NetworkProxyMode }));
+  }, []);
+
+  const handleProxySave = useCallback(async () => {
+    const saved = await autoSaveConfig({ network_proxy: proxyDraft }, { silent: true });
+    if (!saved) return;
+    const latest = useSettingsStore.getState().settingsConfig?.network_proxy || proxyDraft;
+    window.platform?.settingsChanged?.('network-proxy-changed', { network_proxy: latest });
+    showToast(t('settings.autoSaved'), 'success');
+    await loadSettingsConfig();
+  }, [proxyDraft, showToast]);
 
   const loadCheckpoints = useCallback(async () => {
     setLoading(true);
@@ -109,7 +188,22 @@ export function SecurityTab() {
           hint={t('settings.security.sandboxDesc')}
           control={<Toggle on={sandboxEnabled} onChange={handleSandboxToggle} />}
         />
-        {!sandboxEnabled && (
+        <SettingsRow
+          label={t('settings.security.sandboxNetwork')}
+          hint={isWindows
+            ? t('settings.security.sandboxNetworkWin32Unsupported')
+            : sandboxEnabled
+            ? t('settings.security.sandboxNetworkDesc')
+            : t('settings.security.sandboxNetworkDisabledDesc')}
+          control={
+            <Toggle
+              on={sandboxNetworkEnabled}
+              onChange={handleSandboxNetworkToggle}
+              disabled={sandboxNetworkDisabled}
+            />
+          }
+        />
+        {sandboxEnabled === false && (
           <SettingsSection.Warning>
             {t('settings.security.sandboxWarning')}
           </SettingsSection.Warning>
@@ -120,38 +214,30 @@ export function SecurityTab() {
         <SettingsRow
           label={t('settings.security.fileBackup')}
           hint={t('settings.security.fileBackupDesc')}
-          control={<Toggle on={fileBackup.enabled} onChange={handleBackupToggle} />}
+          control={<Toggle on={fileBackupEnabled} onChange={handleBackupToggle} />}
         />
 
-        {fileBackup.enabled && (
+        {fileBackupEnabled === true && (
           <>
             <SettingsRow
               label={t('settings.security.retention')}
               control={
-                <select
-                  className={styles['settings-select']}
-                  value={fileBackup.retention_days}
+                <SelectWidget
+                  value={String(fileBackup.retention_days)}
                   onChange={handleRetentionChange}
-                >
-                  {RETENTION_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{t(opt.key)}</option>
-                  ))}
-                </select>
+                  options={RETENTION_OPTIONS.map(opt => ({ value: String(opt.value), label: t(opt.key) }))}
+                />
               }
             />
 
             <SettingsRow
               label={t('settings.security.maxFileSize')}
               control={
-                <select
-                  className={styles['settings-select']}
-                  value={fileBackup.max_file_size_kb}
+                <SelectWidget
+                  value={String(fileBackup.max_file_size_kb)}
                   onChange={handleMaxSizeChange}
-                >
-                  {SIZE_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                  options={SIZE_OPTIONS.map(opt => ({ value: String(opt.value), label: opt.label }))}
+                />
               }
             />
 
@@ -184,6 +270,92 @@ export function SecurityTab() {
           </>
         )}
       </SettingsSection>
+
+      <SettingsSection title={t('settings.security.archivedChats')}>
+        <SettingsRow
+          label={t('settings.security.archivedChats')}
+          hint={t('settings.security.archivedChatsDesc')}
+          control={
+            <button
+              type="button"
+              className={styles['settings-btn-secondary']}
+              onClick={() => setArchivedOpen(true)}
+            >
+              {t('settings.security.viewArchivedChats')}
+            </button>
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.security.networkProxy')}>
+        <SettingsRow
+          label={t('settings.security.networkProxyMode')}
+          hint={t('settings.security.networkProxyModeDesc')}
+          control={
+            <SelectWidget
+              value={proxyDraft.mode}
+              onChange={handleProxyModeChange}
+              options={[
+                { value: 'system', label: t('settings.security.networkProxySystem') },
+                { value: 'manual', label: t('settings.security.networkProxyManual') },
+                { value: 'direct', label: t('settings.security.networkProxyDirect') },
+              ]}
+            />
+          }
+        />
+
+        {proxyDraft.mode === 'manual' && (
+          <SettingsRow
+            label={t('settings.security.networkProxyManualTitle')}
+            hint={t('settings.security.networkProxyManualDesc')}
+            layout="stacked"
+            control={
+              <div className={styles['settings-proxy-grid']}>
+                <input
+                  className={styles['settings-input']}
+                  value={proxyDraft.httpProxy}
+                  onChange={(e) => handleProxyFieldChange('httpProxy', e.target.value)}
+                  placeholder={t('settings.security.networkProxyHttp')}
+                />
+                <input
+                  className={styles['settings-input']}
+                  value={proxyDraft.httpsProxy}
+                  onChange={(e) => handleProxyFieldChange('httpsProxy', e.target.value)}
+                  placeholder={t('settings.security.networkProxyHttps')}
+                />
+                <input
+                  className={styles['settings-input']}
+                  value={proxyDraft.wsProxy}
+                  onChange={(e) => handleProxyFieldChange('wsProxy', e.target.value)}
+                  placeholder={t('settings.security.networkProxyWs')}
+                />
+                <input
+                  className={styles['settings-input']}
+                  value={proxyDraft.wssProxy}
+                  onChange={(e) => handleProxyFieldChange('wssProxy', e.target.value)}
+                  placeholder={t('settings.security.networkProxyWss')}
+                />
+                <input
+                  className={`${styles['settings-input']} ${styles['settings-proxy-wide']}`}
+                  value={proxyDraft.noProxy}
+                  onChange={(e) => handleProxyFieldChange('noProxy', e.target.value)}
+                  placeholder={t('settings.security.networkProxyNoProxy')}
+                />
+              </div>
+            }
+          />
+        )}
+        <SettingsSection.Footer>
+          <button className={styles['settings-btn-primary']} onClick={handleProxySave}>
+            {t('settings.security.networkProxySave')}
+          </button>
+        </SettingsSection.Footer>
+      </SettingsSection>
+      <ArchivedSessionsModal
+        open={archivedOpen}
+        onClose={() => setArchivedOpen(false)}
+        zIndex={1900}
+      />
     </div>
   );
 }

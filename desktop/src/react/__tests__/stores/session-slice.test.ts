@@ -23,6 +23,7 @@ describe('session-slice', () => {
   it('初始状态正确', () => {
     expect(slice.sessions).toEqual([]);
     expect(slice.currentSessionPath).toBeNull();
+    expect(slice.pendingSessionSwitchPath).toBeNull();
     expect(slice.sessionStreams).toEqual({});
     expect(slice.pendingNewSession).toBe(false);
     expect(slice.memoryEnabled).toBe(true);
@@ -64,5 +65,12 @@ describe('session-slice', () => {
     expect(slice.currentSessionPath).toBe('/s1');
     slice.setCurrentSessionPath(null);
     expect(slice.currentSessionPath).toBeNull();
+  });
+
+  it('setPendingSessionSwitchPath 记录导航意图', () => {
+    slice.setPendingSessionSwitchPath('/s2');
+    expect(slice.pendingSessionSwitchPath).toBe('/s2');
+    slice.setPendingSessionSwitchPath(null);
+    expect(slice.pendingSessionSwitchPath).toBeNull();
   });
 });

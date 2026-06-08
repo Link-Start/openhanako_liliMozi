@@ -154,13 +154,20 @@ export function openPreview(previewItem: PreviewItem): void {
   schedulePersistCurrentWorkspaceUiState();
 }
 
-/** 收起面板，保留 tabs 和 previewItems（下次打开恢复） */
-export function closePreview(): void {
+/** 只展开/收起面板，不改变已有 tabs 与 previewItems */
+export function togglePreviewPanel(forceOpen?: boolean): void {
   const s = useStore.getState();
-  s.setPreviewOpen(false);
-  if (s.quotedSelection) s.clearQuotedSelection();
+  const open = forceOpen ?? !s.previewOpen;
+  if (open === s.previewOpen) return;
+  if (!open && s.quoteCandidate?.sourceKind === 'preview') s.clearQuoteCandidate();
+  s.setPreviewOpen(open);
   updateLayout();
   schedulePersistCurrentWorkspaceUiState();
+}
+
+/** 收起面板，保留 tabs 和 previewItems（下次打开恢复） */
+export function closePreview(): void {
+  togglePreviewPanel(false);
 }
 
 /**

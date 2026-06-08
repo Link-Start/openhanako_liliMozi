@@ -1,24 +1,36 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from './store';
 import { hanaFetch } from './api';
+import {
+  createLocalServerConnection,
+  readPersistedServerConnectionState,
+  refreshLocalServerConnectionState,
+  upsertServerConnection,
+  type ServerConnection,
+} from '../services/server-connection';
 import { t } from './helpers';
-import { loadAgents, loadAvatars, loadSettingsConfig, loadPluginSettings } from './actions';
+import { loadAgents, loadAvatars, loadSettingsSnapshot } from './actions';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { SettingsNav } from './SettingsNav';
 import { Toast } from './Toast';
 import { AgentTab } from './tabs/AgentTab';
 import { MeTab } from './tabs/MeTab';
 import { InterfaceTab } from './tabs/InterfaceTab';
+import { GeneralTab } from './tabs/GeneralTab';
+import { BrowserTab } from './tabs/BrowserTab';
 import { WorkTab } from './tabs/WorkTab';
-import { ComputerUseTab } from './tabs/ComputerUseTab';
 import { SkillsTab } from './tabs/SkillsTab';
 import { BridgeTab } from './tabs/BridgeTab';
 import { ProvidersTab } from './tabs/ProvidersTab';
 import { MediaTab } from './tabs/MediaTab';
 import { AboutTab } from './tabs/AboutTab';
 import { PluginsTab } from './tabs/PluginsTab';
+import { PluginMarketplaceTab } from './tabs/PluginMarketplaceTab';
+import { ExperimentsTab } from './tabs/ExperimentsTab';
 import { SecurityTab } from './tabs/SecurityTab';
 import { SharingTab } from './tabs/SharingTab';
+import { AccessTab } from './tabs/AccessTab';
 import { getNativeSettingsTabComponent } from './native-settings-tabs';
 import { CropOverlay } from './overlays/CropOverlay';
 import { AgentCreateOverlay } from './overlays/AgentCreateOverlay';
@@ -35,34 +47,67 @@ const TAB_COMPONENTS: Record<string, React.ComponentType> = {
   agent: AgentTab,
   me: MeTab,
   interface: InterfaceTab,
+  general: GeneralTab,
+  browser: BrowserTab,
   work: WorkTab,
-  computer: ComputerUseTab,
   skills: SkillsTab,
   bridge: BridgeTab,
   providers: ProvidersTab,
   media: MediaTab,
   sharing: SharingTab,
+  access: AccessTab,
   plugins: PluginsTab,
+  experiments: ExperimentsTab,
+  'plugin-marketplace': PluginMarketplaceTab,
   security: SecurityTab,
   about: AboutTab,
 };
 
+function connectionState(connection: ServerConnection | null) {
+  const persisted = readPersistedServerConnectionState();
+  const serverConnections = connection
+    ? upsertServerConnection(persisted.serverConnections, connection)
+    : persisted.serverConnections;
+  const persistedActive = persisted.activeServerConnectionId
+    ? serverConnections[persisted.activeServerConnectionId] || null
+    : null;
+  const activeServerConnection = persistedActive || connection || null;
+  return {
+    serverConnections,
+    activeServerConnectionId: activeServerConnection?.connectionId ?? null,
+    activeServerConnection,
+  };
+}
+
 /** Tab 顶部大标题（对应左栏导航 label），所有 tab 都会显示 */
-const TAB_TITLES: Record<string, string> = {
-  agent: '助手',
-  me: '我',
-  interface: '界面',
-  work: '工作空间',
-  computer: '使用电脑',
-  skills: '技能',
-  bridge: '社交平台',
-  providers: '供应商',
-  media: '多媒体',
-  sharing: '分享',
-  plugins: '插件',
-  security: '安全',
-  about: '关于',
+const TAB_TITLE_KEYS: Record<string, string> = {
+  agent: 'settings.tabs.agent',
+  me: 'settings.tabs.me',
+  interface: 'settings.tabs.interface',
+  general: 'settings.tabs.general',
+  browser: 'settings.tabs.browser',
+  work: 'settings.tabs.work',
+  workflow: 'Workflow',
+  skills: 'settings.tabs.skills',
+  bridge: 'settings.tabs.bridge',
+  providers: 'settings.tabs.providers',
+  media: 'settings.tabs.media',
+  sharing: 'settings.tabs.sharing',
+  access: 'settings.tabs.access',
+  plugins: 'settings.tabs.plugins',
+  experiments: 'settings.tabs.experiments',
+  'plugin-marketplace': 'settings.tabs.pluginMarketplace',
+  security: 'settings.tabs.security',
+  about: 'settings.tabs.about',
 };
+
+const TAB_DESCRIPTION_KEYS: Record<string, string> = {
+  experiments: 'settings.experiments.description',
+};
+
+function normalizeSettingsTab(tab: string): string {
+  return tab === 'computer' ? 'experiments' : tab;
+}
 
 function titleToLabel(title: string | Record<string, string> | undefined): string {
   if (!title) return '';
@@ -84,7 +129,11 @@ export function SettingsContent({
   onActiveTabChange,
   listenToWindowTabSwitch = false,
 }: SettingsContentProps) {
-  const { activeTab, pluginSettingsTabs, set, ready } = useSettingsStore();
+  const { activeTab, pluginSettingsTabs, ready } = useSettingsStore(
+    useShallow(s => ({ activeTab: s.activeTab, pluginSettingsTabs: s.pluginSettingsTabs, ready: s.ready }))
+  );
+  const set = useSettingsStore(s => s.set);
+  const lastReportedActiveTabRef = useRef<string | null>(null);
 
   useEffect(() => {
     initSettings();
@@ -95,36 +144,92 @@ export function SettingsContent({
     const platform = window.platform;
     if (!platform?.onSwitchTab) return;
     const unsubscribe = platform.onSwitchTab((tab: string) => {
-      set({ activeTab: tab });
+      const nextTab = normalizeSettingsTab(tab);
+      set({ activeTab: nextTab });
     });
     return typeof unsubscribe === 'function' ? unsubscribe : undefined;
   }, [listenToWindowTabSwitch, set]);
+
+  useEffect(() => {
+    const platform = window.platform;
+    if (!platform?.onSettingsChanged) return;
+    const unsubscribe = platform.onSettingsChanged((type: string, data: unknown) => {
+      if (type !== 'skills-changed') return;
+      window.dispatchEvent(new CustomEvent('hana-skills-changed', { detail: data || {} }));
+    });
+    return typeof unsubscribe === 'function' ? unsubscribe : undefined;
+  }, []);
+
+  useEffect(() => {
+    const nextTab = normalizeSettingsTab(activeTab);
+    if (nextTab !== activeTab) {
+      set({ activeTab: nextTab });
+      lastReportedActiveTabRef.current = nextTab;
+      onActiveTabChange?.(nextTab);
+    }
+  }, [activeTab, set, onActiveTabChange]);
 
   // Server 重启后用新端口重新加载数据
   useEffect(() => {
     const platform = window.platform;
     if (!platform?.onServerRestarted) return;
-    const unsubscribe = platform.onServerRestarted((data: { port: number }) => {
+    const unsubscribe = platform.onServerRestarted((data: { port: number; token?: string | null }) => {
       const store = useSettingsStore.getState();
       console.log('[settings] server restarted, new port:', data.port);
-      store.set({ serverPort: data.port });
+      const serverToken = data.token ?? store.serverToken;
+      const nextConnectionState = refreshLocalServerConnectionState({
+        serverConnections: store.serverConnections,
+        activeServerConnectionId: store.activeServerConnectionId,
+        activeServerConnection: store.activeServerConnection,
+        serverPort: data.port,
+        serverToken,
+      });
+      store.set({
+        serverPort: data.port,
+        serverToken,
+        ...nextConnectionState,
+      });
       loadAgents().catch(() => {});
-      loadSettingsConfig().catch(() => {});
+      loadSettingsSnapshot().catch(() => {});
     });
     return typeof unsubscribe === 'function' ? unsubscribe : undefined;
   }, []);
 
   const availablePluginSettingsTabs = pluginSettingsTabs || [];
-  const dynamicTab = availablePluginSettingsTabs.find(tab => tab.id === activeTab);
-  const ActiveTab = TAB_COMPONENTS[activeTab]
+  const effectiveActiveTab = normalizeSettingsTab(activeTab);
+  const dynamicTab = availablePluginSettingsTabs.find(tab => tab.id === effectiveActiveTab);
+  const ActiveTab = TAB_COMPONENTS[effectiveActiveTab]
     || (dynamicTab ? getNativeSettingsTabComponent(dynamicTab.nativeComponent) : null)
     || AgentTab;
   const isModal = variant === 'modal';
-  const activeTabTitle = TAB_TITLES[activeTab] || titleToLabel(dynamicTab?.title);
+  const tabTitleKey = TAB_TITLE_KEYS[effectiveActiveTab];
+  const activeTabTitle = tabTitleKey ? t(tabTitleKey) : titleToLabel(dynamicTab?.title);
+  const activeTabDescriptionKey = TAB_DESCRIPTION_KEYS[effectiveActiveTab];
+  const activeTabDescription = activeTabDescriptionKey ? t(activeTabDescriptionKey) : '';
+  const isWideTab = effectiveActiveTab === 'plugin-marketplace' || effectiveActiveTab === 'providers';
+
+  const reportActiveTabChange = useCallback((tab: string) => {
+    const nextTab = normalizeSettingsTab(tab);
+    lastReportedActiveTabRef.current = nextTab;
+    onActiveTabChange?.(nextTab);
+  }, [onActiveTabChange]);
+
+  useEffect(() => {
+    if (lastReportedActiveTabRef.current === null) {
+      lastReportedActiveTabRef.current = effectiveActiveTab;
+      return;
+    }
+    if (lastReportedActiveTabRef.current === effectiveActiveTab) return;
+    lastReportedActiveTabRef.current = effectiveActiveTab;
+    onActiveTabChange?.(effectiveActiveTab);
+  }, [effectiveActiveTab, onActiveTabChange]);
 
   return (
     <ErrorBoundary region="settings">
-      <div className={`settings-panel ${isModal ? styles['settings-panel-modal'] : ''}`} id="settingsPanel">
+      <div
+        className={`settings-panel ${isModal ? styles['settings-panel-modal'] : ''}${isWideTab ? ' ' + styles['settings-panel-wide'] : ''}`}
+        id="settingsPanel"
+      >
         <div className={`settings-header ${isModal ? styles['settings-header-modal'] : ''}`}>
           {isModal ? (
             <>
@@ -149,12 +254,17 @@ export function SettingsContent({
           )}
         </div>
         <div className={styles['settings-body']}>
-          <SettingsNav onTabChange={onActiveTabChange} />
-          <div className={styles['settings-main']}>
+          <SettingsNav onTabChange={reportActiveTabChange} />
+          <div className={`${styles['settings-main']}${isWideTab ? ' ' + styles['settings-main-wide'] : ''}`}>
             {!isModal && (
-              <h1 className={styles['settings-tab-title']}>{activeTabTitle}</h1>
+              <div className={styles['settings-tab-heading']}>
+                <h1 className={styles['settings-tab-title']}>{activeTabTitle}</h1>
+                {activeTabDescription && (
+                  <p className={styles['settings-tab-description']}>{activeTabDescription}</p>
+                )}
+              </div>
             )}
-            <ErrorBoundary region={activeTab}>
+            <ErrorBoundary region={effectiveActiveTab} resetKeys={[effectiveActiveTab]}>
               <ActiveTab />
             </ErrorBoundary>
           </div>
@@ -187,19 +297,38 @@ export function SettingsContent({
 async function initSettings() {
   const platform = window.platform;
   const store = useSettingsStore.getState();
+  store.set({ ready: false });
 
   // 超时保护：15 秒后强制显示，防止无限白屏
   const timeout = setTimeout(() => {
-    if (!store.ready) {
+    if (!useSettingsStore.getState().ready) {
       console.warn('[settings] init timeout (15s), forcing ready');
-      store.set({ ready: true });
+      useSettingsStore.getState().set({ ready: true });
     }
   }, 15_000);
 
   try {
-    const serverPort = Number(await platform.getServerPort());
-    const serverToken = await platform.getServerToken();
-    store.set({ serverPort, serverToken });
+    const rawServerPort = typeof platform?.getServerPort === 'function'
+      ? await platform.getServerPort()
+      : null;
+    const serverPort = rawServerPort === null || rawServerPort === undefined
+      ? null
+      : Number(rawServerPort);
+    const serverToken = typeof platform?.getServerToken === 'function'
+      ? await platform.getServerToken()
+      : null;
+    let platformName: string | null = null;
+    try {
+      platformName = typeof platform?.getPlatform === 'function' ? await platform.getPlatform() : null;
+    } catch {
+      platformName = null;
+    }
+    store.set({
+      serverPort,
+      serverToken,
+      platformName,
+      ...connectionState(createLocalServerConnection({ serverPort, serverToken })),
+    });
 
     // i18n
     const i18n = window.i18n;
@@ -218,8 +347,8 @@ async function initSettings() {
     // avatars
     await loadAvatars();
 
-    // config + plugin settings
-    await Promise.all([loadSettingsConfig(), loadPluginSettings()]);
+    // Unified backend settings truth source.
+    await loadSettingsSnapshot();
 
     store.set({ ready: true });
   } catch (err) {

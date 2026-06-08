@@ -1,25 +1,26 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useStore } from '../stores';
 import { usePanel } from '../hooks/use-panel';
-import { hanaFetch, hanaUrl } from '../hooks/use-hana-fetch';
-import { formatSessionDate, parseMoodFromContent } from '../utils/format';
-import { renderMarkdown } from '../utils/markdown';
-import { yuanFallbackAvatar } from '../utils/agent-helpers';
+import { hanaFetch } from '../hooks/use-hana-fetch';
+import { formatSessionDate } from '../utils/format';
+import { AgentAvatar, resolveAgentDisplayInfo } from '../utils/agent-display';
+import { displayInitial } from '../utils/grapheme';
 import { openSettingsModal } from '../stores/settings-modal-actions';
+import { loadMessages } from '../stores/session-actions';
+import { useContinuousBottomScroll } from '../hooks/use-continuous-bottom-scroll';
+import type { ChatListItem } from '../stores/chat-types';
+import { ChatTranscript } from './chat/ChatTranscript';
 import fp from './FloatingPanels.module.css';
+import chatStyles from './chat/Chat.module.css';
 
 interface BridgeSession {
   sessionKey: string;
   chatId: string;
+  sessionPath?: string;
   displayName?: string;
   avatarUrl?: string;
   lastActive?: number;
-}
-
-interface BridgeMessage {
-  role: string;
-  content: string;
-  ts?: string | null;
+  isOwner?: boolean;
 }
 
 interface StatusData {
@@ -28,24 +29,37 @@ interface StatusData {
   [key: string]: { status: string; configured?: boolean } | undefined;
 }
 
+function getBridgeSessionIdentity(
+  session: BridgeSession,
+  systemName: string,
+  systemAvatarUrl: string | null,
+) {
+  if (session.isOwner) {
+    return { name: systemName, avatarUrl: systemAvatarUrl };
+  }
+  return {
+    name: session.displayName || session.chatId,
+    avatarUrl: session.avatarUrl || null,
+  };
+}
+
 export function BridgePanel() {
 
   const [platform, setPlatform] = useState(() => localStorage.getItem('hana_bridge_tab') || 'feishu');
   const [sessions, setSessions] = useState<BridgeSession[]>([]);
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const [currentName, setCurrentName] = useState('');
-  const [messages, setMessages] = useState<BridgeMessage[]>([]);
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null);
+  const [currentIsOwner, setCurrentIsOwner] = useState(false);
+  const [currentSessionPath, setCurrentSessionPath] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
   const [statusData, setStatusData] = useState<StatusData>({});
   const [bridgeAgentId, setBridgeAgentId] = useState<string | null>(null);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
 
-  const messagesRef = useRef<HTMLDivElement>(null);
   const agentMenuRef = useRef<HTMLDivElement>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const currentKeyRef = useRef(currentKey);
-  currentKeyRef.current = currentKey;
   const bridgeAgentIdRef = useRef(bridgeAgentId);
   bridgeAgentIdRef.current = bridgeAgentId;
 
@@ -89,10 +103,19 @@ export function BridgePanel() {
     loadPlatformData(platform);
     setChatOpen(false);
     setCurrentKey(null);
+    setCurrentName('');
+    setCurrentAvatarUrl(null);
+    setCurrentIsOwner(false);
+    setCurrentSessionPath(null);
   }, [loadPlatformData, platform]);
 
   const currentAgentId = useStore(s => s.currentAgentId);
   const agents = useStore(s => s.agents);
+  const userName = useStore(s => s.userName);
+  const userAvatarUrl = useStore(s => s.userAvatarUrl);
+  const t = window.t ?? ((p: string) => p);
+  const systemUserName = userName || t('common.me');
+  const systemUserAvatarUrl = userAvatarUrl || null;
 
   // Init bridgeAgentId from store
   useEffect(() => {
@@ -105,6 +128,10 @@ export function BridgePanel() {
       loadPlatformData(platform);
       setChatOpen(false);
       setCurrentKey(null);
+      setCurrentName('');
+      setCurrentAvatarUrl(null);
+      setCurrentIsOwner(false);
+      setCurrentSessionPath(null);
     }
   }, [bridgeAgentId]);
 
@@ -146,19 +173,6 @@ export function BridgePanel() {
       refreshTimerRef.current = null;
       loadPlatformData(platform);
     }, 500);
-    // 追加到当前会话（用 ref 避免闭包捕获陈旧值）
-    if (msg.sessionKey === currentKeyRef.current) {
-      const role = msg.direction === 'out' ? 'assistant' : 'user';
-      setMessages(prev => [...prev, { role, content: msg.text }]);
-      // 自动滚到底
-      setTimeout(() => {
-        const el = messagesRef.current;
-        if (el) {
-          const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-          if (wasAtBottom) el.scrollTop = el.scrollHeight;
-        }
-      }, 0);
-    }
     return () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
@@ -170,31 +184,33 @@ export function BridgePanel() {
   const switchTab = useCallback((plat: string) => {
     setPlatform(plat);
     setCurrentKey(null);
+    setCurrentName('');
+    setCurrentAvatarUrl(null);
+    setCurrentIsOwner(false);
+    setCurrentSessionPath(null);
     setChatOpen(false);
     localStorage.setItem('hana_bridge_tab', plat);
     loadPlatformData(plat);
   }, [loadPlatformData]);
 
-  const openSession = useCallback(async (sessionKey: string, displayName: string) => {
+  const openSession = useCallback(async (session: BridgeSession) => {
     const snapshotId = bridgeAgentId;
-    setCurrentKey(sessionKey);
-    setCurrentName(displayName);
+    const identity = getBridgeSessionIdentity(session, systemUserName, systemUserAvatarUrl);
+    setCurrentKey(session.sessionKey);
+    setCurrentName(identity.name);
+    setCurrentAvatarUrl(identity.avatarUrl);
+    setCurrentIsOwner(!!session.isOwner);
+    setCurrentSessionPath(session.sessionPath || null);
     try {
-      const agentQuery = snapshotId ? `?agentId=${encodeURIComponent(snapshotId)}` : '';
-      const res = await hanaFetch(`/api/bridge/sessions/${encodeURIComponent(sessionKey)}/messages${agentQuery}`);
+      if (!session.sessionPath) throw new Error('bridge sessionPath missing');
+      await loadMessages(session.sessionPath);
       if (bridgeAgentIdRef.current !== snapshotId) return; // stale
-      const data = await res.json();
-      if (bridgeAgentIdRef.current !== snapshotId) return; // stale
-      setMessages(data.messages || []);
       setChatOpen(true);
-      setTimeout(() => {
-        if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-      }, 0);
     } catch (err) {
       console.error('[bridge] open session failed:', err);
       if (bridgeAgentIdRef.current === snapshotId) setChatOpen(false);
     }
-  }, [bridgeAgentId]);
+  }, [bridgeAgentId, systemUserName, systemUserAvatarUrl]);
 
   const resetSession = useCallback(async () => {
     if (!currentKey) return;
@@ -203,15 +219,21 @@ export function BridgePanel() {
       const agentQuery = snapshotId ? `?agentId=${encodeURIComponent(snapshotId)}` : '';
       await hanaFetch(`/api/bridge/sessions/${encodeURIComponent(currentKey)}/reset${agentQuery}`, { method: 'POST' });
       if (bridgeAgentIdRef.current !== snapshotId) return; // stale
-      openSession(currentKey, currentName);
+      if (currentSessionPath) useStore.getState().clearSession(currentSessionPath);
+      setChatOpen(false);
+      setCurrentKey(null);
+      setCurrentName('');
+      setCurrentAvatarUrl(null);
+      setCurrentIsOwner(false);
+      setCurrentSessionPath(null);
+      await loadPlatformData(platform);
     } catch (err) {
       console.error('[bridge] reset session failed:', err);
     }
-  }, [currentKey, currentName, openSession, bridgeAgentId]);
+  }, [currentKey, currentSessionPath, loadPlatformData, platform, bridgeAgentId]);
 
   if (!visible) return null;
 
-  const t = window.t ?? ((p: string) => p);
   const tgStatus = statusData.telegram?.status;
   const fsStatus = statusData.feishu?.status;
   const waStatus = statusData.whatsapp?.status;
@@ -230,14 +252,19 @@ export function BridgePanel() {
               >
                 {(() => {
                   const agent = agents.find(a => a.id === bridgeAgentId);
+                  const info = resolveAgentDisplayInfo({
+                    id: agent?.id || bridgeAgentId,
+                    agents,
+                    fallbackAgentName: agent?.name || '—',
+                    fallbackAgentYuan: agent?.yuan,
+                  });
                   return (
                     <>
-                      <img
+                      <AgentAvatar
+                        info={info}
                         className={fp.bridgeAgentAvatar}
-                        src={agent?.hasAvatar ? hanaUrl(`/api/agents/${agent.id}/avatar?t=1`) : yuanFallbackAvatar(agent?.yuan)}
-                        onError={(e) => { (e.target as HTMLImageElement).src = yuanFallbackAvatar(agent?.yuan); }}
                       />
-                      <span className={fp.bridgeAgentName}>{agent?.name || '—'}</span>
+                      <span className={fp.bridgeAgentName}>{info.displayName}</span>
                       <span className={fp.bridgeAgentArrow}>▾</span>
                     </>
                   );
@@ -251,10 +278,14 @@ export function BridgePanel() {
                       className={`${fp.bridgeAgentMenuItem}${agent.id === bridgeAgentId ? ` ${fp.bridgeAgentMenuItemActive}` : ''}`}
                       onClick={() => { setBridgeAgentId(agent.id); setAgentMenuOpen(false); }}
                     >
-                      <img
+                      <AgentAvatar
+                        info={resolveAgentDisplayInfo({
+                          id: agent.id,
+                          agents,
+                          fallbackAgentName: agent.name,
+                          fallbackAgentYuan: agent.yuan,
+                        })}
                         className={fp.bridgeAgentAvatar}
-                        src={agent.hasAvatar ? hanaUrl(`/api/agents/${agent.id}/avatar?t=1`) : yuanFallbackAvatar(agent.yuan)}
-                        onError={(e) => { (e.target as HTMLImageElement).src = yuanFallbackAvatar(agent.yuan); }}
                       />
                       <span>{agent.name}</span>
                     </button>
@@ -335,16 +366,16 @@ export function BridgePanel() {
                 <div className={fp.bridgeContactEmpty}>{t('bridge.noSessions')}</div>
               ) : (
                 sessions.map(s => {
-                  const name = s.displayName || s.chatId;
+                  const identity = getBridgeSessionIdentity(s, systemUserName, systemUserAvatarUrl);
                   return (
                     <div
                       key={s.sessionKey}
                       className={`${fp.bridgeContactItem}${s.sessionKey === currentKey ? ` ${fp.bridgeContactItemActive}` : ''}`}
-                      onClick={() => openSession(s.sessionKey, name)}
+                      onClick={() => openSession(s)}
                     >
-                      <ContactAvatar name={name} avatarUrl={s.avatarUrl} />
+                      <ContactAvatar name={identity.name} avatarUrl={identity.avatarUrl || undefined} />
                       <div className={fp.bridgeContactInfo}>
-                        <div className={fp.bridgeContactName}>{name}</div>
+                        <div className={fp.bridgeContactName}>{identity.name}</div>
                         {s.lastActive && (
                           <div className={fp.bridgeContactTime}>
                             {formatSessionDate(new Date(s.lastActive).toISOString())}
@@ -370,13 +401,20 @@ export function BridgePanel() {
                     {t('bridge.resetContext')}
                   </button>
                 </div>
-                <div className={fp.bridgeChatMessages} ref={messagesRef} id="bridgeChatMessages">
-                  {messages.length === 0 ? (
+                {currentSessionPath ? (
+                  <BridgeChatTranscript
+                    sessionPath={currentSessionPath}
+                    agentId={bridgeAgentId}
+                    contactName={currentName}
+                    contactAvatarUrl={currentAvatarUrl}
+                    useSystemUserIdentity={currentIsOwner}
+                    emptyLabel={t('bridge.noMessages')}
+                  />
+                ) : (
+                  <div className={fp.bridgeChatMessages} id="bridgeChatMessages">
                     <div className={fp.bridgeChatNoMsg}>{t('bridge.noMessages')}</div>
-                  ) : (
-                    messages.map((m, i) => <ChatBubble key={`bridge-msg-${i}`} message={m} />)
-                  )}
-                </div>
+                  </div>
+                )}
               </>
             ) : (
               <div className={fp.bridgeChatEmpty} id="bridgeChatEmpty">
@@ -403,6 +441,10 @@ function updateSidebarDot(data: Record<string, { status: string } | undefined>) 
 
 function ContactAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   const [showImg, setShowImg] = useState(!!avatarUrl);
+  useEffect(() => {
+    setShowImg(!!avatarUrl);
+  }, [avatarUrl]);
+
   return (
     <div className={fp.bridgeContactAvatar}>
       {showImg && avatarUrl ? (
@@ -413,39 +455,76 @@ function ContactAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string }
           onError={() => setShowImg(false)}
         />
       ) : (
-        name.slice(0, 1).toUpperCase()
+        displayInitial(name, '?')
       )}
     </div>
   );
 }
 
-function formatBubbleTime(ts?: string | null): string {
-  if (!ts) return '';
-  try {
-    const d = new Date(typeof ts === 'number' ? ts : ts);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch { return ''; }
-}
+const EMPTY_ITEMS: ChatListItem[] = [];
+const BRIDGE_SCROLL_THRESHOLD = 50;
 
-function ChatBubble({ message: m }: { message: BridgeMessage }) {
-  const time = formatBubbleTime(m.ts);
-  if (m.role === 'assistant') {
-    const { text } = parseMoodFromContent(m.content);
-    const cleaned = (text || m.content).replace(/<tool_code>[\s\S]*?<\/tool_code>\s*/g, '');
-    return (
-      <div className={`${fp.bridgeBubbleWrap} ${fp.bridgeBubbleIn}`}>
-        <div className={`${fp.bridgeBubble} md-content`} dangerouslySetInnerHTML={{ __html: renderMarkdown(cleaned) }} />
-        {time && <span className={fp.bridgeBubbleTime}>{time}</span>}
-      </div>
-    );
-  }
-  // user: 剥离时间标签 <t>...</t>
-  const displayText = m.content.replace(/^<t>[^<]*<\/t>\s*/, '');
+export function BridgeChatTranscript({
+  sessionPath,
+  agentId,
+  contactName,
+  contactAvatarUrl,
+  useSystemUserIdentity,
+  emptyLabel,
+}: {
+  sessionPath: string;
+  agentId?: string | null;
+  contactName: string;
+  contactAvatarUrl?: string | null;
+  useSystemUserIdentity?: boolean;
+  emptyLabel: string;
+}) {
+  const items = useStore(s => s.chatSessions[sessionPath]?.items || EMPTY_ITEMS);
+  const isStreaming = useStore(s => s.streamingSessions.includes(sessionPath));
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const bottomScroll = useContinuousBottomScroll({
+    scrollRef,
+    contentRef,
+    active: true,
+    stickyThreshold: BRIDGE_SCROLL_THRESHOLD,
+  });
+
+  // Switch landing in the layout phase (pre-paint). Only arm an instant landing when the target
+  // session has no messages yet, so the first async hydrate (0 -> N) snaps without animating;
+  // an already-loaded session lands via the instant scroll and later growth = streaming (smooth follow).
+  useLayoutEffect(() => {
+    const alreadyHydrated = (useStore.getState().chatSessions[sessionPath]?.items?.length ?? 0) > 0;
+    if (!alreadyHydrated) bottomScroll.armInstantLanding();
+    bottomScroll.scrollToBottom({ mode: 'instant', forceSticky: true });
+  }, [bottomScroll, sessionPath]);
+
+  useEffect(() => {
+    bottomScroll.followBottom();
+  }, [bottomScroll, items.length, isStreaming]);
+
+  const userIdentity = useSystemUserIdentity
+    ? undefined
+    : { name: contactName, avatarUrl: contactAvatarUrl || null };
+
   return (
-    <div className={`${fp.bridgeBubbleWrap} ${fp.bridgeBubbleOut}`}>
-      <div className={fp.bridgeBubble}>{displayText}</div>
-      {time && <span className={fp.bridgeBubbleTime}>{time}</span>}
+    <div className={fp.bridgeChatMessages} ref={scrollRef} id="bridgeChatMessages">
+      <div ref={contentRef} className={chatStyles.sessionMessages}>
+        {items.length === 0 ? (
+          <div className={fp.bridgeChatNoMsg}>{emptyLabel}</div>
+        ) : (
+          <ChatTranscript
+            items={items}
+            sessionPath={sessionPath}
+            agentId={agentId}
+            readOnly
+            userIdentity={userIdentity}
+          />
+        )}
+        {isStreaming && (
+          <div className={chatStyles.typingIndicator} />
+        )}
+      </div>
     </div>
   );
 }

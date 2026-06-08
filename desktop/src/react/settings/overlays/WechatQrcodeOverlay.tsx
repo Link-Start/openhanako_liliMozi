@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { hanaFetch } from '../api';
 import { t } from '../helpers';
+import { Overlay } from '../../ui';
 import styles from './WechatQrcodeOverlay.module.css';
 
 type QrStatus = 'loading' | 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'error';
@@ -143,8 +144,6 @@ export function WechatQrcodeOverlay() {
     return stopPolling;
   }, [qrcodeId, startPolling, stopPolling]);
 
-  if (!visible) return null;
-
   const statusLabel = (() => {
     switch (status) {
       case 'loading': return t('settings.bridge.wechatScanning');
@@ -162,8 +161,14 @@ export function WechatQrcodeOverlay() {
     : '';
 
   return (
-    <div className={`${styles.overlay} ${styles.visible}`} onClick={close}>
-      <div className={styles.card} onClick={(e) => e.stopPropagation()}>
+    <Overlay
+      open={visible}
+      onClose={close}
+      backdrop="blur"
+      zIndex={100}
+      className={styles.card}
+      disableContainerAnimation
+    >
         <button className={styles.closeBtn} onClick={close} aria-label="close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -181,7 +186,6 @@ export function WechatQrcodeOverlay() {
         </div>
 
         <div className={`${styles.statusText} ${statusClass}`}>{statusLabel}</div>
-      </div>
-    </div>
+    </Overlay>
   );
 }

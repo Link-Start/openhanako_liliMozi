@@ -9,14 +9,22 @@ import { useStore } from '../../stores';
 import type { DeskSearchResult } from '../../types';
 
 const mocks = vi.hoisted(() => ({
-  loadDeskFiles: vi.fn(async () => {}),
-  loadDeskTreeFiles: vi.fn(async () => {}),
-  deskMoveTreeFiles: vi.fn(async () => {}),
-  deskRenameTreeItem: vi.fn(async () => true),
-  deskTrashTreeItems: vi.fn(async () => true),
-  searchDeskFiles: vi.fn(async (): Promise<DeskSearchResult[]> => []),
+    loadDeskFiles: vi.fn(async () => {}),
+    loadDeskTreeFiles: vi.fn(async () => {}),
+    deskCreateFileInSubdir: vi.fn(async () => true),
+    deskMkdirInSubdir: vi.fn(async () => true),
+    deskMoveTreeFiles: vi.fn(async () => {}),
+    deskRenameTreeItem: vi.fn(async () => true),
+    deskTrashTreeItems: vi.fn(async () => true),
+    searchDeskFiles: vi.fn(async (): Promise<DeskSearchResult[]> => []),
   jumpToDeskSearchResult: vi.fn(async () => {}),
 }));
+
+function pendingCreateInput(): HTMLInputElement {
+  const input = document.querySelector<HTMLInputElement>('[data-desk-pending-create] input');
+  if (!input) throw new Error('pending create input not found');
+  return input;
+}
 
 vi.mock('../../stores/desk-actions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../stores/desk-actions')>();
@@ -24,6 +32,8 @@ vi.mock('../../stores/desk-actions', async (importOriginal) => {
     ...actual,
     loadDeskFiles: mocks.loadDeskFiles,
     loadDeskTreeFiles: mocks.loadDeskTreeFiles,
+    deskCreateFileInSubdir: mocks.deskCreateFileInSubdir,
+    deskMkdirInSubdir: mocks.deskMkdirInSubdir,
     deskMoveTreeFiles: mocks.deskMoveTreeFiles,
     deskRenameTreeItem: mocks.deskRenameTreeItem,
     deskTrashTreeItems: mocks.deskTrashTreeItems,
@@ -32,10 +42,17 @@ vi.mock('../../stores/desk-actions', async (importOriginal) => {
   };
 });
 
-describe('DeskSection directory watching', () => {
-  let emitFileChanged: ((filePath: string) => void) | null;
+describe('DeskSection workspace watching', () => {
+  let emitWorkspaceChanged: ((event: {
+    rootPath: string;
+    changedPath: string;
+    affectedDir: string;
+    eventType: string;
+  }) => void) | null;
   let watchFile: ReturnType<typeof vi.fn>;
   let unwatchFile: ReturnType<typeof vi.fn>;
+  let watchWorkspace: ReturnType<typeof vi.fn>;
+  let unwatchWorkspace: ReturnType<typeof vi.fn>;
   let localStorageData: Record<string, string>;
 
   beforeEach(() => {
@@ -54,15 +71,25 @@ describe('DeskSection directory watching', () => {
         localStorageData = {};
       }),
     });
-    emitFileChanged = null;
+    emitWorkspaceChanged = null;
     watchFile = vi.fn(async () => true);
     unwatchFile = vi.fn(async () => true);
-    window.t = ((key: string) => key === 'desk.workspaceTitle' ? '工作空间' : key) as typeof window.t;
+    watchWorkspace = vi.fn(async () => true);
+    unwatchWorkspace = vi.fn(async () => true);
+    window.t = ((key: string) => key === 'desk.workspaceTitle' ? '工作台' : key) as typeof window.t;
     window.platform = {
       watchFile,
       unwatchFile,
-      onFileChanged: vi.fn((callback: (filePath: string) => void) => {
-        emitFileChanged = callback;
+      onFileChanged: vi.fn(),
+      watchWorkspace,
+      unwatchWorkspace,
+      onWorkspaceChanged: vi.fn((callback: (event: {
+        rootPath: string;
+        changedPath: string;
+        affectedDir: string;
+        eventType: string;
+      }) => void) => {
+        emitWorkspaceChanged = callback;
       }),
       startDrag: vi.fn(),
       trashItem: vi.fn(async () => true),
@@ -83,6 +110,7 @@ describe('DeskSection directory watching', () => {
       currentTab: 'chat',
       jianOpen: true,
       jianView: 'desk',
+      deskDirtyTreePaths: [],
     } as never);
   });
 
@@ -92,20 +120,66 @@ describe('DeskSection directory watching', () => {
     vi.useRealTimers();
   });
 
-  it('watches expanded tree directories and reloads only the matching tree key', async () => {
+  it('watches the workspace root plus expanded folders and reloads visible dirty tree keys from workspace events', async () => {
     const { DeskSection } = await import('../../components/DeskSection');
+    const { WorkspaceFileWatchBridge } = await import('../../components/right-workspace/WorkspaceFileWatchBridge');
 
-    render(<DeskSection />);
+    render(
+      <>
+        <WorkspaceFileWatchBridge />
+        <DeskSection />
+      </>,
+    );
 
-    expect(watchFile).toHaveBeenCalledWith('/tmp/hana-desk');
-    expect(watchFile).toHaveBeenCalledWith('/tmp/hana-desk/notes');
+    expect(watchWorkspace).toHaveBeenCalledWith('/tmp/hana-desk');
+    expect(watchWorkspace).toHaveBeenCalledWith('/tmp/hana-desk/notes');
+    mocks.loadDeskTreeFiles.mockClear();
 
-    act(() => {
-      emitFileChanged?.('/tmp/hana-desk/notes');
-      vi.runOnlyPendingTimers();
+    await act(async () => {
+      emitWorkspaceChanged?.({
+        rootPath: '/tmp/hana-desk/notes',
+        changedPath: '/tmp/hana-desk/notes/new.md',
+        affectedDir: '/tmp/hana-desk/notes',
+        eventType: 'add',
+      });
     });
 
     expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('notes', { force: true });
+  });
+
+  it('unwatches folders that are no longer visible and clears watchers when the workspace is removed', async () => {
+    const { WorkspaceFileWatchBridge } = await import('../../components/right-workspace/WorkspaceFileWatchBridge');
+
+    render(<WorkspaceFileWatchBridge />);
+
+    expect(watchWorkspace).toHaveBeenCalledWith('/tmp/hana-desk');
+    expect(watchWorkspace).toHaveBeenCalledWith('/tmp/hana-desk/notes');
+
+    await act(async () => {
+      useStore.setState({ deskExpandedPaths: [] } as never);
+    });
+
+    expect(unwatchWorkspace).toHaveBeenCalledWith('/tmp/hana-desk/notes');
+    unwatchWorkspace.mockClear();
+
+    await act(async () => {
+      useStore.setState({ deskBasePath: '' } as never);
+    });
+
+    expect(unwatchWorkspace).toHaveBeenCalledWith('/tmp/hana-desk');
+  });
+
+  it('flushes dirty expanded tree paths when the workspace tree mounts', async () => {
+    const { DeskSection } = await import('../../components/DeskSection');
+    useStore.setState({
+      deskDirtyTreePaths: ['notes'],
+      deskExpandedPaths: ['notes'],
+    } as never);
+
+    render(<DeskSection />);
+
+    expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('notes', { force: true });
+    expect(useStore.getState().deskDirtyTreePaths).toEqual([]);
   });
 
   it('renders a single-column tree and expands folders by explicit subdir', async () => {
@@ -126,7 +200,7 @@ describe('DeskSection directory watching', () => {
     expect(screen.getByRole('tree')).toBeTruthy();
     fireEvent.click(screen.getByRole('treeitem', { name: /notes/ }));
 
-    expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('notes');
+    expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('notes', { force: true });
     expect(useStore.getState().deskExpandedPaths).toEqual(['notes']);
 
     act(() => {
@@ -142,6 +216,59 @@ describe('DeskSection directory watching', () => {
     });
 
     expect(screen.getByText('chapter.md')).toBeTruthy();
+  });
+
+  it('force-refreshes cached folders when expanding them again', async () => {
+    useStore.setState({
+      deskCurrentPath: '',
+      deskTreeFilesByPath: {
+        '': [{ name: 'notes', isDir: true }],
+        notes: [{ name: 'old.md', isDir: false }],
+      },
+      deskExpandedPaths: [],
+    } as never);
+    const { DeskSection } = await import('../../components/DeskSection');
+
+    render(<DeskSection />);
+
+    fireEvent.click(screen.getByRole('treeitem', { name: /notes/ }));
+
+    expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('notes', { force: true });
+  });
+
+  it('matches Windows workspace watch events case-insensitively', async () => {
+    const { DeskSection } = await import('../../components/DeskSection');
+    const { WorkspaceFileWatchBridge } = await import('../../components/right-workspace/WorkspaceFileWatchBridge');
+
+    useStore.setState({
+      deskBasePath: 'C:\\Users\\me\\Desk',
+      deskCurrentPath: '',
+      deskTreeFilesByPath: {
+        '': [{ name: 'Notes', isDir: true }],
+        Notes: [],
+      },
+      deskExpandedPaths: ['Notes'],
+      deskDirtyTreePaths: [],
+    } as never);
+
+    render(
+      <>
+        <WorkspaceFileWatchBridge />
+        <DeskSection />
+      </>,
+    );
+    mocks.loadDeskTreeFiles.mockClear();
+
+    await act(async () => {
+      emitWorkspaceChanged?.({
+        rootPath: 'c:\\users\\me\\desk\\notes',
+        changedPath: 'c:\\users\\me\\desk\\notes\\new.md',
+        affectedDir: 'c:\\users\\me\\desk\\notes',
+        eventType: 'add',
+      });
+    });
+
+    expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('Notes', { force: true });
   });
 
   it('starts an app file drag from tree rows so workspace files can be moved or attached', async () => {
@@ -256,6 +383,116 @@ describe('DeskSection directory watching', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(mocks.deskRenameTreeItem).toHaveBeenCalledWith('notes', 'chapter.md', 'renamed.md', false);
+  });
+
+  it('starts a markdown create draft from blank workspace space and writes only after naming', async () => {
+    useStore.setState({
+      deskCurrentPath: '',
+      deskTreeFilesByPath: {
+        '': [{ name: 'notes', isDir: true }],
+      },
+      deskExpandedPaths: [],
+      deskSelectedPath: '',
+    } as never);
+    const { DeskSection } = await import('../../components/DeskSection');
+
+    render(<DeskSection />);
+
+    fireEvent.contextMenu(screen.getByRole('tree'), { clientX: 10, clientY: 20 });
+    fireEvent.click(screen.getByText('desk.ctx.newMdFile'));
+
+    expect(mocks.deskCreateFileInSubdir).not.toHaveBeenCalled();
+
+    const input = pendingCreateInput();
+    fireEvent.change(input, { target: { value: 'idea.md' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await Promise.resolve();
+    });
+
+    expect(mocks.deskCreateFileInSubdir).toHaveBeenCalledWith('', 'idea.md', '');
+    expect(useStore.getState().deskSelectedPath).toBe('idea.md');
+  });
+
+  it('cancels a folder create draft with a blank name instead of writing to disk', async () => {
+    useStore.setState({
+      deskCurrentPath: '',
+      deskTreeFilesByPath: {
+        '': [],
+      },
+      deskExpandedPaths: [],
+      deskSelectedPath: '',
+    } as never);
+    const { DeskSection } = await import('../../components/DeskSection');
+
+    render(<DeskSection />);
+
+    fireEvent.contextMenu(screen.getByRole('tree'), { clientX: 10, clientY: 20 });
+    fireEvent.click(screen.getByText('desk.ctx.newFolder'));
+
+    const input = pendingCreateInput();
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(mocks.deskMkdirInSubdir).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-desk-pending-create] input')).toBeNull();
+  });
+
+  it('creates a markdown draft inside a folder from that folder context menu', async () => {
+    useStore.setState({
+      deskCurrentPath: '',
+      deskTreeFilesByPath: {
+        '': [{ name: 'notes', isDir: true }],
+        notes: [{ name: 'old.md', isDir: false }],
+      },
+      deskExpandedPaths: ['notes'],
+      deskSelectedPath: '',
+    } as never);
+    const { DeskSection } = await import('../../components/DeskSection');
+
+    render(<DeskSection />);
+
+    fireEvent.contextMenu(screen.getByRole('treeitem', { name: /notes/ }), { clientX: 10, clientY: 20 });
+    fireEvent.click(screen.getByText('desk.ctx.newMdFile'));
+
+    const input = pendingCreateInput();
+    fireEvent.change(input, { target: { value: 'child.md' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await Promise.resolve();
+    });
+
+    expect(mocks.deskCreateFileInSubdir).toHaveBeenCalledWith('notes', 'child.md', '');
+    expect(useStore.getState().deskSelectedPath).toBe('notes/child.md');
+  });
+
+  it('expands a collapsed folder before creating a child draft inside it', async () => {
+    useStore.setState({
+      deskCurrentPath: '',
+      deskTreeFilesByPath: {
+        '': [{ name: 'notes', isDir: true }],
+      },
+      deskExpandedPaths: [],
+      deskSelectedPath: '',
+    } as never);
+    const { DeskSection } = await import('../../components/DeskSection');
+
+    render(<DeskSection />);
+
+    fireEvent.contextMenu(screen.getByRole('treeitem', { name: /notes/ }), { clientX: 10, clientY: 20 });
+    await act(async () => {
+      fireEvent.click(screen.getByText('desk.ctx.newFolder'));
+      await Promise.resolve();
+    });
+
+    expect(useStore.getState().deskExpandedPaths).toEqual(['notes']);
+    expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('notes');
+
+    const input = pendingCreateInput();
+    fireEvent.change(input, { target: { value: 'drafts' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(mocks.deskMkdirInSubdir).toHaveBeenCalledWith('notes', 'drafts');
   });
 
   it('starts inline rename for the selected tree item when Enter is pressed', async () => {
@@ -396,40 +633,39 @@ describe('DeskSection directory watching', () => {
 
     render(<DeskSection />);
 
-    expect(screen.getByText('工作空间 · hana-desk')).toBeTruthy();
+    expect(screen.getByText('工作台 · hana-desk')).toBeTruthy();
 
     act(() => {
       useStore.setState({ deskBasePath: '/workspace/Desktop', deskCurrentPath: '' } as never);
     });
 
-    expect(screen.getByText('工作空间 · Desktop')).toBeTruthy();
+    expect(screen.getByText('工作台 · Desktop')).toBeTruthy();
   });
 
-  it('unwatches collapsed tree directories after the expanded set changes', async () => {
+  it('keeps dirty workspace paths until their tree directory becomes visible', async () => {
     const { DeskSection } = await import('../../components/DeskSection');
 
+    useStore.setState({
+      deskDirtyTreePaths: ['archive'],
+      deskTreeFilesByPath: {
+        '': [
+          { name: 'notes', isDir: true },
+          { name: 'archive', isDir: true },
+        ],
+        notes: [],
+      },
+      deskExpandedPaths: ['notes'],
+    } as never);
     render(<DeskSection />);
-    expect(watchFile).toHaveBeenCalledWith('/tmp/hana-desk/notes');
+    mocks.loadDeskTreeFiles.mockClear();
 
-    act(() => {
+    await act(async () => {
       useStore.setState({
-        deskTreeFilesByPath: {
-          '': [{ name: 'archive', isDir: true }],
-          archive: [],
-        },
-        deskExpandedPaths: ['archive'],
+        deskExpandedPaths: ['notes', 'archive'],
       } as never);
     });
 
-    expect(unwatchFile).toHaveBeenCalledWith('/tmp/hana-desk/notes');
-    expect(watchFile).toHaveBeenCalledWith('/tmp/hana-desk/archive');
-
-    mocks.loadDeskTreeFiles.mockClear();
-    act(() => {
-      emitFileChanged?.('/tmp/hana-desk/notes');
-      vi.runOnlyPendingTimers();
-    });
-
-    expect(mocks.loadDeskTreeFiles).not.toHaveBeenCalled();
+    expect(mocks.loadDeskTreeFiles).toHaveBeenCalledWith('archive', { force: true });
+    expect(useStore.getState().deskDirtyTreePaths).toEqual([]);
   });
 });

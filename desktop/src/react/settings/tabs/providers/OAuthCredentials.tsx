@@ -12,7 +12,7 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
   summary: ProviderSummary;
   onRefresh: () => Promise<void>;
 }) {
-  const { showToast } = useSettingsStore();
+  const showToast = useSettingsStore(s => s.showToast);
   const [codeInput, setCodeInput] = useState('');
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [deviceCode, setDeviceCode] = useState<string | null>(null);

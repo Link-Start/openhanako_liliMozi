@@ -1,15 +1,33 @@
-import { isImageFile } from './format';
+import { isImageFile, isVideoFile } from './format';
+import { isAudioFileName } from './file-kind';
+import { modelSupportsDirectAudioInput } from '../../../../shared/model-capabilities.ts';
 
 export interface ChatImageAttachment {
   path: string;
   name: string;
   isDirectory?: boolean;
+  mimeType?: string;
 }
 
 export interface ChatImageModel {
   id?: string;
   provider?: string;
+  api?: string;
+  baseUrl?: string;
+  base_url?: string;
   input?: readonly string[];
+  video?: boolean;
+  videoTransport?: string | null;
+  videoTransportSupported?: boolean;
+  audio?: boolean;
+  audioTransport?: string | null;
+  audioTransportSupported?: boolean;
+  compat?: {
+    hanaVideoInput?: boolean;
+    hanaAudioInput?: boolean;
+    audioTransport?: string;
+    hanaAudioTransport?: string;
+  } | null;
 }
 
 export interface VisionAuxiliaryConfig {
@@ -18,6 +36,8 @@ export interface VisionAuxiliaryConfig {
 }
 
 export type ModelImageInputMode = 'native-image' | 'text-only' | 'unknown';
+export type ModelVideoInputMode = 'native-video' | 'no-native-video' | 'unknown';
+export type ModelAudioInputMode = 'native-audio' | 'no-native-audio' | 'unknown';
 
 export type ChatImageSendPreflightResult =
   | {
@@ -44,14 +64,79 @@ export type ChatImageBlockedToast = (
   },
 ) => void;
 
+export type ChatVideoSendPreflightResult =
+  | {
+    ok: true;
+    reason: 'no-videos' | 'native-video';
+    videoInputMode: ModelVideoInputMode;
+  }
+  | {
+    ok: false;
+    reason: 'model-video-unsupported';
+    videoInputMode: 'no-native-video' | 'unknown';
+  };
+
+export type ChatAudioSendPreflightResult =
+  | {
+    ok: true;
+    reason: 'no-audios' | 'native-audio';
+    audioInputMode: ModelAudioInputMode;
+  }
+  | {
+    ok: false;
+    reason: 'model-audio-unsupported';
+    audioInputMode: 'no-native-audio' | 'unknown';
+  };
+
 export function hasChatImageAttachments(attachments: readonly ChatImageAttachment[]): boolean {
   return attachments.some((file) => !file.isDirectory && isImageFile(file.name));
+}
+
+export function hasChatVideoAttachments(attachments: readonly ChatImageAttachment[]): boolean {
+  return attachments.some((file) => !file.isDirectory && isVideoFile(file.name));
+}
+
+export function hasChatAudioAttachments(attachments: readonly ChatImageAttachment[]): boolean {
+  return attachments.some((file) => !file.isDirectory && isAudioFileName(file.name, file.mimeType));
 }
 
 export function getModelImageInputMode(model: ChatImageModel | null | undefined): ModelImageInputMode {
   const input = model?.input;
   if (!Array.isArray(input)) return 'unknown';
   return input.includes('image') ? 'native-image' : 'text-only';
+}
+
+export function getModelVideoInputMode(model: ChatImageModel | null | undefined): ModelVideoInputMode {
+  const explicitVideo = model?.video === true || model?.compat?.hanaVideoInput === true;
+  const transport = model?.videoTransport;
+  if (explicitVideo) {
+    if (model.videoTransportSupported === false || transport === 'unsupported' || transport === 'none') {
+      return 'no-native-video';
+    }
+    if (model.videoTransportSupported === true || transport === 'gemini-inline-data' || transport === 'openai-video-url') {
+      return 'native-video';
+    }
+    return 'native-video';
+  }
+  const input = model?.input;
+  if (!Array.isArray(input)) return 'unknown';
+  return input.includes('video') ? 'native-video' : 'no-native-video';
+}
+
+export function getModelAudioInputMode(model: ChatImageModel | null | undefined): ModelAudioInputMode {
+  if (!model) return 'unknown';
+  const explicitAudio = model.audio === true || model.compat?.hanaAudioInput === true;
+  const transport = model.audioTransport || model.compat?.audioTransport || model.compat?.hanaAudioTransport;
+  if (explicitAudio) {
+    if (model.audioTransportSupported === false || transport === 'unsupported' || transport === 'none') {
+      return 'no-native-audio';
+    }
+    if (model.audioTransportSupported === true || transport === 'mimo-input-audio' || transport === 'openai-input-audio') {
+      return 'native-audio';
+    }
+    return modelSupportsDirectAudioInput(model) ? 'native-audio' : 'no-native-audio';
+  }
+  return modelSupportsDirectAudioInput(model) ? 'native-audio' : 'no-native-audio';
 }
 
 function canUseVisionAuxiliary(config: VisionAuxiliaryConfig | null | undefined): boolean {
@@ -94,6 +179,48 @@ export async function evaluateChatImageSendPreflight({
   };
 }
 
+export async function evaluateChatVideoSendPreflight({
+  attachments,
+  model,
+}: {
+  attachments: readonly ChatImageAttachment[];
+  model: ChatImageModel | null | undefined;
+}): Promise<ChatVideoSendPreflightResult> {
+  const videoInputMode = getModelVideoInputMode(model);
+  if (!hasChatVideoAttachments(attachments)) {
+    return { ok: true, reason: 'no-videos', videoInputMode };
+  }
+  if (videoInputMode === 'native-video') {
+    return { ok: true, reason: 'native-video', videoInputMode };
+  }
+  return {
+    ok: false,
+    reason: 'model-video-unsupported',
+    videoInputMode,
+  };
+}
+
+export async function evaluateChatAudioSendPreflight({
+  attachments,
+  model,
+}: {
+  attachments: readonly ChatImageAttachment[];
+  model: ChatImageModel | null | undefined;
+}): Promise<ChatAudioSendPreflightResult> {
+  const audioInputMode = getModelAudioInputMode(model);
+  if (!hasChatAudioAttachments(attachments)) {
+    return { ok: true, reason: 'no-audios', audioInputMode };
+  }
+  if (audioInputMode === 'native-audio') {
+    return { ok: true, reason: 'native-audio', audioInputMode };
+  }
+  return {
+    ok: false,
+    reason: 'model-audio-unsupported',
+    audioInputMode,
+  };
+}
+
 export function notifyTextModelImageBlocked({
   t,
   addToast,
@@ -109,6 +236,52 @@ export function notifyTextModelImageBlocked({
     9000,
     {
       dedupeKey: 'text-model-image-blocked',
+      action: {
+        label: t('input.openModelSettings'),
+        onClick: openSettings,
+      },
+    },
+  );
+}
+
+export function notifyTextModelVideoBlocked({
+  t,
+  addToast,
+  openSettings,
+}: {
+  t: (key: string) => string;
+  addToast: ChatImageBlockedToast;
+  openSettings: () => void;
+}): void {
+  addToast(
+    t('input.textModelVideoBlocked'),
+    'warning',
+    9000,
+    {
+      dedupeKey: 'text-model-video-blocked',
+      action: {
+        label: t('input.openModelSettings'),
+        onClick: openSettings,
+      },
+    },
+  );
+}
+
+export function notifyTextModelAudioBlocked({
+  t,
+  addToast,
+  openSettings,
+}: {
+  t: (key: string) => string;
+  addToast: ChatImageBlockedToast;
+  openSettings: () => void;
+}): void {
+  addToast(
+    t('input.textModelAudioBlocked'),
+    'warning',
+    9000,
+    {
+      dedupeKey: 'text-model-audio-blocked',
       action: {
         label: t('input.openModelSettings'),
         onClick: openSettings,

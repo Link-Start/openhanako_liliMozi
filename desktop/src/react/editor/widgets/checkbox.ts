@@ -7,7 +7,6 @@ export class CheckboxWidget extends WidgetType {
   eq(other: CheckboxWidget) { return this.checked === other.checked; }
 
   toDOM(view: EditorView) {
-    // eslint-disable-next-line no-restricted-syntax -- CodeMirror WidgetType.toDOM(), not React-managed DOM
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = this.checked;

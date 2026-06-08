@@ -3,21 +3,25 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 0;
-    gap: var(--space-sm);
-    overflow: hidden;
+    padding: var(--panel-edge-gap) 0;
+    gap: var(--panel-edge-gap);
+    /* 整列平级卡片栈：卡片总高超出时整列滚动 */
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .workspaceCard {
     --right-workspace-jian-open-height: 320px;
     --right-workspace-jian-closed-height: 40px;
-    --right-workspace-jian-bottom: var(--space-sm);
+    --right-workspace-jian-bottom: var(--panel-edge-gap);
     --right-workspace-jian-reserved: calc(var(--right-workspace-jian-closed-height) + var(--right-workspace-jian-bottom));
     position: relative;
-    flex: 1 1 auto;
-    height: 100%;
-    max-height: 100%;
-    min-height: 0;
+    /* desk 卡撑满优先：独处（下方无平级卡片）时 flex-grow 顶满整列，避免短卡 + 下方空隙的不对称。
+       下方出现平级卡片（todo/workflow/活动/状态）时收缩让位，但不低于地板 640px——
+       收缩到地板后整列总高仍超出时，由 .shell 滚动（绝不把 desk 压到 640 以下）。
+       min(…,100%) 仅在极矮窗口（panel < 640）兜底防 desk 自身溢出。 */
+    flex: 1 1 var(--right-workspace-desk-height, 640px);
+    min-height: min(var(--right-workspace-desk-height, 640px), 100%);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -73,8 +77,8 @@
     background: var(--tab-slider-bg, var(--bg-card));
     box-shadow: var(--tab-slider-shadow, 0 1px 3px var(--shadow));
     transform: translateX(var(--right-workspace-tab-slider-offset));
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-                width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform var(--duration-slow) cubic-bezier(0.4, 0, 0.2, 1),
+                width var(--duration-slow) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .tab {
@@ -89,8 +93,8 @@
     font-family: inherit;
     font-size: 0.7rem;
     font-weight: 400;
-    cursor: pointer;
-    transition: color 0.2s var(--ease-out);
+    cursor: default;
+    transition: color var(--duration-fast) var(--ease-out);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -154,8 +158,8 @@
     font-family: inherit;
     font-size: 0.65rem;
     line-height: 1;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    cursor: default;
+    transition: background var(--duration-fast), color var(--duration-fast);
     white-space: nowrap;
 }
 
@@ -198,12 +202,13 @@
     min-height: 0;
     overflow-y: auto;
     display: block;
-    padding: 4px 2px calc(var(--right-workspace-jian-reserved, 56px) + 8px);
-    scroll-padding-bottom: calc(var(--right-workspace-jian-reserved, 56px) + 8px);
+    padding: 4px 2px calc(var(--right-workspace-jian-reserved, 56px) + var(--panel-edge-gap));
+    scroll-padding-bottom: calc(var(--right-workspace-jian-reserved, 56px) + var(--panel-edge-gap));
     outline: none;
 }
 
 .fileRow {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -251,6 +256,7 @@
 .fileMain {
     flex: 1;
     min-width: 0;
+    transition: padding-right var(--duration-fast) var(--ease-out);
 }
 
 .fileName {
@@ -278,17 +284,44 @@
 }
 
 .fileActions {
-    flex: 0 0 auto;
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
     gap: 2px;
     opacity: 0;
-    transition: opacity 0.12s var(--ease-out);
+    padding-left: var(--space-sm);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        var(--overlay-subtle) 10px,
+        var(--overlay-subtle)
+    );
+    pointer-events: none;
+    transition: opacity var(--duration-instant) var(--ease-out);
+}
+
+.fileRow:hover .fileMain,
+.fileRow:focus-within .fileMain {
+    padding-right: 122px;
 }
 
 .fileRow:hover .fileActions,
-.fileRowSelected .fileActions {
+.fileRow:focus-within .fileActions {
     opacity: 1;
+    pointer-events: auto;
+}
+
+.fileRowSelected:hover .fileActions,
+.fileRowSelected:focus-within .fileActions {
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(var(--accent-rgb), 0.14) 10px,
+        rgba(var(--accent-rgb), 0.14)
+    );
 }
 
 .fileAction {
@@ -301,7 +334,7 @@
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     transition: color 0.16s var(--ease-out), background 0.16s var(--ease-out);
 }
 
@@ -326,11 +359,11 @@
 
 .jianDrawer {
     --right-workspace-jian-open-dur: 400ms;
-    --right-workspace-jian-close-dur: 350ms;
+    --right-workspace-jian-close-dur: var(--duration-slow);
     --right-workspace-jian-ease: cubic-bezier(0.22, 1, 0.36, 1);
     position: absolute;
-    left: var(--space-sm);
-    right: var(--space-sm);
+    left: var(--panel-edge-gap);
+    right: var(--panel-edge-gap);
     bottom: var(--right-workspace-jian-bottom);
     z-index: 2;
     height: var(--right-workspace-jian-open-height);
@@ -376,8 +409,8 @@
 
 .jianToggle {
     position: absolute;
-    right: calc(var(--space-sm) + 6px);
-    bottom: calc(var(--space-sm) + 6px);
+    right: calc(var(--panel-edge-gap) + 6px);
+    bottom: calc(var(--panel-edge-gap) + 6px);
     z-index: 3;
     width: 28px;
     height: 28px;
@@ -388,7 +421,7 @@
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     transition: border-color 0.16s var(--ease-out), color 0.16s var(--ease-out);
 }
 

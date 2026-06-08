@@ -1,6 +1,7 @@
 ---
 name: skill-creator
 description: "Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, update or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.\n  创建新技能、修改和改进现有技能、衡量技能表现。当用户想要从零创建技能、更新或优化现有技能、运行评估测试技能、通过方差分析进行性能基准测试，或优化技能描述以提高触发准确率时使用。\n  MANDATORY TRIGGERS: create skill, new skill, improve skill, skill eval, benchmark skill, 创建技能, 新技能, 改进技能, 评估技能"
+compatibility: "Uses a bundled Node preflight plus Python worker scripts. PyYAML is required for validation/packaging; anthropic and the Claude CLI are required only for description optimization and trigger eval loops."
 ---
 
 # Skill Creator
@@ -28,6 +29,37 @@ Of course, you should always be flexible and if the user is like "I don't need t
 Then after the skill is done (but again, the order is flexible), you can also run the skill description improver, which we have a whole separate script for, to optimize the triggering of the skill.
 
 Cool? Cool.
+
+## Environment Preflight
+
+Run the bundled Node preflight before invoking any Python script from this skill:
+
+```bash
+node skills2set/skill-creator/scripts/check_env.mjs --capability quick-validate
+node skills2set/skill-creator/scripts/check_env.mjs --capability package-skill
+node skills2set/skill-creator/scripts/check_env.mjs --capability run-loop
+```
+
+Behavior:
+
+- The preflight itself is JavaScript and uses only Node built-ins.
+- It finds Python through `HANA_SKILL_CREATOR_PYTHON`, `python3`, `python`, or Windows `py -3`.
+- It requires Python 3.10+ because these scripts use modern Python syntax.
+- It checks only what the requested capability needs.
+- If it returns `ok: false`, stop and show the user the `message`, `installGuidance`, `missingPackages`, or `missingCommands`. Do not auto-install dependencies.
+- Use the same Python command that passed preflight for the Python command examples below. The examples use `python`.
+
+Capabilities:
+
+| Task | Preflight capability |
+| --- | --- |
+| Validate `SKILL.md` | `quick-validate` |
+| Package `.skill` | `package-skill` |
+| Aggregate benchmark results | `aggregate-benchmark` |
+| Launch eval viewer | `eval-viewer` |
+| Run trigger evals | `run-eval` |
+| Improve description once | `description-optimize` |
+| Full description optimization loop | `run-loop` |
 
 ## Communicating with the user
 

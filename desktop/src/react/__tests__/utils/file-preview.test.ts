@@ -49,12 +49,48 @@ describe('file-preview IPC error handling', () => {
     expect(mocks.openMediaViewerFromContext).not.toHaveBeenCalled();
   });
 
-  it('技能预览读取异常时也会显式报错', async () => {
-    (window as any).platform.readFile.mockRejectedValue(new Error('skill exploded'));
+  it('技能预览使用既有 Skill Viewer overlay，而不是 markdown Preview 面板', async () => {
+    (window as any).platform.readFile.mockResolvedValue('---\nname: demo-skill\n---\n# Demo');
 
     await expect(openSkillPreview('demo-skill', '/tmp/demo-skill/SKILL.md')).resolves.toBeUndefined();
 
-    expect(mocks.showError).toHaveBeenCalledWith('skill exploded');
+    expect((window as any).platform.openSkillViewer).toHaveBeenCalledWith({
+      name: 'demo-skill',
+      baseDir: '/tmp/demo-skill',
+      filePath: '/tmp/demo-skill/SKILL.md',
+      installed: true,
+    });
+    expect((window as any).platform.readFile).not.toHaveBeenCalled();
     expect(mocks.openPreview).not.toHaveBeenCalled();
+  });
+
+  it('技能预览优先使用已登记的 installedSkillSource.baseDir', async () => {
+    const openSkillPreviewWithSource = openSkillPreview as unknown as (
+      skillName: string,
+      skillFilePath: string,
+      source: { skillName: string; baseDir: string; filePath: string },
+    ) => Promise<void>;
+
+    await expect(openSkillPreviewWithSource('demo-skill', '/stale/path/SKILL.md', {
+      skillName: 'source-skill',
+      baseDir: '/installed/source-skill',
+      filePath: '/installed/source-skill/SKILL.md',
+    })).resolves.toBeUndefined();
+
+    expect((window as any).platform.openSkillViewer).toHaveBeenCalledWith({
+      name: 'source-skill',
+      baseDir: '/installed/source-skill',
+      filePath: '/installed/source-skill/SKILL.md',
+      installed: true,
+    });
+    expect(mocks.openPreview).not.toHaveBeenCalled();
+  });
+
+  it('技能预览缺少可用路径时显式报错', async () => {
+    await expect(openSkillPreview('demo-skill', '')).resolves.toBeUndefined();
+
+    expect(mocks.showError).toHaveBeenCalledWith('skill preview path missing');
+    expect(mocks.openPreview).not.toHaveBeenCalled();
+    expect((window as any).platform.openSkillViewer).not.toHaveBeenCalled();
   });
 });

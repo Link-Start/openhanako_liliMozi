@@ -1,6 +1,6 @@
 .overlay {
-  --settings-modal-open-dur: 250ms;
-  --settings-modal-close-dur: 150ms;
+  --settings-modal-open-dur: var(--duration-slow);
+  --settings-modal-close-dur: var(--duration-fast);
   --settings-modal-scale: 0.96;
   --settings-modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
   position: fixed;
@@ -17,9 +17,7 @@
   backdrop-filter: blur(0);
   -webkit-backdrop-filter: blur(0);
   transition:
-    opacity var(--settings-modal-open-dur) var(--settings-modal-ease),
-    backdrop-filter var(--settings-modal-open-dur) var(--settings-modal-ease),
-    -webkit-backdrop-filter var(--settings-modal-open-dur) var(--settings-modal-ease);
+    opacity var(--settings-modal-open-dur) var(--settings-modal-ease);
   -webkit-app-region: no-drag;
 }
 
@@ -27,6 +25,14 @@
   opacity: 1;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+}
+
+:global(html[data-platform="win32"]) .overlay.open {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(248, 245, 237, 0.14), rgba(20, 18, 14, 0.18) 62%, rgba(20, 18, 14, 0.28)),
+    rgba(20, 18, 14, 0.26);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .overlay.closing {
@@ -38,15 +44,15 @@
 }
 
 .card {
-  width: min(720px, calc(100vw - var(--space-lg) - var(--space-lg)));
-  height: min(700px, calc(100vh - var(--space-lg) - var(--space-lg)));
+  width: min(864px, calc(100vw - var(--space-lg) - var(--space-lg)));
+  height: min(840px, calc(100vh - var(--space-lg) - var(--space-lg)));
   min-height: min(500px, calc(100vh - var(--space-lg) - var(--space-lg)));
   display: flex;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--overlay-light);
-  border-radius: var(--radius-lg, 4px);
+  border-radius: var(--radius-lg, 12px);
   box-shadow:
     0 26px 70px rgba(20, 18, 14, 0.18),
     0 8px 24px rgba(20, 18, 14, 0.12);
@@ -58,6 +64,10 @@
     transform var(--settings-modal-open-dur) var(--settings-modal-ease),
     opacity var(--settings-modal-open-dur) var(--settings-modal-ease);
   will-change: transform, opacity;
+}
+
+.card[data-wide="true"] {
+  width: min(1200px, calc(100vw - var(--space-lg) - var(--space-lg)));
 }
 
 .card.open {

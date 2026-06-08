@@ -19,8 +19,8 @@
     user-select: none;
     box-shadow: 0 4px 16px var(--shadow);
     margin-bottom: var(--space-xs);
-    cursor: pointer;
-    transition: box-shadow 0.15s;
+    cursor: default;
+    transition: box-shadow var(--duration-fast);
 }
 
 .welcomeAvatar:hover {
@@ -47,8 +47,8 @@
     background: none;
     border: none;
     border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.2s var(--ease-out);
+    cursor: default;
+    transition: all var(--duration-fast) var(--ease-out);
     -webkit-app-region: no-drag;
     opacity: 0.8;
 }
@@ -103,12 +103,7 @@
 
 .folderSelectWrapShowHistory .folderHistory {
     display: block;
-    animation: folderHistoryIn 0.15s var(--ease-out);
-}
-
-@keyframes folderHistoryIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-    to   { opacity: 1; transform: translateX(-50%) translateY(0);   }
+    animation: hana-folder-history-in var(--duration-fast) var(--ease-out);
 }
 
 .folderHistoryItem {
@@ -118,8 +113,8 @@
     padding: 6px 12px;
     font-size: 0.75rem;
     color: var(--text);
-    cursor: pointer;
-    transition: background 0.1s;
+    cursor: default;
+    transition: background var(--duration-instant);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -166,7 +161,7 @@
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     font: inherit;
 }
 
@@ -188,8 +183,8 @@
     padding: 6px 12px;
     font-size: 0.75rem;
     color: var(--text-muted);
-    cursor: pointer;
-    transition: background 0.1s;
+    cursor: default;
+    transition: background var(--duration-instant);
 }
 
 .folderHistoryBrowse:hover {
@@ -210,8 +205,8 @@
     background: none;
     border: none;
     border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.2s var(--ease-out);
+    cursor: default;
+    transition: all var(--duration-fast) var(--ease-out);
     -webkit-app-region: no-drag;
     opacity: 0.8;
 }
@@ -263,11 +258,11 @@
     border-radius: 999px;
     border: 1px solid var(--border);
     background: var(--bg-card);
-    cursor: pointer;
+    cursor: default;
     font-family: inherit;
     font-size: 0.78rem;
     color: var(--text-muted);
-    transition: all 0.2s var(--ease-out);
+    transition: all var(--duration-fast) var(--ease-out);
     -webkit-app-region: no-drag;
 }
 

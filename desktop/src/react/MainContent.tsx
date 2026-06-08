@@ -11,6 +11,9 @@ import { useState, useRef, useCallback } from 'react';
 import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
 import { toSlash, baseName } from './utils/format';
+import { isAudioFileName } from './utils/file-kind';
+import { buildWaveformFromBase64 } from './utils/audio-waveform';
+import type { AudioWaveform } from './stores/chat-types';
 import {
   clearAppFileDragPayload,
   readAppFileDragPayload,
@@ -54,6 +57,44 @@ async function installSkillFile(filePath: string, sessionPath?: string | null): 
   }
 }
 
+function blockChatAttachmentDropOutsideChat(): boolean {
+  if (useStore.getState().currentTab !== 'channels') return false;
+  useStore.getState().addToast(t('channel.filesUnsupported'), 'error');
+  return true;
+}
+
+function chatAudioMimeTypeForName(name: string): string {
+  const ext = name.toLowerCase().replace(/^.*\./, '');
+  const mimeMap: Record<string, string> = {
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    flac: 'audio/flac',
+    m4a: 'audio/mp4',
+    weba: 'audio/webm',
+    webm: 'audio/webm',
+  };
+  return mimeMap[ext] || 'audio/wav';
+}
+
+async function computeAudioWaveformsForPaths(srcPaths: string[]): Promise<Record<string, { waveform: AudioWaveform }>> {
+  const out: Record<string, { waveform: AudioWaveform }> = {};
+  if (typeof window.platform?.readFileBase64 !== 'function') return out;
+  for (const srcPath of srcPaths) {
+    const name = baseName(srcPath);
+    if (!isAudioFileName(name)) continue;
+    try {
+      const mimeType = chatAudioMimeTypeForName(name);
+      const base64 = await window.platform.readFileBase64(srcPath);
+      const waveform = base64 ? await buildWaveformFromBase64(base64, mimeType) : undefined;
+      if (waveform) out[srcPath] = { waveform };
+    } catch (err) {
+      console.warn('[upload] failed to compute audio waveform', err);
+    }
+  }
+  return out;
+}
+
 /**
  * attachFilesFromPaths — 将文件系统路径列表附加为聊天附件
  *
@@ -64,6 +105,7 @@ export async function attachFilesFromPaths(
   nameMap: Record<string, string> = {},
 ): Promise<void> {
   if (srcPaths.length === 0) return;
+  if (blockChatAttachmentDropOutsideChat()) return;
   if (useStore.getState().attachedFiles.length >= 9) return;
 
   // .skill 文件直接安装为用户技能，不当附件处理
@@ -77,7 +119,7 @@ export async function attachFilesFromPaths(
 
   // Desk 文件直接附加（保留原始路径，不走 upload）
   const s = useStore.getState();
-  const deskBase = toSlash(s.deskBasePath ?? '').replace(/\/+$/, '');
+  const deskBase = s.deskWorkspaceMountId ? '' : toSlash(s.deskBasePath ?? '').replace(/\/+$/, '');
   if (deskBase) {
     const prefix = deskBase + '/';
     const deskFileMap = new Map(s.deskFiles.map((f: any) => [f.name, f]));
@@ -100,10 +142,15 @@ export async function attachFilesFromPaths(
 
   try {
     const sessionPath = useStore.getState().currentSessionPath || null;
+    const metadataByPath = await computeAudioWaveformsForPaths(srcPaths);
     const res = await hanaFetch('/api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: srcPaths, ...(sessionPath ? { sessionPath } : {}) }),
+      body: JSON.stringify({
+        paths: srcPaths,
+        ...(Object.keys(metadataByPath).length ? { metadataByPath } : {}),
+        ...(sessionPath ? { sessionPath } : {}),
+      }),
     });
     const data = await res.json();
     const failed: string[] = [];
@@ -114,6 +161,7 @@ export async function attachFilesFromPaths(
           path: item.dest,
           name: item.name,
           isDirectory: item.isDirectory || false,
+          waveform: item.waveform || metadataByPath[item.src]?.waveform,
         });
       } else if (item.error) {
         failed.push(nameMap[item.src] || baseName(item.src));
@@ -136,6 +184,7 @@ export async function attachFilesFromPaths(
 
 export async function attachAppFileDragPayloadToInput(payload: AppFileDragPayload): Promise<void> {
   if (payload.files.length === 0) return;
+  if (blockChatAttachmentDropOutsideChat()) return;
   const state = useStore.getState();
   if (state.attachedFiles.length >= 9) return;
 
@@ -195,6 +244,9 @@ function DropText() {
 export function MainContent({ children }: { children: React.ReactNode }) {
   const [dragActive, setDragActive] = useState(false);
   const dragCounter = useRef(0);
+  const welcomeVisible = useStore(s => s.welcomeVisible);
+  const currentTab = useStore(s => s.currentTab);
+  const welcomeMode = welcomeVisible && currentTab === 'chat';
 
   const onDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -216,7 +268,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="main-content"
+      className={`main-content${welcomeMode ? ' welcome-mode' : ''}`}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}

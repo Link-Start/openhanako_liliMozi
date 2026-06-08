@@ -5,10 +5,8 @@
 import { useCallback, useState } from 'react';
 import { useStore } from '../../stores';
 import { useI18n } from '../../hooks/use-i18n';
-import { toggleJianSidebar } from '../../stores/desk-actions';
 import { deleteChannel } from '../../stores/channel-actions';
-import { ContextMenu } from '../ContextMenu';
-import type { ContextMenuItem } from '../ContextMenu';
+import { ContextMenu, type ContextMenuItem } from '../../ui';
 import styles from './Channels.module.css';
 
 function confirmDeleteChannel(channelId: string) {
@@ -28,10 +26,6 @@ export function ChannelHeader() {
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [menuItems, setMenuItems] = useState<ContextMenuItem[]>([]);
-
-  const handleInfoToggle = useCallback(() => {
-    toggleJianSidebar();
-  }, []);
 
   const handleMenu = useCallback((e: React.MouseEvent) => {
     if (!currentChannel) return;
@@ -57,19 +51,6 @@ export function ChannelHeader() {
         <span className={styles.channelHeaderMembers}>{headerMembers}</span>
       </div>
       <div className={styles.channelHeaderActions}>
-        {currentChannel && (
-          <button
-            className={styles.channelHeaderActionBtn}
-            title={t('channel.info')}
-            onClick={handleInfoToggle}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-          </button>
-        )}
         {currentChannel && !isDM && (
           <button
             className={styles.channelHeaderActionBtn}

@@ -17,6 +17,7 @@ describe('openMediaViewerFromContext', () => {
       deskBasePath: '/d',
       deskCurrentPath: '',
       chatSessions: {},
+      sessionRegistryFilesByPath: {},
     } as any);
   });
   afterEach(() => { useStore.getState().closeMediaViewer(); });
@@ -105,6 +106,63 @@ describe('openMediaViewerFromContext', () => {
     const mv = useStore.getState().mediaViewer;
     expect(mv!.files).toHaveLength(1);
     expect(mv!.files[0].path).toBe('/outside/z.png');
+  });
+
+  it('session block 文件按 fileId 命中 registry Resource ref，避免丢失 resource link', () => {
+    useStore.setState({
+      currentSessionPath: '/s/1',
+      chatSessions: {
+        '/s/1': {
+          items: [
+            { type: 'message', data: { id: 'm1', role: 'assistant', blocks: [
+              { type: 'file', fileId: 'sf_img', filePath: '/workspace/img.png', label: 'img.png', ext: 'png' },
+            ] } },
+          ],
+          hasMore: false, loadingMore: false,
+        },
+      },
+      sessionRegistryFilesByPath: {
+        '/s/1': [{
+          fileId: 'sf_img',
+          filePath: '/workspace/img.png',
+          label: 'img.png',
+          ext: 'png',
+          resource: {
+            schemaVersion: 1,
+            resourceId: 'res_sf_img',
+            name: 'studios/studio_local/resources/res_sf_img',
+            studioId: 'studio_local',
+            type: 'file',
+            source: 'session_file',
+            fileId: 'sf_img',
+            lifecycle: { status: 'available', missingAt: null },
+            storage: { provider: 'session_file', localOnly: true },
+            links: {
+              self: '/api/resources/res_sf_img',
+              content: '/api/resources/res_sf_img/content',
+            },
+          },
+        }],
+      },
+    } as any);
+
+    openMediaViewerFromContext({
+      filePath: '/workspace/img.png',
+      fileId: 'sf_img',
+      label: 'img.png',
+      ext: 'png',
+      kind: 'image',
+      origin: 'session',
+      sessionPath: '/s/1',
+      messageId: 'm1',
+      blockIdx: 0,
+    });
+
+    const mv = useStore.getState().mediaViewer;
+    expect(mv!.files).toHaveLength(1);
+    expect(mv!.currentId).toBe(mv!.files[0].id);
+    expect(mv!.files[0].source).toBe('session-registry');
+    expect(mv!.files[0].resource?.links.content).toBe('/api/resources/res_sf_img/content');
   });
 
   it('openMediaViewerForRef: 按 id 匹配融入 session 序列（screenshot 场景）', () => {

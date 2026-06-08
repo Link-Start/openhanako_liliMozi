@@ -1,0 +1,728 @@
+import { describe, it, expect, vi } from "vitest";
+
+import { submitDesktopSessionMessage } from "../core/desktop-session-submit.ts";
+import fs from "fs";
+import os from "os";
+import path from "path";
+
+function makeFakeSession({ replyText = "desktop reply", toolMedia = [], toolMediaDetails = null, settingsUpdate = null }: any = {}) {
+  const subs = [];
+  return {
+    subscribe: (fn) => {
+      subs.push(fn);
+      return () => {
+        const idx = subs.indexOf(fn);
+        if (idx >= 0) subs.splice(idx, 1);
+      };
+    },
+    prompt: vi.fn<(...args: any[]) => Promise<any>>(async () => {
+      for (const fn of subs) {
+        fn({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: replyText } });
+        if (toolMediaDetails) {
+          fn({
+            type: "tool_execution_end",
+            isError: false,
+            result: { details: { media: toolMediaDetails } },
+          });
+        }
+        for (const url of toolMedia) {
+          fn({
+            type: "tool_execution_end",
+            isError: false,
+            result: { details: { media: { mediaUrls: [url] } } },
+          });
+        }
+        if (settingsUpdate) {
+          fn({
+            type: "tool_execution_end",
+            isError: false,
+            result: { details: { settingsUpdate } },
+          });
+        }
+      }
+    }),
+    model: null,
+  };
+}
+
+function sessionFileMarker({ fileId, sessionPath, label, kind = "attachment" }) {
+  return `[SessionFile] ${JSON.stringify({ fileId, sessionPath, label, kind })}`;
+}
+
+describe("submitDesktopSessionMessage", () => {
+  it("rejects concurrent submissions for the same session before streaming status is emitted", async () => {
+    const session = makeFakeSession();
+    const ready = (Promise as any).withResolvers();
+    const engine = {
+      ensureSessionLoaded: vi.fn(() => ready.promise),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+      isSessionStreaming: vi.fn(() => false),
+    };
+
+    const first = submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "first",
+      displayMessage: { text: "first" },
+    });
+    await Promise.resolve();
+
+    await expect(submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "second",
+      displayMessage: { text: "second" },
+    })).rejects.toThrow("session_busy");
+
+    ready.resolve(session);
+    await expect(first).resolves.toMatchObject({ text: "desktop reply" });
+    expect(engine.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "session_status", isStreaming: true }),
+      "/tmp/desk.jsonl",
+    );
+  });
+
+  it("emits a session-scoped user message, toggles streaming status, and returns captured assistant output", async () => {
+    const session = makeFakeSession({
+      replyText: "desktop reply",
+      toolMedia: ["https://example.com/a.png"],
+    });
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+    const onDelta = vi.fn();
+
+    const result = await submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "hello from bridge",
+      displayMessage: { text: "hello from bridge" },
+      uiContext: null,
+      onDelta,
+    });
+
+    expect(engine.ensureSessionLoaded).toHaveBeenCalledWith("/tmp/desk.jsonl");
+    expect(engine.setUiContext).toHaveBeenCalledWith("/tmp/desk.jsonl", null);
+    expect(engine.emitEvent).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ type: "session_status", isStreaming: true }),
+      "/tmp/desk.jsonl",
+    );
+    expect(engine.emitEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: "session_user_message",
+        message: expect.objectContaining({ text: "hello from bridge" }),
+      }),
+      "/tmp/desk.jsonl",
+    );
+    expect(engine.promptSession).toHaveBeenCalledWith("/tmp/desk.jsonl", "hello from bridge", undefined);
+    expect(onDelta).toHaveBeenCalledWith("desktop reply", "desktop reply");
+    expect(engine.emitEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: "session_status", isStreaming: false }),
+      "/tmp/desk.jsonl",
+    );
+    expect(result).toEqual({
+      text: "desktop reply",
+      toolMedia: [{ type: "remote_url", url: "https://example.com/a.png" }],
+    });
+  });
+
+  it("forwards turn context to promptSession without exposing it in the visible user message", async () => {
+    const session = makeFakeSession();
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+
+    await submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "hello",
+      displayMessage: { text: "hello" },
+      context: {
+        beforeUser: "world lore",
+        metadata: { pluginId: "tavern" },
+      },
+    } as any);
+
+    expect(engine.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "session_user_message",
+        message: expect.objectContaining({ text: "hello" }),
+      }),
+      "/tmp/desk.jsonl",
+    );
+    expect(engine.emitEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "session_user_message",
+        message: expect.objectContaining({ text: expect.stringContaining("world lore") }),
+      }),
+      expect.anything(),
+    );
+    expect(engine.promptSession).toHaveBeenCalledWith(
+      "/tmp/desk.jsonl",
+      "hello",
+      { context: { beforeUser: "world lore", metadata: { pluginId: "tavern" } } },
+    );
+  });
+
+  it("prefers structured tool media items over legacy mediaUrls", async () => {
+    const item = { type: "session_file", fileId: "sf_1", filePath: "/tmp/a.png" };
+    const session = makeFakeSession({
+      replyText: "desktop reply",
+      toolMediaDetails: { items: [item], mediaUrls: ["/tmp/a.png"] },
+    });
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+
+    const result = await submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "hello",
+      displayMessage: { text: "hello" },
+    });
+
+    expect(result.toolMedia).toEqual([item]);
+  });
+
+  it("appends settings update summaries into captured bridge text", async () => {
+    const session = makeFakeSession({
+      replyText: "",
+      settingsUpdate: {
+        status: "applied",
+        action: "core.apply",
+        key: "locale",
+        title: "Locale updated",
+        summary: "Locale changed.",
+        changes: [{ key: "locale", label: "Locale", before: "zh-CN", after: "en" }],
+      },
+    });
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+
+    const result = await submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "change locale",
+      displayMessage: { text: "change locale" },
+    });
+
+    expect(result.text).toContain("Locale updated");
+    expect(result.text).toContain("Locale: zh-CN -> en");
+  });
+
+  it("still emits session_status=false when promptSession throws", async () => {
+    const session = makeFakeSession();
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async () => {
+        throw new Error("boom");
+      }),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+
+    await expect(submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "hello",
+      displayMessage: { text: "hello" },
+    })).rejects.toThrow("boom");
+
+    expect(engine.emitEvent).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ type: "session_status", isStreaming: true }),
+      "/tmp/desk.jsonl",
+    );
+    expect(engine.emitEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: "session_status", isStreaming: false }),
+      "/tmp/desk.jsonl",
+    );
+  });
+
+  it("forwards image attachment paths to promptSession", async () => {
+    const session = makeFakeSession();
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+
+    await submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "see image",
+      images: [{ type: "image", data: "BASE64", mimeType: "image/png" }],
+      imageAttachmentPaths: ["/tmp/upload.png"],
+      displayMessage: { text: "see image" },
+    });
+
+    expect(engine.promptSession).toHaveBeenCalledWith(
+      "/tmp/desk.jsonl",
+      "[attached_image: /tmp/upload.png]\nsee image",
+      {
+        images: [{ type: "image", data: "BASE64", mimeType: "image/png" }],
+        imageAttachmentPaths: ["/tmp/upload.png"],
+      },
+    );
+  });
+
+  it("forwards videos to promptSession and records attached video markers", async () => {
+    const session = makeFakeSession();
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+
+    await submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "see video",
+      videos: [{ type: "video", data: "BASE64", mimeType: "video/mp4" }],
+      videoAttachmentPaths: ["/tmp/upload.mp4"],
+      displayMessage: { text: "see video" },
+    });
+
+    expect(engine.promptSession).toHaveBeenCalledWith(
+      "/tmp/desk.jsonl",
+      "[attached_video: /tmp/upload.mp4]\nsee video",
+      {
+        videos: [{ type: "video", data: "BASE64", mimeType: "video/mp4" }],
+        videoAttachmentPaths: ["/tmp/upload.mp4"],
+      },
+    );
+  });
+
+  it("forwards audios to promptSession and records attached audio markers", async () => {
+    const session = makeFakeSession();
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+    };
+
+    await submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "hear audio",
+      audios: [{ type: "audio", data: "BASE64", mimeType: "audio/wav" }],
+      audioAttachmentPaths: ["/tmp/upload.wav"],
+      displayMessage: { text: "hear audio" },
+    });
+
+    expect(engine.promptSession).toHaveBeenCalledWith(
+      "/tmp/desk.jsonl",
+      "[attached_audio: /tmp/upload.wav]\nhear audio",
+      {
+        audios: [{ type: "audio", data: "BASE64", mimeType: "audio/wav" }],
+        audioAttachmentPaths: ["/tmp/upload.wav"],
+      },
+    );
+  });
+
+  it("adds SessionFile references for display-only audio attachments", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-display-audio-"));
+    try {
+      const filePath = path.join(tmpDir, "voice.wav");
+      fs.writeFileSync(filePath, Buffer.from([0x52, 0x49, 0x46, 0x46]));
+      const session = makeFakeSession();
+      const sessionPath = path.join(tmpDir, "main.jsonl");
+      fs.writeFileSync(sessionPath, "{}\n");
+      const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
+        id: "sf_audio_attachment",
+        fileId: "sf_audio_attachment",
+        sessionPath,
+        filePath,
+        realPath: filePath,
+        displayName: label,
+        filename: path.basename(filePath),
+        label,
+        ext: "wav",
+        mime: "audio/wav",
+        size: 4,
+        kind: "audio",
+        origin,
+        storageKind,
+        createdAt: 1,
+      }));
+      const queueVoiceTranscription = vi.fn();
+      const engine = {
+        hanakoHome: tmpDir,
+        registerSessionFile,
+        speechRecognition: { queueVoiceTranscription },
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+
+      await submitDesktopSessionMessage(engine, {
+        sessionPath,
+        text: `[附件] ${filePath}`,
+        displayMessage: {
+          text: "",
+          attachments: [{
+            path: filePath,
+            name: "voice.wav",
+            isDir: false,
+            mimeType: "audio/wav",
+          }],
+        },
+      });
+
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        sessionPath,
+        `${sessionFileMarker({
+          fileId: "sf_audio_attachment",
+          sessionPath,
+          label: "voice.wav",
+        })}\n[附件] ${filePath}`,
+        undefined,
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("registers display audio attachments and forwards native audio paths when audio bytes are present", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-display-native-audio-"));
+    try {
+      const filePath = path.join(tmpDir, "voice.wav");
+      fs.writeFileSync(filePath, Buffer.from([0x52, 0x49, 0x46, 0x46]));
+      const session = makeFakeSession();
+      const sessionPath = path.join(tmpDir, "main.jsonl");
+      fs.writeFileSync(sessionPath, "{}\n");
+      const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
+        id: "sf_audio_attachment",
+        fileId: "sf_audio_attachment",
+        sessionPath,
+        filePath,
+        realPath: filePath,
+        displayName: label,
+        filename: path.basename(filePath),
+        label,
+        ext: "wav",
+        mime: "audio/wav",
+        size: 4,
+        kind: "audio",
+        origin,
+        storageKind,
+        createdAt: 1,
+      }));
+      const queueVoiceTranscription = vi.fn();
+      const engine = {
+        hanakoHome: tmpDir,
+        registerSessionFile,
+        speechRecognition: { queueVoiceTranscription },
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+
+      await submitDesktopSessionMessage(engine, {
+        sessionPath,
+        text: "hear this",
+        audios: [{ type: "audio", data: "BASE64", mimeType: "audio/wav" }],
+        displayMessage: {
+          text: "hear this",
+          attachments: [{
+            path: filePath,
+            name: "voice.wav",
+            isDir: false,
+            mimeType: "audio/wav",
+          }],
+        },
+      });
+
+      expect(registerSessionFile).toHaveBeenCalledWith({
+        sessionPath,
+        filePath,
+        label: "voice.wav",
+        origin: "user_attachment",
+        storageKind: "external",
+        presentation: "attachment",
+        listed: true,
+      });
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        sessionPath,
+        `${sessionFileMarker({
+          fileId: "sf_audio_attachment",
+          sessionPath,
+          label: "voice.wav",
+        })}\n[attached_audio: ${filePath}]\nhear this`,
+        {
+          audios: [{ type: "audio", data: "BASE64", mimeType: "audio/wav" }],
+          audioAttachmentPaths: [filePath],
+        },
+      );
+      expect(queueVoiceTranscription).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("queues transcription only for voice-input audio attachments with registered file ids", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-display-voice-input-"));
+    try {
+      const voicePath = path.join(tmpDir, "voice.wav");
+      fs.writeFileSync(voicePath, Buffer.from([0x52, 0x49, 0x46, 0x46]));
+      const session = makeFakeSession();
+      const sessionPath = path.join(tmpDir, "main.jsonl");
+      fs.writeFileSync(sessionPath, "{}\n");
+      const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind, presentation, listed }) => ({
+        id: "sf_voice_input",
+        fileId: "sf_voice_input",
+        sessionPath,
+        filePath,
+        realPath: filePath,
+        displayName: label,
+        filename: path.basename(filePath),
+        label,
+        ext: "wav",
+        mime: "audio/wav",
+        size: 4,
+        kind: "audio",
+        origin,
+        storageKind,
+        presentation,
+        listed,
+        createdAt: 1,
+      }));
+      const queueVoiceTranscription = vi.fn();
+      const engine = {
+        hanakoHome: tmpDir,
+        registerSessionFile,
+        speechRecognition: { queueVoiceTranscription },
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+
+      await submitDesktopSessionMessage(engine, {
+        sessionPath,
+        text: "",
+        audios: [{ type: "audio", data: "BASE64", mimeType: "audio/wav" }],
+        displayMessage: {
+          text: "",
+          attachments: [{
+            path: voicePath,
+            name: "录音 1.wav",
+            isDir: false,
+            mimeType: "audio/wav",
+            presentation: "voice-input",
+          }],
+        },
+      });
+
+      expect(registerSessionFile).toHaveBeenCalledWith({
+        sessionPath,
+        filePath: voicePath,
+        label: "录音 1.wav",
+        origin: "voice_input",
+        storageKind: "external",
+        presentation: "voice-input",
+        listed: false,
+      });
+      expect(queueVoiceTranscription).toHaveBeenCalledTimes(1);
+      expect(queueVoiceTranscription).toHaveBeenCalledWith({
+        sessionPath,
+        fileId: "sf_voice_input",
+      });
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        sessionPath,
+        `${sessionFileMarker({
+          fileId: "sf_voice_input",
+          sessionPath,
+          label: "录音 1.wav",
+        })}\n[attached_audio: ${voicePath}]`,
+        {
+          audios: [{ type: "audio", data: "BASE64", mimeType: "audio/wav" }],
+          audioAttachmentPaths: [voicePath],
+        },
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("registers desktop display attachments into the session file ledger", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-display-attachment-"));
+    try {
+      const filePath = path.join(tmpDir, "desk.png");
+      fs.writeFileSync(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      const session = makeFakeSession();
+      const sessionPath = path.join(tmpDir, "main.jsonl");
+      fs.writeFileSync(sessionPath, "{}\n");
+      const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
+        id: "sf_desktop_attachment",
+        fileId: "sf_desktop_attachment",
+        sessionPath,
+        filePath,
+        realPath: filePath,
+        displayName: label,
+        filename: path.basename(filePath),
+        label,
+        ext: "png",
+        mime: "image/png",
+        size: 4,
+        kind: "image",
+        origin,
+        storageKind,
+        createdAt: 1,
+      }));
+      const engine = {
+        hanakoHome: tmpDir,
+        registerSessionFile,
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+
+      await submitDesktopSessionMessage(engine, {
+        sessionPath,
+        text: "local file",
+        images: [{ type: "image", data: "BASE64", mimeType: "image/png" }],
+        displayMessage: {
+          text: "local file",
+          attachments: [{
+            path: filePath,
+            name: "desk.png",
+            isDir: false,
+            base64Data: "BASE64",
+            mimeType: "image/png",
+          }],
+        },
+      });
+
+      expect(registerSessionFile).toHaveBeenCalledWith({
+        sessionPath,
+        filePath,
+        label: "desk.png",
+        origin: "user_attachment",
+        storageKind: "external",
+        presentation: "attachment",
+        listed: true,
+      });
+      expect(engine.emitEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "session_user_message",
+          message: expect.objectContaining({
+            attachments: [expect.objectContaining({
+              fileId: "sf_desktop_attachment",
+              path: filePath,
+            })],
+          }),
+        }),
+        sessionPath,
+      );
+      const emittedAttachment = engine.emitEvent.mock.calls
+        .find(([event]) => event.type === "session_user_message")?.[0].message.attachments[0];
+      expect(emittedAttachment).not.toHaveProperty("base64Data");
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        sessionPath,
+        `${sessionFileMarker({
+          fileId: "sf_desktop_attachment",
+          sessionPath,
+          label: "desk.png",
+        })}\n[attached_image: ${filePath}]\nlocal file`,
+        expect.objectContaining({
+          imageAttachmentPaths: [filePath],
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("registers bridge inbound files for desktop /rc target sessions", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desktop-inbound-"));
+    try {
+      const session = makeFakeSession();
+      const sessionPath = path.join(tmpDir, "agents", "hana", "sessions", "main.jsonl");
+      fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+      fs.writeFileSync(sessionPath, "{}\n");
+      const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
+        id: "sf_rc_inbound",
+        fileId: "sf_rc_inbound",
+        sessionPath,
+        filePath,
+        realPath: filePath,
+        displayName: label,
+        filename: path.basename(filePath),
+        label,
+        ext: "png",
+        mime: "image/png",
+        size: 4,
+        kind: "image",
+        origin,
+        storageKind,
+        createdAt: 1,
+      }));
+      const engine = {
+        hanakoHome: tmpDir,
+        registerSessionFile,
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+
+      await submitDesktopSessionMessage(engine, {
+        sessionPath,
+        text: "see bridge image",
+        images: [{ type: "image", data: "BASE64", mimeType: "image/png" }],
+        inboundFiles: [{
+          type: "image",
+          filename: "bridge.png",
+          mimeType: "image/png",
+          buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        }],
+        displayMessage: { text: "see bridge image" },
+      });
+
+      const savedPath = registerSessionFile.mock.calls[0][0].filePath;
+      expect(registerSessionFile).toHaveBeenCalledWith({
+        sessionPath,
+        filePath: expect.stringContaining(path.join(tmpDir, "session-files")),
+        label: "bridge.png",
+        origin: "bridge_inbound",
+        storageKind: "managed_cache",
+      });
+      expect(engine.emitEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "session_user_message",
+          message: expect.objectContaining({
+            attachments: [expect.objectContaining({ fileId: "sf_rc_inbound", path: savedPath })],
+          }),
+        }),
+        sessionPath,
+      );
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        sessionPath,
+        `${sessionFileMarker({
+          fileId: "sf_rc_inbound",
+          sessionPath,
+          label: "bridge.png",
+        })}\n[attached_image: ${savedPath}]\nsee bridge image`,
+        expect.objectContaining({
+          imageAttachmentPaths: [savedPath],
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

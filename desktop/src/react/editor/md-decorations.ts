@@ -2,15 +2,20 @@ import {
   EditorView, ViewPlugin, Decoration, WidgetType,
 } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
-import { EditorState, RangeSetBuilder, StateField, type Transaction } from '@codemirror/state';
+import { EditorState, Facet, RangeSetBuilder, StateField, type Transaction } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import katex from 'katex';
 import { hrDecoration } from './widgets/hr';
 import { handleCheckbox } from './widgets/checkbox';
 import { handleBlockquote } from './widgets/blockquote';
 import { handleCodeBlock } from './widgets/code-block';
-import { handleImage } from './widgets/image';
+import { addImageDecoration, addStandardMarkdownImageDecoration, handleImage } from './widgets/image';
 import { handleLink } from './widgets/link';
+import {
+  parseObsidianImageEmbed,
+  resolveMarkdownImageSrc,
+  type MarkdownImageContext,
+} from '../utils/markdown';
 
 export type DecoRange = { from: number; to: number; deco: Decoration };
 export type LivePreviewRange =
@@ -21,9 +26,26 @@ interface LivePreviewOptions {
   includeBlockMath?: boolean;
 }
 
+export const markdownImageContextFacet = Facet.define<MarkdownImageContext, MarkdownImageContext>({
+  combine(values) {
+    return values[0] ?? {};
+  },
+});
+
 export const hideMark = Decoration.replace({});
 const centerLineDeco = Decoration.line({ class: 'cm-center-line' });
 const markDeco = Decoration.mark({ class: 'cm-md-mark' });
+
+class ListBulletWidget extends WidgetType {
+  eq() { return true; }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-list-bullet';
+    return span;
+  }
+}
+const listBulletDeco = Decoration.replace({ widget: new ListBulletWidget() });
+const autolinkDeco = Decoration.mark({ class: 'cm-link-text' });
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?(?:[0-9a-fA-F]{2})?$/;
 const RGB_COLOR_RE = /^rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i;
 const BG_SPAN_RE = /<span\s+style=(["'])\s*background(?:-color)?\s*:\s*([^;"']+)\s*;?\s*\1>([\s\S]*?)<\/span>/ig;
@@ -85,6 +107,33 @@ function collectInlineCodeRanges(line: string): InlineRange[] {
     i = end + tickCount;
   }
   return ranges;
+}
+
+function collectFenceLineNumbers(src: string): Set<number> {
+  const fenced = new Set<number>();
+  const lines = src.split('\n');
+  let inFence = false;
+  let fenceChar: '`' | '~' | null = null;
+
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const line = lines[idx];
+    const fence = line.match(FENCE_RE);
+    if (!inFence && fence) {
+      inFence = true;
+      fenceChar = fence[1][0] as '`' | '~';
+      fenced.add(idx + 1);
+      continue;
+    }
+    if (inFence) {
+      fenced.add(idx + 1);
+      if (fence && fenceChar === fence[1][0]) {
+        inFence = false;
+        fenceChar = null;
+      }
+    }
+  }
+
+  return fenced;
 }
 
 function findInlineMath(line: string, lineOffset: number, ranges: LivePreviewRange[], excluded: InlineRange[]): void {
@@ -282,13 +331,13 @@ function livePreviewDeco(range: LivePreviewRange): DecoRange {
 function buildMarkdownBlockDecorations(state: EditorState): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const activeLines = collectActiveLinesFromState(state);
-  const ranges = collectLivePreviewRanges(state.doc.toString(), activeLines)
-    .filter((range): range is Extract<LivePreviewRange, { kind: 'blockMath' }> => range.kind === 'blockMath');
+  const ranges: DecoRange[] = collectLivePreviewRanges(state.doc.toString(), activeLines)
+    .filter((range): range is Extract<LivePreviewRange, { kind: 'blockMath' }> => range.kind === 'blockMath')
+    .map(livePreviewDeco);
 
-  for (const range of ranges) {
-    const { from, to, deco } = livePreviewDeco(range);
-    builder.add(from, to, deco);
-  }
+  ranges.push(...collectActiveImageBlockDecorations(state, activeLines));
+  ranges.sort((a, b) => a.from - b.from || a.to - b.to);
+  for (const { from, to, deco } of ranges) builder.add(from, to, deco);
 
   return builder.finish();
 }
@@ -307,6 +356,7 @@ export const markdownBlockDecoField = StateField.define<DecorationSet>({
 export function buildMarkdownDecorations(view: EditorView): DecorationSet {
   const activeLines = collectActiveLines(view);
   const ranges: DecoRange[] = [];
+  const imageContext = view.state.facet(markdownImageContextFacet);
 
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(view.state).iterate({
@@ -337,17 +387,43 @@ export function buildMarkdownDecorations(view: EditorView): DecorationSet {
             return false; // don't traverse children
         }
 
-        // ── 活跃行：跳过所有 conceal / replace ──
+        if (node.name === 'Image') {
+          handleImage({ view, node, activeLines, ranges, imageContext });
+          return;
+        }
+
+        // ── 活跃行：跳过其他 conceal / replace ──
         if (isActive) return;
 
         // ── 非活跃行：按节点类型处理 ──
         switch (node.name) {
-          case 'Image':
-            handleImage({ view, node, activeLines, ranges });
-            break;
           case 'Link':
             handleLink({ view, node, activeLines, ranges });
             break;
+          case 'Autolink': {
+            // Autolink <url> — hide angle brackets, keep URL text visible with link style
+            const full = view.state.doc.sliceString(node.from, node.to);
+            if (full.startsWith('<') && full.endsWith('>')) {
+              ranges.push({ from: node.from, to: node.from + 1, deco: hideMark });
+              ranges.push({ from: node.from + 1, to: node.to - 1, deco: autolinkDeco });
+              ranges.push({ from: node.to - 1, to: node.to, deco: hideMark });
+            }
+            return false; // prevent child URL/LinkMark from being concealed
+          }
+          case 'ListMark': {
+            const markText = view.state.doc.sliceString(node.from, node.to);
+            if (markText !== '-' && markText !== '*' && markText !== '+') break;
+            let hideTo = node.to;
+            if (view.state.doc.sliceString(hideTo, hideTo + 1) === ' ') hideTo += 1;
+            const rest = view.state.doc.sliceString(node.to, Math.min(node.to + 5, line.to));
+            const isTask = /^ ?\[[ xX]\]/.test(rest);
+            if (isTask) {
+              ranges.push({ from: node.from, to: hideTo, deco: hideMark });
+            } else {
+              ranges.push({ from: node.from, to: hideTo, deco: listBulletDeco });
+            }
+            break;
+          }
           // conceal marks
           case 'HeaderMark': case 'EmphasisMark': case 'CodeMark':
           case 'StrikethroughMark': case 'LinkMark': case 'URL': case 'QuoteMark': {
@@ -364,6 +440,8 @@ export function buildMarkdownDecorations(view: EditorView): DecorationSet {
     });
   }
 
+  collectObsidianImageDecorations(view, activeLines, imageContext, ranges);
+
   for (const range of collectLivePreviewRanges(view.state.doc.toString(), activeLines, { includeBlockMath: false })) {
     ranges.push(livePreviewDeco(range));
   }
@@ -372,6 +450,104 @@ export function buildMarkdownDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const r of ranges) builder.add(r.from, r.to, r.deco);
   return builder.finish();
+}
+
+function collectActiveImageBlockDecorations(
+  state: EditorState,
+  activeLines: Set<number>,
+): DecoRange[] {
+  const ranges: DecoRange[] = [];
+  const imageContext = state.facet(markdownImageContextFacet);
+  const fencedLines = collectFenceLineNumbers(state.doc.toString());
+
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== 'Image') return;
+      const line = state.doc.lineAt(node.from);
+      if (!activeLines.has(line.number)) return;
+      if (fencedLines.has(line.number)) return;
+      if (state.doc.lineAt(node.to).number !== line.number) return;
+
+      addStandardMarkdownImageDecoration({
+        source: state.doc.sliceString(node.from, node.to),
+        ranges,
+        from: node.from,
+        to: node.to,
+        lineTo: line.to,
+        imageContext,
+        placement: 'below-source-line',
+      });
+    },
+  });
+
+  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
+    if (!activeLines.has(lineNo) || fencedLines.has(lineNo)) continue;
+    const line = state.doc.line(lineNo);
+    collectObsidianImagesInLine(line.text, line.from, imageContext, ranges, true);
+  }
+
+  return ranges.sort((a, b) => a.from - b.from || a.to - b.to);
+}
+
+function collectObsidianImageDecorations(
+  view: EditorView,
+  activeLines: Set<number>,
+  imageContext: MarkdownImageContext,
+  ranges: DecoRange[],
+): void {
+  const fencedLines = collectFenceLineNumbers(view.state.doc.toString());
+
+  for (const { from, to } of view.visibleRanges) {
+    let line = view.state.doc.lineAt(from);
+    while (line.from <= to) {
+      if (!activeLines.has(line.number) && !fencedLines.has(line.number)) {
+        collectObsidianImagesInLine(
+          line.text,
+          line.from,
+          imageContext,
+          ranges,
+          false,
+        );
+      }
+      if (line.to >= view.state.doc.length) break;
+      line = view.state.doc.line(line.number + 1);
+    }
+  }
+}
+
+function collectObsidianImagesInLine(
+  line: string,
+  lineOffset: number,
+  imageContext: MarkdownImageContext,
+  ranges: DecoRange[],
+  isActiveLine: boolean,
+): void {
+  const inlineCodeRanges = collectInlineCodeRanges(line);
+  let from = 0;
+
+  while (from < line.length) {
+    const start = findNextOutside(line, '![[', from, inlineCodeRanges);
+    if (start < 0) return;
+    const close = findNextOutside(line, ']]', start + 3, inlineCodeRanges);
+    if (close < 0) return;
+
+    const parsed = parseObsidianImageEmbed(line.slice(start + 3, close));
+    if (parsed) {
+      const src = resolveMarkdownImageSrc(parsed.src, imageContext);
+      addImageDecoration({
+        ranges,
+        from: lineOffset + start,
+        to: lineOffset + close + 2,
+        lineTo: lineOffset + line.length,
+        url: src,
+        alt: parsed.alt,
+        dimensions: parsed.dimensions,
+        placement: isActiveLine ? 'below-source-line' : 'replace-source',
+      });
+    }
+
+    from = close + 2;
+  }
 }
 
 export const markdownDecoPlugin = ViewPlugin.fromClass(

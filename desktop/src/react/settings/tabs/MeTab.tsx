@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store';
 import { hanaFetch } from '../api';
 import { invalidateConfigCache } from '../../hooks/use-config';
@@ -9,7 +10,10 @@ import { SettingsRow } from '../components/SettingsRow';
 import styles from '../Settings.module.css';
 
 export function MeTab() {
-  const { settingsConfig, userAvatarUrl, showToast } = useSettingsStore();
+  const { settingsConfig, userAvatarUrl } = useSettingsStore(
+    useShallow(s => ({ settingsConfig: s.settingsConfig, userAvatarUrl: s.userAvatarUrl }))
+  );
+  const showToast = useSettingsStore(s => s.showToast);
   const [userName, setUserName] = useState('');
   const [userProfile, setUserProfile] = useState('');
 
@@ -104,7 +108,7 @@ export function MeTab() {
         </div>
 
         <SettingsRow
-          label="名字"
+          label={t('settings.me.nameLabel')}
           hint={t('settings.me.userNameHint')}
           layout="stacked"
           control={

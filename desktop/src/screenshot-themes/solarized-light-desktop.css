@@ -34,13 +34,13 @@ html {
 }
 
 body {
-  font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "Lora", "Georgia", serif;
+  font-family: var(--screenshot-font-family, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "Lora", "Georgia", serif);
   font-size: 1rem;
   line-height: 1.75;
   color: #4a5d66;
   background-color: var(--base3);
-  padding: 2rem 3rem;
-  max-width: 800px;
+  padding: 2rem 2.25rem;
+  max-width: 832px;
   margin: 0 auto;
 }
 
@@ -82,7 +82,7 @@ a {
   color: var(--blue);
   text-decoration: none;
   border-bottom: 1px solid transparent;
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-fast);
 }
 
 a:hover {
@@ -210,8 +210,12 @@ em {
 }
 
 /* Task Lists */
-input[type="checkbox"] {
+.task-list-item {
+  list-style-type: none;
+}
+.task-list-item-checkbox {
   margin-right: 0.5em;
+  vertical-align: middle;
 }
 
 /* Definition Lists */

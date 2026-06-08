@@ -35,6 +35,7 @@ interface FloatingInputProps {
   placeholder?: string;
   ariaLabel?: string;
   submitLabel?: string;
+  onRootElementChange?: (element: HTMLDivElement | null) => void;
 }
 
 function getViewportSize(): ViewportSize {
@@ -57,6 +58,7 @@ export function FloatingInput({
   placeholder = '',
   ariaLabel = 'Floating input',
   submitLabel = 'Send',
+  onRootElementChange,
 }: FloatingInputProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -67,6 +69,11 @@ export function FloatingInput({
   const [phase, setPhase] = useState<'opening' | 'open' | 'closing'>(open ? 'open' : 'closing');
   const [viewport, setViewport] = useState<ViewportSize>(() => getViewportSize());
   const [floatingHeight, setFloatingHeight] = useState(FALLBACK_HEIGHT);
+
+  const setRootElement = useCallback((element: HTMLDivElement | null) => {
+    rootRef.current = element;
+    onRootElementChange?.(element);
+  }, [onRootElementChange]);
 
   useEffect(() => {
     const handleResize = () => setViewport(getViewportSize());
@@ -168,7 +175,7 @@ export function FloatingInput({
 
   return (
     <div
-      ref={rootRef}
+      ref={setRootElement}
       className={className}
       data-origin={origin}
       style={{ left: `${position.left}px`, top: `${position.top}px` }}

@@ -30,6 +30,8 @@ export interface UiSlice {
   mediaViewer: MediaViewerState | null;
   /** 主窗口内嵌设置浮层状态 */
   settingsModal: SettingsModalState;
+  /** Skill catalog revision; bumped by app_event skills-changed to refresh derived lists. */
+  skillCatalogVersion: number;
   /** 频道创建弹窗是否可见 */
   channelCreateOverlayVisible: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -70,6 +72,7 @@ export const createUiSlice = (
   skillViewerData: null,
   mediaViewer: null,
   settingsModal: { open: false, activeTab: 'agent' },
+  skillCatalogVersion: 0,
   channelCreateOverlayVisible: false,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setSidebarAutoCollapsed: (collapsed) => set({ sidebarAutoCollapsed: collapsed }),

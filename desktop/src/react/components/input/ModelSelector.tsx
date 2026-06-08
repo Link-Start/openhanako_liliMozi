@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useStore } from '../../stores';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { useI18n } from '../../hooks/use-i18n';
 import type { Model } from '../../types';
 import type { SessionModel } from '../../stores/chat-types';
+import { SelectWidget, ProviderGroupHeader, selectWidgetStyles, type SelectOption } from '@/ui';
 import styles from './InputArea.module.css';
 
 export function ModelSelector({ models, sessionModel, isStreaming = false }: {
@@ -12,9 +13,7 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
   isStreaming?: boolean;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
   const matchedSessionModel = sessionModel
     ? models.find(m => m.id === sessionModel.id && m.provider === sessionModel.provider)
@@ -31,16 +30,6 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
     return t('model.noneConfigured') || t('model.unknown') || '...';
   })();
 
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
   const switchModel = useCallback(async (modelId: string, provider?: string) => {
     try {
       const { currentSessionPath, pendingNewSession, chatSessions, sessionModelsByPath } = useStore.getState();
@@ -51,7 +40,7 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
         const sm = sessionModelsByPath[currentSessionPath];
         const useSession = !!(sm?.id && sm?.provider);
         const cur = useSession ? sm : models.find(m => m.isCurrent);
-        if (cur && modelId === cur.id && provider === cur.provider) { setOpen(false); return; }
+        if (cur && modelId === cur.id && provider === cur.provider) return;
 
         // Per-session switch
         setLoading(true);
@@ -60,8 +49,9 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionPath: currentSessionPath, modelId, provider }),
+          throwOnHttpError: false,
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'switch failed');
 
         if (data.model) {
@@ -73,8 +63,8 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
 
         if (data.adaptations?.length) {
           const msgs: Record<string, string> = {
-            compacted: '已压缩对话历史以适配新模型',
-            truncated: '早期对话已被截断以适配新模型',
+            compacted: t('model.adaptation.compacted'),
+            truncated: t('model.adaptation.truncated'),
           };
           const text = data.adaptations.map((a: string) => msgs[a] || a).join('；');
           useStore.getState().addToast(text, 'info');
@@ -83,12 +73,17 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
         setLoading(false);
         useStore.getState().setModelSwitching(false);
       } else {
-        // New session path — existing logic unchanged
-        await hanaFetch('/api/models/set', {
+        // New session path: persist the model selection and mirror its thinking default into the draft.
+        const setRes = await hanaFetch('/api/models/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ modelId, provider }),
         });
+        const setData = await setRes.json().catch(() => ({}));
+        if (setData.thinkingLevel) {
+          useStore.getState().setThinkingLevel(setData.thinkingLevel);
+          useStore.getState().setPendingNewSessionThinkingLevel(setData.thinkingLevel);
+        }
         if (currentSessionPath && !pendingNewSession) {
           const { createNewSession } = await import('../../stores/session-actions');
           await createNewSession();
@@ -110,7 +105,6 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
       setLoading(false);
       useStore.getState().setModelSwitching(false);
     }
-    setOpen(false);
   }, [models, t]);
 
   // 按 provider 分组
@@ -134,48 +128,56 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
   const groupKeys = Object.keys(grouped);
   const hasMultipleProviders = groupKeys.length > 1 || (groupKeys.length === 1 && groupKeys[0] !== '');
 
+  const valueOf = (m: { id: string; provider?: string }) => `${m.provider || ''}/${m.id}`;
+
+  const options: SelectOption[] = useMemo(() => {
+    return groupKeys.flatMap(provider =>
+      grouped[provider].map(m => ({
+        value: valueOf(m),
+        label: m.name,
+        group: hasMultipleProviders ? (provider || '—') : undefined,
+      })),
+    );
+  }, [grouped, groupKeys, hasMultipleProviders]);
+
+  const currentValue = current ? valueOf(current) : '';
+
+  const handleSelect = useCallback((val: string) => {
+    const all = groupKeys.flatMap(p => grouped[p]);
+    const m = all.find(mm => valueOf(mm) === val);
+    if (m) switchModel(m.id, m.provider);
+  }, [grouped, groupKeys, switchModel]);
+
   return (
-    <div className={`${styles['model-selector']}${open ? ` ${styles.open}` : ''}`} ref={ref}>
-      <button
-        className={`${styles['model-pill']}${loading ? ` ${styles['model-pill-disabled']}` : ''}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (loading) return;
-          if (isStreaming) {
-            useStore.getState().addToast(t('model.switchWhileStreaming'), 'warning', 4000, {
-              dedupeKey: 'model-switch-streaming',
-            });
-            return;
-          }
-          setOpen(!open);
-        }}
-      >
-        <span>{label}</span>
-        <span className={styles['model-arrow']}>▾</span>
-      </button>
-      {open && (
-        <div className={styles['model-dropdown']}>
-          {groupKeys.map(provider => {
-            const items = grouped[provider];
-            return (
-              <div key={provider || '__none'}>
-                {hasMultipleProviders && (
-                  <div className={styles['model-group-header']}>{provider || '—'}</div>
-                )}
-                {items.map(m => (
-                  <button
-                    key={`${m.provider}/${m.id}`}
-                    className={`${styles['model-option']}${(m.id === current?.id && m.provider === current?.provider) ? ` ${styles.active}` : ''}`}
-                    onClick={() => switchModel(m.id, m.provider)}
-                  >
-                    {m.name}
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </div>
+    <SelectWidget
+      className={styles['model-selector']}
+      options={options}
+      value={currentValue}
+      onChange={handleSelect}
+      disabled={loading}
+      placement="top"
+      align="end"
+      offset={4}
+      popupMinWidth={180}
+      popupClassName={selectWidgetStyles.providerInset}
+      triggerBare
+      onAttemptOpen={() => {
+        if (isStreaming) {
+          useStore.getState().addToast(t('model.switchWhileStreaming'), 'warning', 4000, {
+            dedupeKey: 'model-switch-streaming',
+          });
+          return false;
+        }
+        return true;
+      }}
+      triggerClassName={`${styles['model-pill']}${loading ? ` ${styles['model-pill-disabled']}` : ''}`}
+      renderTrigger={() => (
+        <>
+          <span>{label}</span>
+          <span className={styles['model-arrow']}>▾</span>
+        </>
       )}
-    </div>
+      renderGroupHeader={(g) => <ProviderGroupHeader provider={g} />}
+    />
   );
 }

@@ -1,31 +1,35 @@
 /**
- * DeskDropZone — 工作空间区域的拖放包装容器
+ * DeskDropZone — 工作台区域的拖放包装容器
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import {
   deskCurrentDir,
   deskUploadFiles,
+  deskUploadBrowserFilesToSubdir,
   deskUploadFilesToSubdir,
   deskCreateFile,
-  deskMkdir,
   deskMoveTreeFiles,
 } from '../../stores/desk-actions';
 import {
   clearAppFileDragPayload,
   readAppFileDragPayload,
 } from '../../utils/app-file-drag';
+import { isWebRuntime } from '../../utils/platform-runtime';
 import type { CtxMenuState } from './desk-types';
+import type { InlineCreateKind } from './DeskTree';
 import s from './Desk.module.css';
 
 export function DeskDropZone({
   children,
   onShowMenu,
+  onStartCreate,
   framed = true,
   rightWorkspaceLayout = false,
 }: {
   children: React.ReactNode;
   onShowMenu: (state: CtxMenuState) => void;
+  onStartCreate: (parentSubdir: string, kind: InlineCreateKind) => Promise<void>;
   framed?: boolean;
   rightWorkspaceLayout?: boolean;
 }) {
@@ -75,12 +79,14 @@ export function DeskDropZone({
     onShowMenu({
       position: { x: e.clientX, y: e.clientY },
       items: [
-        { label: tFn('desk.ctx.newMdFile'), action: () => deskCreateFile('') },
-        { label: tFn('desk.ctx.newFolder'), action: () => deskMkdir() },
-        { label: tFn('desk.ctx.openInFinder'), action: () => { const p = deskCurrentDir(); if (p) window.platform?.showInFinder?.(p); } },
+        { label: tFn('desk.ctx.newMdFile'), action: () => { void onStartCreate('', 'markdown'); } },
+        { label: tFn('desk.ctx.newFolder'), action: () => { void onStartCreate('', 'folder'); } },
+        ...(!isWebRuntime() ? [
+          { label: tFn('desk.ctx.openInFinder'), action: () => { const p = deskCurrentDir(); if (p) window.platform?.showInFinder?.(p); } },
+        ] : []),
       ],
     });
-  }, [onShowMenu]);
+  }, [onShowMenu, onStartCreate]);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
@@ -116,6 +122,10 @@ export function DeskDropZone({
     const text = e.dataTransfer.getData('text/plain');
 
     if (files && files.length > 0) {
+      if (isWebRuntime()) {
+        await deskUploadBrowserFilesToSubdir(Array.from(files), '');
+        return;
+      }
       const paths: string[] = [];
       for (const f of Array.from(files)) {
         const p = window.platform?.getFilePath?.(f);

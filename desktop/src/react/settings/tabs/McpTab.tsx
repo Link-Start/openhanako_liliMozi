@@ -6,6 +6,7 @@ import { Toggle } from '../widgets/Toggle';
 import { AgentConnectorControls } from './mcp/AgentConnectorControls';
 import { ConnectorForm } from './mcp/ConnectorForm';
 import { ConnectorList } from './mcp/ConnectorList';
+import { connectorsFromMcpJson } from './mcp/mcp-config';
 import {
   EMPTY_MCP_STATE,
   addMcpConnector,
@@ -18,6 +19,7 @@ import {
   setAgentMcpTool,
   setMcpEnabled,
   startMcpOAuth,
+  updateMcpConnector,
 } from './mcp/mcp-api';
 import type { McpConnectorInput } from './mcp/types';
 import styles from '../Settings.module.css';
@@ -32,7 +34,11 @@ export function McpTab() {
   viewAgentIdRef.current = viewAgentId;
 
   const [state, setState] = useState(EMPTY_MCP_STATE);
+  const [loadingState, setLoadingState] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [editingConnectorId, setEditingConnectorId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importJson, setImportJson] = useState('');
 
   useEffect(() => {
     if (!viewAgentId && currentAgentId) setViewAgentId(currentAgentId);
@@ -40,14 +46,20 @@ export function McpTab() {
 
   const loadState = useCallback(async () => {
     const agentId = viewAgentIdRef.current;
-    if (!agentId) return;
+    if (!agentId) {
+      setLoadingState(false);
+      return;
+    }
+    const snapshotAgentId = agentId;
+    setLoadingState(true);
     try {
-      const snapshotAgentId = agentId;
       const data = await loadMcpState(agentId);
       if (viewAgentIdRef.current !== snapshotAgentId) return;
       setState(data);
     } catch (err) {
       console.error('[mcp] load failed:', err);
+    } finally {
+      if (viewAgentIdRef.current === snapshotAgentId) setLoadingState(false);
     }
   }, []);
 
@@ -70,11 +82,25 @@ export function McpTab() {
 
   const toggleGlobal = (enabled: boolean) => run('global', () => setMcpEnabled(enabled));
   const toggleGlobalFromRow = () => {
-    if (busyKey === 'global') return;
+    if (loadingState || busyKey === 'global') return;
     toggleGlobal(!state.enabled);
   };
 
   const addConnector = (input: McpConnectorInput) => run('add', () => addMcpConnector(input));
+  const updateConnector = (connectorId: string, input: McpConnectorInput) =>
+    run(`update-${connectorId}`, async () => {
+      await updateMcpConnector(connectorId, input);
+      setEditingConnectorId(null);
+    });
+
+  const importConnectors = () => run('import-json', async () => {
+    const connectors = connectorsFromMcpJson(importJson);
+    for (const connector of connectors) {
+      await addMcpConnector(connector);
+    }
+    setImportJson('');
+    setImportOpen(false);
+  });
 
   const connectorAction = (connectorId: string, action: 'start' | 'stop' | 'refresh-tools') =>
     run(`${action}-${connectorId}`, () => runMcpConnectorAction(connectorId, action));
@@ -124,22 +150,72 @@ export function McpTab() {
           </div>
           <div className={styles['skills-list-actions']}>
             <Toggle
-              on={state.enabled}
+              on={loadingState ? undefined : state.enabled}
               onChange={toggleGlobal}
               disabled={busyKey === 'global'}
-              label={state.enabled ? t('common.on') : t('common.off')}
+              label={loadingState ? t('status.loading') : state.enabled ? t('common.on') : t('common.off')}
             />
           </div>
         </div>
       </SettingsSection>
 
       <SettingsSection title={t('settings.mcp.connectorsTitle')} variant="flush">
-        <ConnectorForm disabled={busyKey === 'add'} onAdd={addConnector} />
+        <div className={styles['pv-add-form-actions']}>
+          <button
+            className={styles['pv-add-form-btn']}
+            type="button"
+            disabled={busyKey === 'import-json'}
+            onClick={() => setImportOpen(!importOpen)}
+          >
+            {t('settings.mcp.importJson')}
+          </button>
+        </div>
+        {importOpen && (
+          <div className={styles['pv-add-form']}>
+            <div className={styles['settings-form-field']}>
+              <label className={styles['settings-form-label']}>{t('settings.mcp.importJson')}</label>
+              <textarea
+                className={styles['settings-textarea']}
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+                placeholder={'{"mcpServers":{"example":{"command":"npx","args":["-y","mcp-server-example"]}}}'}
+              />
+              <span className={styles['settings-form-hint']}>{t('settings.mcp.importJsonHint')}</span>
+            </div>
+            <div className={styles['pv-add-form-actions']}>
+              <button
+                className={styles['pv-add-form-btn']}
+                type="button"
+                onClick={() => setImportOpen(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className={`${styles['pv-add-form-btn']} ${styles['primary']}`}
+                type="button"
+                disabled={!importJson.trim() || busyKey === 'import-json'}
+                onClick={importConnectors}
+              >
+                {t('settings.mcp.importJson')}
+              </button>
+            </div>
+          </div>
+        )}
+        <ConnectorForm
+          key={editingConnectorId || 'new'}
+          disabled={busyKey === 'add' || (editingConnectorId ? busyKey === `update-${editingConnectorId}` : false)}
+          editingConnector={state.connectors.find(connector => connector.id === editingConnectorId) || null}
+          onAdd={addConnector}
+          onUpdate={updateConnector}
+          onCancelEdit={() => setEditingConnectorId(null)}
+        />
         <ConnectorList
           connectors={state.connectors}
           globalEnabled={state.enabled}
+          loading={loadingState}
           busyKey={busyKey}
           onAction={connectorAction}
+          onEdit={setEditingConnectorId}
           onRemove={removeConnector}
           onOAuthStart={connectOAuth}
           onOAuthLogout={disconnectOAuth}
@@ -149,6 +225,7 @@ export function McpTab() {
       <AgentConnectorControls
         connectors={state.connectors}
         globalEnabled={state.enabled}
+        loading={loadingState}
         viewAgentId={viewAgentId}
         busyKey={busyKey}
         agentConfig={state.agentConfig}

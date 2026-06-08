@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSettingsStore } from '../store';
 import { hanaFetch, hanaUrl } from '../api';
 import { t } from '../helpers';
 import { loadAgents } from '../actions';
+import { Overlay } from '../../ui';
 import styles from '../Settings.module.css';
 
 const CROP_SIZE = 256;
-const OUTPUT_SIZE = 512;
+const OUTPUT_SIZE = 1024;
 
 interface CropState {
   role: string;
@@ -108,6 +109,8 @@ export function CropOverlay() {
     canvas.width = OUTPUT_SIZE;
     canvas.height = OUTPUT_SIZE;
     const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     const srcX = -s.ox / s.scale;
     const srcY = -s.oy / s.scale;
     const srcSize = CROP_SIZE / s.scale;
@@ -118,11 +121,15 @@ export function CropOverlay() {
     await uploadCroppedAvatar(role, dataUrl);
   };
 
-  if (!visible) return null;
-
   return (
-    <div className={`${styles['crop-overlay']} ${styles['visible']}`} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className={styles['crop-card']}>
+    <Overlay
+      open={visible}
+      onClose={close}
+      backdrop="blur"
+      zIndex={110}
+      className={styles['crop-card']}
+      disableContainerAnimation
+    >
         <div className={styles['crop-header']}>
           <h3 className={styles['crop-title']}>{t('settings.crop.title')}</h3>
           <button className={styles['crop-close']} onClick={close}>✕</button>
@@ -143,8 +150,7 @@ export function CropOverlay() {
           <button className={`${styles['crop-btn']} ${styles['crop-btn-cancel']}`} onClick={close}>{t('settings.crop.cancel')}</button>
           <button className={`${styles['crop-btn']} ${styles['crop-btn-confirm']}`} onClick={confirm}>{t('settings.crop.confirm')}</button>
         </div>
-      </div>
-    </div>
+    </Overlay>
   );
 }
 

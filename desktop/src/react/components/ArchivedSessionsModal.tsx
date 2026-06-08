@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useI18n } from '../hooks/use-i18n';
+import { Overlay } from '../ui';
 import {
   listArchivedSessions,
   restoreSession,
@@ -29,9 +29,10 @@ function formatAgo(iso: string, t: (k: string, v?: Record<string, string | numbe
 interface Props {
   open: boolean;
   onClose: () => void;
+  zIndex?: number;
 }
 
-export function ArchivedSessionsModal({ open, onClose }: Props) {
+export function ArchivedSessionsModal({ open, onClose, zIndex = 1000 }: Props) {
   const { t } = useI18n();
   const [list, setList] = useState<ArchivedSession[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,8 +46,6 @@ export function ArchivedSessionsModal({ open, onClose }: Props) {
   useEffect(() => {
     if (open) refresh();
   }, [open, refresh]);
-
-  if (!open) return null;
 
   const totalSize = list.reduce((s, x) => s + x.sizeBytes, 0);
 
@@ -92,9 +91,15 @@ export function ArchivedSessionsModal({ open, onClose }: Props) {
     await refresh();
   };
 
-  return createPortal(
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+  return (
+    <Overlay
+      open={open}
+      onClose={onClose}
+      backdrop="blur"
+      zIndex={zIndex}
+      className={styles.modal}
+      disableContainerAnimation
+    >
         <div className={styles.header}>
           <h2 className={styles.title}>{t('session.archived.title')}</h2>
           <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
@@ -158,8 +163,6 @@ export function ArchivedSessionsModal({ open, onClose }: Props) {
             </div>
           </div>
         </div>
-      </div>
-    </div>,
-    document.body,
+    </Overlay>
   );
 }

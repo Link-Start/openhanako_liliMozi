@@ -6,7 +6,7 @@ const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 export default defineConfig({
   build: {
     lib: {
-      entry: "server/index.js",
+      entry: "server/index.ts",
       formats: ["es"],
       fileName: () => "index.js",
     },
@@ -14,7 +14,9 @@ export default defineConfig({
     rollupOptions: {
       external: [
         ...nodeBuiltins,
+        "@node-rs/jieba",
         "better-sqlite3",
+        "node-pty",
 
         // ws: CJS package, Rollup's CJS→ESM interop loses WebSocketServer
         // named export. Keep external — available as PI SDK transitive dep.
@@ -23,6 +25,8 @@ export default defineConfig({
         "@silvia-odwyer/photon-node",
         "@larksuiteoapi/node-sdk",
         "node-telegram-bot-api",
+        "proxy-agent",
+        "undici",
         "exceljs",
         "mammoth",
         // jsdom: CJS package that reads package-local resources via __dirname
@@ -42,7 +46,7 @@ export default defineConfig({
         inlineDynamicImports: true,
       },
     },
-    target: "node22",
+    target: "node24",
     // esbuild minify 只做标识符缩短和空白移除，不做 tree-shaking 变换，
     // 不会触发 inlineDynamicImports 场景下的 TDZ ReferenceError。
     minify: "esbuild",

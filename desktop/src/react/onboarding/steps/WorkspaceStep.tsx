@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DEFAULT_WORKSPACE_DIRNAME } from '../../../../../shared/default-workspace-constants.js';
+import { DEFAULT_WORKSPACE_DIRNAME } from '../../../../../shared/default-workspace-constants.ts';
 import {
   loadDefaultWorkspace,
   saveWorkspace,

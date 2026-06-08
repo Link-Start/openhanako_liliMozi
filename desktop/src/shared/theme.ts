@@ -5,10 +5,9 @@
  * 被 4 个 HTML（index / onboarding / settings / browser-viewer）通过
  * <script src="lib/theme.js"> 引入。执行时序与原 lib/theme.js 一致。
  *
- * 所有主题元信息来自 theme-registry.cjs，这里不再镜像任何常量表。
+ * 所有主题元信息来自 theme-registry ESM adapter，这里不再镜像任何常量表。
  */
-import registry from './theme-registry.cjs';
-import type { ThemeId } from './theme-registry.d.cts';
+import registry, { type ThemeId } from './theme-registry';
 import {
   loadPaperTexturePreference,
   setPaperTexturePreference,
@@ -25,6 +24,8 @@ function applyConcreteTheme(concrete: string): void {
   if (!entry) return;
   document.documentElement.setAttribute('data-theme', concrete);
   if (themeSheet) themeSheet.href = entry.cssPath;
+  loadPaperTexturePreference();
+  (window as unknown as { hana?: { syncWindowTheme?: (theme: string) => void } }).hana?.syncWindowTheme?.(concrete);
 }
 
 let systemThemeListener: ((e: MediaQueryListEvent) => void) | null = null;

@@ -15,12 +15,48 @@ interface DiscoveredModel {
   maxOutput?: number | null;
 }
 
+type CapabilityKind = 'image' | 'video' | 'audio' | 'reasoning';
+
+function CapabilityIcon({ kind }: { kind: CapabilityKind }) {
+  const label = t(`settings.api.capability.${kind}`);
+  return (
+    <span className={styles['pv-capability-icon']} title={label} aria-label={label}>
+      {kind === 'image' ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        </svg>
+      ) : kind === 'video' ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="13" height="14" rx="2" />
+          <path d="m16 9 5-3v12l-5-3" />
+        </svg>
+      ) : kind === 'audio' ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 10v4" />
+          <path d="M8 7v10" />
+          <path d="M12 4v16" />
+          <path d="M16 8v8" />
+          <path d="M20 11v2" />
+        </svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 18h6" />
+          <path d="M10 22h4" />
+          <path d="M12 2a7 7 0 0 0-4 12.74V16a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1.26A7 7 0 0 0 12 2Z" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
 export function ProviderModelList({ providerId, summary, onRefresh }: {
   providerId: string;
   summary: ProviderSummary;
   onRefresh: () => Promise<void>;
 }) {
-  const { showToast } = useSettingsStore();
+  const showToast = useSettingsStore(s => s.showToast);
   const [search, setSearch] = useState('');
   const [customInput, setCustomInput] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
@@ -130,6 +166,8 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
       if (models.length === 0) { showFetchHint(t('settings.providers.fetchFailed'), false); return; }
       // Backend already cached the results; just refresh the dropdown
       setDiscoveredModels(models);
+      setSearch('');
+      setDropdownOpen(true);
       showFetchHint(t('settings.providers.fetchSuccess', { name: providerId, n: models.length }), true);
     } catch {
       showFetchHint(t('settings.providers.fetchFailed'), false);
@@ -164,10 +202,16 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
           <div className={styles['pv-fav-list']}>
             {currentModelIds.map(mid => {
               const meta = lookupModelMeta(mid, providerId) || {};
+              const displayName = meta.displayName || meta.name || mid;
+              const showModelId = displayName !== mid;
               return (
                 <div key={mid} className={styles['pv-fav-item']}>
-                  <span className={styles['pv-fav-item-name']} title={mid}>{meta.displayName || meta.name || mid}</span>
-                  {(meta.displayName || meta.name) && meta.displayName !== mid && meta.name !== mid && <span className={styles['pv-fav-item-id']}>{mid}</span>}
+                  <span className={styles['pv-fav-item-name']} title={String(displayName)}>{displayName}</span>
+                  {showModelId && <span className={styles['pv-fav-item-id']} title={mid}>{mid}</span>}
+                  {meta.image === true && <CapabilityIcon kind="image" />}
+                  {meta.video === true && <CapabilityIcon kind="video" />}
+                  {meta.audio === true && <CapabilityIcon kind="audio" />}
+                  {meta.reasoning === true && <CapabilityIcon kind="reasoning" />}
                   {meta.context && <span className={styles['pv-model-ctx']}>{formatContext(meta.context)}</span>}
                   <div className={styles['pv-fav-item-actions']}>
                     <button

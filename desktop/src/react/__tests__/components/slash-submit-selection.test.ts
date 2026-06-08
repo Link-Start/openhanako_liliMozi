@@ -21,9 +21,9 @@ function makeCommands() {
 }
 
 describe('resolveSlashSubmitSelection', () => {
-  it('keeps learned-skill extraction focused on workflows instead of user profile memory', () => {
+  it('keeps skill extraction focused on workflows instead of user profile memory', () => {
     expect(XING_PROMPT).toContain('不要把用户的个人画像');
-    expect(XING_PROMPT).toContain('只把“以后遇到类似任务应该怎么做”的内容写成自学技能');
+    expect(XING_PROMPT).toContain('只把“以后遇到类似任务应该怎么做”的内容写成通用技能');
     expect(XING_PROMPT).not.toContain('工作流程、偏好和纠正');
   });
 

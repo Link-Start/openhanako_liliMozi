@@ -1,6 +1,10 @@
 import type { Model } from '../types';
 
-export type ThinkingLevel = 'off' | 'auto' | 'high' | 'xhigh';
+export type ThinkingLevel = 'off' | 'auto' | 'low' | 'medium' | 'high' | 'xhigh';
+
+export function normalizeThinkingLevel(level: ThinkingLevel): ThinkingLevel {
+  return level === 'auto' ? 'medium' : level;
+}
 
 export interface ModelSlice {
   models: Model[];
@@ -16,8 +20,8 @@ export const createModelSlice = (
 ): ModelSlice => ({
   models: [],
   currentModel: null,
-  thinkingLevel: 'auto',
+  thinkingLevel: 'medium',
   setModels: (models) => set({ models }),
   setCurrentModel: (model) => set({ currentModel: model }),
-  setThinkingLevel: (level) => set({ thinkingLevel: level }),
+  setThinkingLevel: (level) => set({ thinkingLevel: normalizeThinkingLevel(level) }),
 });

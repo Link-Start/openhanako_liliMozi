@@ -9,11 +9,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../../stores';
 import type { TabType, PluginPageInfo } from '../../types';
 import { toggleSidebar } from '../SidebarLayout';
-import { toggleJianSidebar } from '../../stores/desk-actions';
 import { resolvePluginTitle } from '../../utils/resolve-plugin-title';
 import { reorderTabs, hidePluginTab, showPluginTab } from '../../stores/plugin-ui-actions';
+import { hydrateCurrentChannelIfNeeded } from '../../stores/channel-actions';
 import { PluginTabOverflow } from '../plugin/PluginTabOverflow';
-import { ContextMenu, type ContextMenuItem } from '../ContextMenu';
+import { ContextMenu, type ContextMenuItem } from '../../ui';
 import styles from './Channels.module.css';
 
 declare function t(key: string, vars?: Record<string, string | number>): string;
@@ -31,18 +31,19 @@ export function switchTab(tab: TabType) {
   }
 
   s.setCurrentTab(tab);
+  if (tab === 'channels') {
+    hydrateCurrentChannelIfNeeded().catch((err: unknown) =>
+      console.warn('[channels] hydrate current channel failed', err));
+  }
   localStorage.setItem('hana-tab', tab);
 
-  // Plugin tabs don't have sidebar persistence
-  if (typeof tab === 'string' && tab.startsWith('plugin:')) return;
+  const isPluginTab = typeof tab === 'string' && tab.startsWith('plugin:');
+  if (!isPluginTab) {
+    const savedLeft = localStorage.getItem(`hana-sidebar-${tab}`);
+    const wantLeftOpen = savedLeft !== 'closed';
+    if (s.sidebarOpen !== wantLeftOpen) toggleSidebar(wantLeftOpen);
+  }
 
-  const savedLeft = localStorage.getItem(`hana-sidebar-${tab}`);
-  const wantLeftOpen = savedLeft !== 'closed';
-  if (s.sidebarOpen !== wantLeftOpen) toggleSidebar(wantLeftOpen);
-
-  const savedRight = localStorage.getItem(`hana-jian-${tab}`);
-  const wantRightOpen = savedRight !== 'closed';
-  if (s.jianOpen !== wantRightOpen) toggleJianSidebar(wantRightOpen);
 }
 
 // ── Build ordered tab list ──

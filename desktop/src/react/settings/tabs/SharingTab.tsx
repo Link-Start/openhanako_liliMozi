@@ -2,6 +2,21 @@ import React, { useState } from 'react';
 import { t } from '../helpers';
 import styles from '../Settings.module.css';
 import { SettingsSection } from '../components/SettingsSection';
+import { SettingsRow } from '../components/SettingsRow';
+import { NumberInput } from '../components/NumberInput';
+import { SelectWidget } from '@/ui';
+import {
+  FOLLOW_READING_FONT_ID,
+  READING_FONT_PRESETS,
+  SCREENSHOT_FONT_STORAGE_KEY,
+  normalizeFontSelectionId,
+  readScreenshotFontSelectionId,
+} from '../../utils/font-presets';
+import {
+  SCREENSHOT_SEGMENT_VISIBLE_CHAR_LIMIT,
+  SCREENSHOT_SEGMENT_VISIBLE_CHAR_LIMIT_STORAGE_KEY,
+  readScreenshotSegmentVisibleCharLimit,
+} from '../../utils/screenshot-segments';
 
 // 静态预览图（由 scripts/generate-screenshot-previews.cjs 生成）
 import lightMobile from '../../../assets/screenshot-previews/light-mobile.png';
@@ -27,6 +42,38 @@ export function SharingTab() {
   const [screenshotWidth, setScreenshotWidth] = useState(
     () => localStorage.getItem('hana-screenshot-width') || 'mobile'
   );
+  const [screenshotFont, setScreenshotFont] = useState(() => readScreenshotFontSelectionId());
+  const [segmentLimit, setSegmentLimit] = useState(() => readScreenshotSegmentVisibleCharLimit());
+  const fontSelectOptions = [
+    { value: FOLLOW_READING_FONT_ID, label: t('settings.fonts.followReading') },
+    ...READING_FONT_PRESETS.map(preset => ({
+      value: preset.id,
+      label: t(preset.labelKey),
+    })),
+  ];
+
+  const handleSegmentLimitChange = (value: number) => {
+    const next = Math.max(1_000, Math.min(100_000, Math.round(value)));
+    setSegmentLimit(next);
+    if (next === SCREENSHOT_SEGMENT_VISIBLE_CHAR_LIMIT) {
+      localStorage.removeItem(SCREENSHOT_SEGMENT_VISIBLE_CHAR_LIMIT_STORAGE_KEY);
+    } else {
+      localStorage.setItem(SCREENSHOT_SEGMENT_VISIBLE_CHAR_LIMIT_STORAGE_KEY, String(next));
+    }
+  };
+
+  const handleScreenshotFontChange = (value: string) => {
+    const next = normalizeFontSelectionId(value, {
+      allowFollow: true,
+      fallback: FOLLOW_READING_FONT_ID,
+    });
+    setScreenshotFont(next);
+    if (next === FOLLOW_READING_FONT_ID) {
+      localStorage.removeItem(SCREENSHOT_FONT_STORAGE_KEY);
+    } else {
+      localStorage.setItem(SCREENSHOT_FONT_STORAGE_KEY, next);
+    }
+  };
 
   return (
     <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="sharing">
@@ -77,6 +124,38 @@ export function SharingTab() {
             );
           })}
         </div>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.screenshot.font')}>
+        <SettingsRow
+          label={t('settings.screenshot.fontLabel')}
+          hint={t('settings.screenshot.fontHint')}
+          control={
+            <SelectWidget
+              options={fontSelectOptions}
+              value={screenshotFont}
+              onChange={handleScreenshotFontChange}
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.screenshot.segmentTitle')}>
+        <SettingsRow
+          label={t('settings.screenshot.segmentLimitLabel')}
+          hint={t('settings.screenshot.segmentLimitHint')}
+          control={
+            <NumberInput
+              value={segmentLimit}
+              onChange={handleSegmentLimitChange}
+              min={1000}
+              max={100000}
+              step={1000}
+              fieldWidth="wide"
+              unit={t('settings.screenshot.segmentLimitUnit')}
+            />
+          }
+        />
       </SettingsSection>
     </div>
   );

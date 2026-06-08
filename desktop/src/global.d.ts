@@ -4,7 +4,7 @@
  * 集中声明 window 上的全局属性，避免散落的 `(window as any)` 和重复的 declare global。
  */
 
-import type { PlatformApi } from './react/types';
+import type { DesktopNotificationOptions, PlatformApi } from './react/types';
 
 declare global {
   interface Window {
@@ -17,6 +17,12 @@ declare global {
 
     // ── 日志上报 ──
     __hanaLog: (level: string, module: string, message: string) => void;
+
+    // ── Dev-only browser preview bootstrap（scripts/dev-web.js 注入） ──
+    __HANA_DEV_WEB__?: {
+      serverPort?: string | number;
+      apiBaseUrl?: string;
+    };
 
     // ── 主题（由 lib/theme.js IIFE bundle 注入） ──
     setTheme: (name: string) => void;
@@ -31,7 +37,7 @@ declare global {
     loadSavedPaperTexture: () => void;
 
     // ── Notification bridge ──
-    showNotification?: (title: string, body: string) => void;
+    showNotification?: (title: string, body: string, agentId?: string | null, options?: DesktopNotificationOptions) => void;
     updateBrowserViewer?: (data: { url: string; thumbnail?: string }) => void;
 
     // ── i18n loader ──

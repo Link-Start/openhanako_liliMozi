@@ -1,7 +1,13 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
+
+interface DevWebClientConfig {
+  serverPort: string;
+  apiBaseUrl: string;
+}
 
 /**
  * CSP 集中管理：
@@ -17,9 +23,12 @@ const CSP_PROFILES: Record<string, string> = {
   // 设置窗口：需要 API 连接、图片、字体
   'settings.html':
     "default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: file: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:",
+  // Quick Chat：独立小窗，需要 API/WS、附件预览图片
+  'quick-chat.html':
+    "default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: blob: file: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:",
   // Onboarding：需要 API 连接、图片、字体
   'onboarding.html':
-    "default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: file: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:",
+    "default-src 'self'; connect-src 'self' http: https: ws: wss:; img-src 'self' data: file: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:",
   // 以下窗口不加载第三方字体，保持严格策略
   'splash.html':
     "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' file:",
@@ -27,6 +36,8 @@ const CSP_PROFILES: Record<string, string> = {
     "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' file:",
   'viewer-window.html':
     "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file:",
+  'mobile.html':
+    "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-src 'self' blob:",
 };
 
 function injectCsp(): Plugin {
@@ -133,6 +144,117 @@ function useSourceThemeInDev(): Plugin {
   };
 }
 
+function readDevWebClientConfig(): DevWebClientConfig | null {
+  if (process.env.HANA_DEV_WEB !== '1') return null;
+  const apiBaseUrl = process.env.HANA_DEV_WEB_API_BASE_URL?.trim();
+  if (!apiBaseUrl) {
+    throw new Error('HANA_DEV_WEB requires HANA_DEV_WEB_API_BASE_URL');
+  }
+  const parsed = new URL(apiBaseUrl);
+  const serverPort = process.env.HANA_DEV_WEB_CLIENT_PORT?.trim() || parsed.port;
+  if (!serverPort) {
+    throw new Error('HANA_DEV_WEB requires HANA_DEV_WEB_CLIENT_PORT or a port in HANA_DEV_WEB_API_BASE_URL');
+  }
+  return { serverPort, apiBaseUrl };
+}
+
+/**
+ * Browser-only dev entry for Codex Preview.
+ * Electron keeps using preload; this injects only the Vite-facing browser
+ * endpoint when scripts/dev-web.js starts Vite with HANA_DEV_WEB=1. The
+ * loopback owner token stays in the Vite proxy environment.
+ */
+function injectDevWebConfig(): Plugin {
+  return {
+    name: 'hana-inject-dev-web-config',
+    apply: 'serve',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, ctx) {
+        if (path.basename(ctx.filename) !== 'index.html') return html;
+        const config = readDevWebClientConfig();
+        if (!config) return html;
+        const payload = JSON.stringify(config).replace(/</g, '\\u003c');
+        return html.replace(
+          '</head>',
+          `<script>window.__HANA_DEV_WEB__=${payload};</script>\n</head>`,
+        );
+      },
+    },
+  };
+}
+
+function serveMobilePwaStaticFiles(): Plugin {
+  const srcDir = path.resolve(__dirname, 'desktop/src');
+  const filesByUrl = new Map<string, { file: string; contentType: string }>([
+    ['/sw.js', { file: path.join(srcDir, 'mobile-sw.js'), contentType: 'application/javascript; charset=utf-8' }],
+    ['/manifest.webmanifest', { file: path.join(srcDir, 'mobile-manifest.webmanifest'), contentType: 'application/manifest+json; charset=utf-8' }],
+    ['/icon.png', { file: path.join(srcDir, 'icon.png'), contentType: 'image/png' }],
+  ]);
+
+  return {
+    name: 'hana-serve-mobile-pwa-static-files',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = req.url?.split('?')[0] || '';
+        const asset = filesByUrl.get(pathname);
+        if (!asset) {
+          next();
+          return;
+        }
+        fs.readFile(asset.file, (err, data) => {
+          if (err) {
+            next(err);
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader('Content-Type', asset.contentType);
+          res.setHeader('Cache-Control', 'no-cache');
+          res.end(data);
+        });
+      });
+    },
+  };
+}
+
+function createDevWebProxy(): Record<string, ProxyOptions> | undefined {
+  if (process.env.HANA_DEV_WEB !== '1') return undefined;
+  const target = process.env.HANA_DEV_WEB_SERVER_URL?.trim();
+  const token = process.env.HANA_DEV_WEB_SERVER_TOKEN?.trim();
+  if (!target || !token) {
+    throw new Error('HANA_DEV_WEB proxy requires HANA_DEV_WEB_SERVER_URL and HANA_DEV_WEB_SERVER_TOKEN');
+  }
+  const auth = `Bearer ${token}`;
+  const targetUrl = new URL(target);
+  const wsTarget = `${targetUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${targetUrl.host}`;
+
+  const withAuth = (proxyTarget: string, extra: ProxyOptions = {}): ProxyOptions => ({
+    target: proxyTarget,
+    changeOrigin: true,
+    ...extra,
+    headers: {
+      ...(extra.headers || {}),
+      Authorization: auth,
+    },
+    configure(proxy, options) {
+      proxy.on('proxyReq', (proxyReq) => {
+        proxyReq.setHeader('Authorization', auth);
+      });
+      proxy.on('proxyReqWs', (proxyReq) => {
+        proxyReq.setHeader('Authorization', auth);
+      });
+      extra.configure?.(proxy, options);
+    },
+  });
+
+  return {
+    '/api': withAuth(target),
+    '/preview': withAuth(target),
+    '/ws': withAuth(wsTarget, { ws: true }),
+  };
+}
+
 /**
  * Build 后复制旧文件到 dist-renderer/：
  * 旧 JS 模块、CSS、主题、资源、语言包等，
@@ -146,7 +268,7 @@ function copyLegacyFiles(): Plugin {
       const outDir = path.resolve(__dirname, 'desktop/dist-renderer');
 
       const dirs = ['lib', 'modules', 'themes', 'assets', 'locales'];
-      const files = ['styles.css'];
+      const files = ['styles.css', 'animations.css', 'mobile-manifest.webmanifest', 'mobile-sw.js', 'icon.png'];
 
       for (const dir of dirs) {
         const src = path.join(srcDir, dir);
@@ -158,7 +280,12 @@ function copyLegacyFiles(): Plugin {
 
       for (const file of files) {
         const src = path.join(srcDir, file);
-        const dest = path.join(outDir, file);
+        const destName = file === 'mobile-manifest.webmanifest'
+          ? 'manifest.webmanifest'
+          : file === 'mobile-sw.js'
+          ? 'sw.js'
+          : file;
+        const dest = path.join(outDir, destName);
         if (fs.existsSync(src)) {
           fs.cpSync(src, dest);
         }
@@ -174,13 +301,31 @@ export default defineConfig({
     preserveLegacyCss(),
     react(),
     injectCsp(),
+    injectDevWebConfig(),
+    serveMobilePwaStaticFiles(),
     useSourceThemeInDev(),
     restoreLegacyCss(),
     copyLegacyFiles(),
   ],
   resolve: {
     alias: {
+      '@hana/plugin-protocol': path.resolve(__dirname, 'packages/plugin-protocol/src/index.ts'),
+      '@hana/plugin-sdk': path.resolve(__dirname, 'packages/plugin-sdk/src/index.ts'),
+      '@hana/plugin-runtime': path.resolve(__dirname, 'packages/plugin-runtime/src/index.ts'),
+      '@hana/plugin-components': path.resolve(__dirname, 'packages/plugin-components/src/index.ts'),
       '@': path.resolve(__dirname, 'desktop/src/react'),
+    },
+  },
+  css: {
+    modules: {
+      // hana-* 是 animations.css 全局 keyframe 命名空间，不要被 CSS Modules hash 化。
+      // 否则模块文件里的 animation: hana-popout 会变成 animation: _hana-popout_xxxx，
+      // 跟全局 @keyframes hana-popout 对不上，浏览器静默忽略，动画完全不会播。
+      generateScopedName(name: string, filename: string): string {
+        if (name.startsWith('hana-')) return name;
+        const hash = crypto.createHash('md5').update(filename + '|' + name).digest('hex').slice(0, 5);
+        return `_${name}_${hash}`;
+      },
     },
   },
   build: {
@@ -189,7 +334,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'desktop/src/index.html'),
+        mobile: path.resolve(__dirname, 'desktop/src/mobile.html'),
         settings: path.resolve(__dirname, 'desktop/src/settings.html'),
+        'quick-chat': path.resolve(__dirname, 'desktop/src/quick-chat.html'),
         onboarding: path.resolve(__dirname, 'desktop/src/onboarding.html'),
         splash: path.resolve(__dirname, 'desktop/src/splash.html'),
         'browser-viewer': path.resolve(__dirname, 'desktop/src/browser-viewer.html'),
@@ -200,6 +347,7 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: createDevWebProxy(),
   },
   test: {
     root: path.resolve(__dirname),

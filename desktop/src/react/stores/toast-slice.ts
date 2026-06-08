@@ -18,7 +18,7 @@ export interface ToastSlice {
     persistent?: boolean;
     action?: Toast['action'];
     dedupeKey?: string;
-  }) => void;
+  }) => number | null;
   removeToast: (id: number) => void;
 }
 
@@ -35,7 +35,8 @@ export const createToastSlice = (
 
     if (opts.dedupeKey) {
       const existing = get().toasts;
-      if (existing.some(t => t.dedupeKey === opts.dedupeKey)) return;
+      const duplicate = existing.find(t => t.dedupeKey === opts.dedupeKey);
+      if (duplicate) return duplicate.id;
     }
 
     const persistent = opts.persistent ?? false;
@@ -63,6 +64,7 @@ export const createToastSlice = (
         set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
       }, duration);
     }
+    return id;
   },
   removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 });

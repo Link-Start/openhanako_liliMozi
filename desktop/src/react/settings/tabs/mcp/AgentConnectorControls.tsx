@@ -9,6 +9,7 @@ import type { McpAgentConnectorConfig, McpConnector } from './types';
 interface AgentConnectorControlsProps {
   connectors: McpConnector[];
   globalEnabled: boolean;
+  loading?: boolean;
   viewAgentId: string | null;
   busyKey: string | null;
   agentConfig: {
@@ -23,6 +24,7 @@ interface AgentConnectorControlsProps {
 export function AgentConnectorControls({
   connectors,
   globalEnabled,
+  loading = false,
   viewAgentId,
   busyKey,
   agentConfig,
@@ -41,7 +43,11 @@ export function AgentConnectorControls({
       title={t('settings.mcp.agentTitle')}
       context={<AgentSelect value={viewAgentId} onChange={onAgentChange} />}
     >
-      {connectors.length === 0 ? (
+      {loading ? (
+        <p className={`${styles['agent-skill-empty']} ${styles['mcp-empty-state']}`}>
+          {t('status.loading')}
+        </p>
+      ) : connectors.length === 0 ? (
         <p className={`${styles['agent-skill-empty']} ${styles['mcp-empty-state']}`}>
           {t('settings.mcp.noConnectors')}
         </p>
@@ -57,7 +63,7 @@ export function AgentConnectorControls({
                 <Toggle
                   on={isConnectorEnabled(connector.id)}
                   onChange={(enabled) => onConnectorToggle(connector.id, enabled)}
-                  disabled={!globalEnabled || busyKey === `agent-connector-${connector.id}`}
+                  disabled={loading || !globalEnabled || busyKey === `agent-connector-${connector.id}`}
                   label={isConnectorEnabled(connector.id) ? t('common.on') : t('common.off')}
                 />
               </div>
@@ -72,7 +78,7 @@ export function AgentConnectorControls({
                   <Toggle
                     on={isToolEnabled(connector.id, tool.name)}
                     onChange={(enabled) => onToolToggle(connector.id, tool.name, enabled)}
-                    disabled={!globalEnabled || !isConnectorEnabled(connector.id) || busyKey === `tool-${connector.id}-${tool.name}`}
+                    disabled={loading || !globalEnabled || !isConnectorEnabled(connector.id) || busyKey === `tool-${connector.id}-${tool.name}`}
                   />
                 </div>
               </div>

@@ -1,5 +1,7 @@
 import { EditorView } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
+import { openInternalLink } from '../utils/link-open';
+import { markdownImageContextFacet } from './md-decorations';
 
 export const linkClickHandler = EditorView.domEventHandlers({
   click(event, view) {
@@ -25,7 +27,11 @@ export const linkClickHandler = EditorView.domEventHandlers({
     if (url.startsWith('(') && url.endsWith(')')) {
       url = url.slice(1, -1);
     }
-    (window as any).platform?.openExternal?.(url);
+    const context = view.state.facet(markdownImageContextFacet);
+    void openInternalLink(url, {
+      origin: 'desk',
+      baseFilePath: context.filePath,
+    });
     return true;
   },
 });

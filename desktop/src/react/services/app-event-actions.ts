@@ -1,13 +1,14 @@
 import { useStore } from '../stores';
 import { hanaFetch } from '../hooks/use-hana-fetch';
 import { applyAgentIdentity, loadAgents } from '../stores/agent-actions';
-import { loadSessions } from '../stores/session-actions';
+import { loadSessions, switchSession } from '../stores/session-actions';
 import { loadModels } from '../utils/ui-helpers';
 import { activateWorkspaceDesk } from '../stores/desk-actions';
 import { loadChannels } from '../stores/channel-actions';
 import { applyEditorTypography } from '../editor/typography';
-// @ts-expect-error — shared JS module
-import { mergeWorkspaceHistory } from '../../../../shared/workspace-history.js';
+import { refreshPreviewItemsFromFile } from '../utils/preview-file-refresh';
+import { isRemoteWorkbenchContentRef, refreshPreviewItemsFromRemoteWorkbenchTarget } from '../utils/remote-file-preview';
+import { mergeWorkspaceHistory } from '../../../../shared/workspace-history.ts';
 
 declare const i18n: {
   locale: string;
@@ -22,6 +23,10 @@ declare const i18n: {
 // _switchVersion in session-actions.ts.
 let _agentSwitchVersion = 0;
 let requestContextUsage: (sessionPath: string) => void = () => {};
+
+interface AppEventOptions {
+  source?: string;
+}
 
 export function configureAppEventActions(options: {
   requestContextUsage?: (sessionPath: string) => void;
@@ -59,26 +64,31 @@ function handleAgentWorkspaceChanged(data: any): void {
   const previousHomeFolder = state.homeFolder || null;
   const previousSelectedFolder = state.selectedFolder || null;
   const nextHomeFolder = normalizeWorkspacePath(data.homeFolder);
-  const selectedFollowedDefault = !previousSelectedFolder || previousSelectedFolder === previousHomeFolder;
+  const selectedFollowedDefault = !state.selectedWorkspaceMountId
+    && (!previousSelectedFolder || previousSelectedFolder === previousHomeFolder);
   const nextSelectedFolder = selectedFollowedDefault ? nextHomeFolder : previousSelectedFolder;
   const deskWasShowingDefault =
-    state.pendingNewSession ||
-    !state.currentSessionPath ||
-    !state.deskBasePath ||
-    (!!previousHomeFolder && state.deskBasePath === previousHomeFolder);
+    !state.deskWorkspaceMountId && (
+      state.pendingNewSession ||
+      !state.currentSessionPath ||
+      !state.deskBasePath ||
+      (!!previousHomeFolder && state.deskBasePath === previousHomeFolder)
+    );
 
   useStore.setState({
     homeFolder: nextHomeFolder,
     selectedFolder: nextSelectedFolder,
+    selectedWorkspaceMountId: selectedFollowedDefault ? null : state.selectedWorkspaceMountId,
+    selectedWorkspaceLabel: selectedFollowedDefault ? null : state.selectedWorkspaceLabel,
     workspaceFolders: [],
   });
 
   if (deskWasShowingDefault) {
-    void activateWorkspaceDesk(nextHomeFolder);
+    void activateWorkspaceDesk(nextHomeFolder, { mountId: null });
   }
 }
 
-export function handleAppEvent(type: string, data: any = {}): void {
+export function handleAppEvent(type: string, data: any = {}, options: AppEventOptions = {}): void {
   switch (type) {
     case 'agent-switched': {
       const myVersion = ++_agentSwitchVersion;
@@ -87,6 +97,26 @@ export function handleAppEvent(type: string, data: any = {}): void {
         agentName: data.agentName,
         agentId: data.agentId,
       });
+      const homeFolder = normalizeWorkspacePath(data.homeFolder);
+      const cwd = normalizeWorkspacePath(data.cwd) || homeFolder;
+      useStore.setState({
+        homeFolder,
+        selectedFolder: homeFolder || cwd,
+        workspaceFolders: Array.isArray(data.workspaceFolders)
+          ? data.workspaceFolders.filter((p: unknown): p is string => typeof p === 'string' && !!p.trim())
+          : [],
+        ...(Array.isArray(data.cwdHistory)
+          ? { cwdHistory: mergeWorkspaceHistory(data.cwdHistory, []) }
+          : {}),
+        ...(typeof data.memoryMasterEnabled === 'boolean'
+          ? { memoryMasterEnabled: data.memoryMasterEnabled }
+          : {}),
+      });
+      if (data.sessionPath) {
+        void switchSession(data.sessionPath);
+      } else {
+        void activateWorkspaceDesk(cwd);
+      }
       loadSessions();
 
       // Reset channel state for new agent
@@ -105,21 +135,6 @@ export function handleAppEvent(type: string, data: any = {}): void {
       // Reload models and reset thinking level
       loadModels();
       useStore.setState({ thinkingLevel: 'auto' });
-
-      // Reload workspace defaults and activate the new agent workspace through the
-      // same path used by session switching and the welcome picker.
-      hanaFetch('/api/config').then(r => r.json()).then((cfg: any) => {
-        if (myVersion !== _agentSwitchVersion) return; // stale
-        const homeFolder = readConfigHomeFolder(cfg);
-        useStore.setState({
-          homeFolder,
-          selectedFolder: homeFolder,
-          workspaceFolders: [],
-          cwdHistory: readConfigCwdHistory(cfg),
-          memoryMasterEnabled: readConfigMemoryMasterEnabled(cfg),
-        });
-        void activateWorkspaceDesk(homeFolder);
-      }).catch(() => {});
 
       // Reload automation count and clear activities
       hanaFetch('/api/desk/cron').then(r => r.json()).then((d: any) => {
@@ -145,10 +160,36 @@ export function handleAppEvent(type: string, data: any = {}): void {
       }
       break;
     }
-    case 'agent-created':
-    case 'agent-deleted':
-      loadAgents();
+    case 'skills-changed': {
+      useStore.setState((state: any) => ({
+        skillCatalogVersion: (Number(state.skillCatalogVersion) || 0) + 1,
+      }));
+      window.dispatchEvent(new CustomEvent('hana-skills-changed', { detail: data || {} }));
+      if (options.source === 'server') {
+        window.platform?.settingsChanged?.('skills-changed', data || {});
+      }
       break;
+    }
+    case 'agent-created':
+      loadAgents();
+      loadChannels();
+      break;
+    case 'agent-deleted': {
+      // If the currently open conversation is a DM with the deleted agent, clear it
+      const deletedDmId = data.agentId ? `dm:${data.agentId}` : null;
+      if (deletedDmId && useStore.getState().currentChannel === deletedDmId) {
+        useStore.setState({
+          currentChannel: null,
+          channelMessages: [],
+          channelHeaderName: '',
+          channelHeaderMembersText: '',
+          channelIsDM: false,
+        });
+      }
+      loadAgents();
+      loadChannels();
+      break;
+    }
     case 'agent-updated': {
       const currentAgentId = useStore.getState().currentAgentId;
       if (data.agentId && data.agentId !== currentAgentId) {
@@ -184,6 +225,28 @@ export function handleAppEvent(type: string, data: any = {}): void {
     case 'agent-workspace-changed':
       handleAgentWorkspaceChanged(data);
       break;
+    case 'markdown-cover-updated':
+      if (typeof data.filePath === 'string' && data.filePath) {
+        void refreshPreviewItemsFromFile(data.filePath);
+      } else if (isRemoteWorkbenchContentRef(data.target)) {
+        void refreshPreviewItemsFromRemoteWorkbenchTarget(data.target);
+      }
+      break;
+    case 'session-file-updated':
+      if (typeof data.filePath === 'string' && data.filePath) {
+        void refreshPreviewItemsFromFile(data.filePath);
+      }
+      break;
+    case 'session-authorized-folders-updated':
+      if (typeof data.sessionPath === 'string' && data.sessionPath) {
+        useStore.getState().setSessionAuthorizedFolders(
+          data.sessionPath,
+          Array.isArray(data.authorizedFolders)
+            ? data.authorizedFolders.filter((p: unknown): p is string => typeof p === 'string' && !!p.trim())
+            : [],
+        );
+      }
+      break;
     case 'theme-changed':
       window.setTheme(data.theme);
       break;
@@ -192,6 +255,16 @@ export function handleAppEvent(type: string, data: any = {}): void {
       break;
     case 'editor-typography-changed':
       applyEditorTypography(data.editor ?? data);
+      break;
+    case 'network-proxy-changed':
+      if (options.source === 'server') {
+        window.platform?.settingsChanged?.('network-proxy-changed', data);
+      }
+      break;
+    case 'keep-awake-changed':
+      if (options.source === 'server') {
+        window.platform?.settingsChanged?.('keep-awake-changed', data);
+      }
       break;
     case 'paper-texture-changed':
       window.setPaperTexture(data.enabled);

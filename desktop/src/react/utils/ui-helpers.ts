@@ -6,10 +6,8 @@
 
 import { useStore } from '../stores';
 import { hanaFetch } from '../hooks/use-hana-fetch';
-// @ts-expect-error — shared JS module
-import { errorBus } from '../../../../shared/error-bus.js';
-// @ts-expect-error — shared JS module
-import { AppError } from '../../../../shared/errors.js';
+import { errorBus } from '../../../../shared/error-bus.ts';
+import { AppError } from '../../../../shared/errors.ts';
 
 // ── 连接状态 ──
 

@@ -14,8 +14,8 @@ const labels: Record<string, string> = {
   'settings.about.updateReadyInstall': 'v{version} 已就绪',
   'settings.about.updateInstall': '重启更新',
   'settings.about.updateInstallManualHint': '点重启更新后安装，直接退出不会自动安装',
-  'settings.about.updateInstalling': '正在安装更新，Hanako 会自动重启…',
-  'settings.about.updateNeedInstall': '请先将 Hanako 移动到应用程序文件夹',
+  'settings.about.updateInstalling': '正在安装更新，HanaAgent 会自动重启…',
+  'settings.about.updateNeedInstall': '请先将 HanaAgent 移动到应用程序文件夹',
 };
 
 function translate(key: string, vars?: Record<string, string | number>): string {
@@ -87,9 +87,9 @@ describe('AutoUpdateStatus', () => {
       <AutoUpdateStatus state={updateState({ status: 'installing' })} />,
     );
 
-    expect(screen.getByText('正在安装更新，Hanako 会自动重启…')).toBeTruthy();
+    expect(screen.getByText('正在安装更新，HanaAgent 会自动重启…')).toBeTruthy();
 
     rerender(<AutoUpdateStatus state={updateState({ status: 'error', error: 'running_from_dmg' })} />);
-    expect(screen.getByText('请先将 Hanako 移动到应用程序文件夹')).toBeTruthy();
+    expect(screen.getByText('请先将 HanaAgent 移动到应用程序文件夹')).toBeTruthy();
   });
 });

@@ -74,6 +74,10 @@ const i18n = {
    * @returns {*}
    */
   _get(path) {
+    const exactOverride = this._agentOverrides?.[path];
+    if (exactOverride !== undefined && exactOverride !== null) return exactOverride;
+    const exact = this._data?.[path];
+    if (exact !== undefined && exact !== null) return exact;
     const keys = path.split(".");
     const override = keys.reduce((obj, k) => obj?.[k], this._agentOverrides);
     if (override !== undefined && override !== null) return override;

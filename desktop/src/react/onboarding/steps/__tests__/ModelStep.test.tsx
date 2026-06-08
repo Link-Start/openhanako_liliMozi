@@ -87,6 +87,7 @@ describe('ModelStep', () => {
     expect(screen.getByLabelText('onboarding.model.contextLength')).toHaveValue('1000000');
     expect(screen.getByLabelText('onboarding.model.maxOutput')).toHaveValue('384000');
     expect(screen.getByLabelText('onboarding.model.imageInput')).not.toBeChecked();
+    expect(screen.getByLabelText('onboarding.model.audioInput')).not.toBeChecked();
     expect(screen.getByLabelText('onboarding.model.reasoning')).toBeChecked();
   });
 

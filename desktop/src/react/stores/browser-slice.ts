@@ -2,7 +2,14 @@ import { useStore } from './index';
 
 export interface BrowserSlice {
   /** 按 session path 存储的 browser 状态（权威源） */
-  browserBySession: Record<string, { running: boolean; url: string | null; thumbnail: string | null }>;
+  browserBySession: Record<string, {
+    running: boolean;
+    url: string | null;
+    thumbnail: string | null;
+    thumbnailCapturedAt?: number | null;
+    thumbnailUrl?: string | null;
+    thumbnailFresh?: boolean;
+  }>;
 }
 
 export const createBrowserSlice = (
@@ -13,7 +20,14 @@ export const createBrowserSlice = (
 
 // ── Selector hook ──
 
-const DEFAULT_BROWSER_STATE = { running: false, url: null as string | null, thumbnail: null as string | null };
+const DEFAULT_BROWSER_STATE = {
+  running: false,
+  url: null as string | null,
+  thumbnail: null as string | null,
+  thumbnailCapturedAt: null as number | null,
+  thumbnailUrl: null as string | null,
+  thumbnailFresh: false,
+};
 
 /** 获取指定 session 的浏览器状态。组件中使用此 hook 替代全局 browserRunning/browserUrl/browserThumbnail */
 export function useBrowserState(sessionPath?: string | null) {

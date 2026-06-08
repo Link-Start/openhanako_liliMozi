@@ -7,8 +7,8 @@
     opacity: 0;
     pointer-events: none;
     transition:
-        transform var(--floating-input-open-dur, 250ms) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-        opacity var(--floating-input-open-dur, 250ms) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1));
+        transform var(--floating-input-open-dur, var(--duration-slow)) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+        opacity var(--floating-input-open-dur, var(--duration-slow)) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1));
     will-change: transform, opacity;
 }
 
@@ -27,8 +27,8 @@
     opacity: 0;
     pointer-events: none;
     transition:
-        transform var(--floating-input-close-dur, 150ms) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-        opacity var(--floating-input-close-dur, 150ms) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1));
+        transform var(--floating-input-close-dur, var(--duration-fast)) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+        opacity var(--floating-input-close-dur, var(--duration-fast)) var(--floating-input-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .floating-input-form {
@@ -87,8 +87,8 @@
     background: var(--accent);
     border: 1px solid var(--accent);
     border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: filter var(--duration) var(--ease-out), opacity var(--duration) var(--ease-out);
+    cursor: default;
+    transition: filter var(--duration-slow) var(--ease-out), opacity var(--duration-slow) var(--ease-out);
     -webkit-app-region: no-drag;
 }
 

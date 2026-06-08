@@ -28,6 +28,10 @@ interface Props {
   isStreaming: boolean;
   hasInput: boolean;
   canSend: boolean;
+  showAudioInput: boolean;
+  audioRecordingActive: boolean;
+  audioRecordingBusy: boolean;
+  onAudioToggle: () => void;
   onSend: () => void;
   onSteer: () => void;
   onStop: () => void;
@@ -39,7 +43,9 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
     t, onAttach, slashBtnRef, onSlashToggle,
     permissionMode, onPermissionModeChange, planModeLocked,
     showThinking, thinkingLevel, onThinkingChange, modelXhigh,
-    models, sessionModel, isStreaming, hasInput, canSend, onSend, onSteer, onStop,
+    models, sessionModel, isStreaming, hasInput, canSend,
+    showAudioInput, audioRecordingActive, audioRecordingBusy, onAudioToggle,
+    onSend, onSteer, onStop,
   } = props;
 
   return (
@@ -69,10 +75,37 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
         <ContextRing />
       </div>
       <div className={styles['input-controls']}>
-        {showThinking && (
-          <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} modelXhigh={modelXhigh} />
+        {showThinking ? (
+          <div className={styles['model-split-control']}>
+            <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} modelXhigh={modelXhigh} />
+            <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
+          </div>
+        ) : (
+          <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
         )}
-        <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
+        {showAudioInput && (
+          <button
+            type="button"
+            className={`${styles['audio-record-btn']}${audioRecordingActive ? ` ${styles['is-recording']}` : ''}`}
+            title={t(audioRecordingActive ? 'input.stopRecording' : 'input.recordAudio')}
+            aria-label={t(audioRecordingActive ? 'input.stopRecording' : 'input.recordAudio')}
+            aria-pressed={audioRecordingActive}
+            disabled={audioRecordingBusy}
+            onClick={onAudioToggle}
+          >
+            {audioRecordingActive ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="7" y="7" width="10" height="10" rx="2" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <path d="M12 19v3" />
+              </svg>
+            )}
+          </button>
+        )}
         <SendButton isStreaming={isStreaming} hasInput={hasInput}
           disabled={isStreaming ? false : !canSend} onSend={onSend} onSteer={onSteer} onStop={onStop} />
       </div>

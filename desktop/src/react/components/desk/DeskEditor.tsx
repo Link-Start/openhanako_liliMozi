@@ -14,7 +14,7 @@ const LOG_LINE_RE = /^- \[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s+(.+?)(?:\s+\|\s+(.
 /** 从完整 jian 内容中分离指令和执行记录 */
 function splitJian(raw: string) {
   const startIdx = raw.indexOf(EXEC_LOG_START);
-  if (startIdx === -1) return { instructions: raw, logs: [] };
+  if (startIdx === -1) return { instructions: raw, logs: [], rawLog: '' };
   const endIdx = raw.indexOf(EXEC_LOG_END, startIdx);
   const logBlock = endIdx === -1
     ? raw.slice(startIdx + EXEC_LOG_START.length)
@@ -26,13 +26,14 @@ function splitJian(raw: string) {
       return { time: m[1], task: m[2], result: m[3] || '', raw: line };
     })
     .filter(Boolean) as { time: string; task: string; result: string; raw: string }[];
-  return { instructions: raw.slice(0, startIdx).trimEnd(), logs };
+  return { instructions: raw.slice(0, startIdx).trimEnd(), logs, rawLog: logBlock.trim() };
 }
 
 /** 将指令和日志条目重新拼合为完整 jian 内容 */
-function combineJian(instructions: string, logs: { raw: string }[]) {
-  if (logs.length === 0) return instructions;
-  return instructions + '\n\n' + EXEC_LOG_START + '\n' + logs.map(l => l.raw).join('\n') + '\n' + EXEC_LOG_END;
+function combineJian(instructions: string, logs: { raw: string }[], rawLog: string) {
+  const nextLog = logs.length > 0 ? logs.map(l => l.raw).join('\n') : rawLog.trim();
+  if (!nextLog) return instructions;
+  return instructions + '\n\n' + EXEC_LOG_START + '\n' + nextLog + '\n' + EXEC_LOG_END;
 }
 
 export function JianEditor({ showHeader = true }: { showHeader?: boolean }) {
@@ -42,6 +43,7 @@ export function JianEditor({ showHeader = true }: { showHeader?: boolean }) {
   const statusRef = useRef<HTMLSpanElement>(null);
   const prevContentRef = useRef(deskJianContent);
   const logsRef = useRef<{ time: string; task: string; result: string; raw: string }[]>([]);
+  const rawLogRef = useRef('');
 
   // 解析 store 内容，分离指令和日志
   const parsed = useMemo(() => splitJian(deskJianContent || ''), [deskJianContent]);
@@ -50,6 +52,7 @@ export function JianEditor({ showHeader = true }: { showHeader?: boolean }) {
     if (deskJianContent !== prevContentRef.current) {
       setLocalValue(parsed.instructions);
       logsRef.current = parsed.logs;
+      rawLogRef.current = parsed.rawLog;
       prevContentRef.current = deskJianContent;
     }
   }, [deskJianContent, parsed]);
@@ -58,11 +61,12 @@ export function JianEditor({ showHeader = true }: { showHeader?: boolean }) {
   useEffect(() => {
     setLocalValue(parsed.instructions);
     logsRef.current = parsed.logs;
+    rawLogRef.current = parsed.rawLog;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const save = useCallback((instructions: string, logs: typeof logsRef.current) => {
-    const full = combineJian(instructions, logs);
+    const full = combineJian(instructions, logs, rawLogRef.current);
     useStore.setState({ deskJianContent: full });
     prevContentRef.current = full;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -96,27 +100,31 @@ export function JianEditor({ showHeader = true }: { showHeader?: boolean }) {
         value={localValue}
         onChange={handleInput}
       />
-      {parsed.logs.length > 0 && (
+      {(parsed.logs.length > 0 || parsed.rawLog) && (
         <div className={s.execLog}>
           <div className={s.execLogHeader}>
             {(window.t ?? ((p: string) => p))('desk.execLogLabel')}
           </div>
-          <ul className={s.execLogList}>
-            {parsed.logs.map((log, i) => (
-              <li key={log.time + i} className={s.execLogItem}>
-                <span className={s.execLogTime}>{log.time}</span>
-                <span className={s.execLogTask}>{log.task}</span>
-                {log.result && <span className={s.execLogResult}>{log.result}</span>}
-                <button
-                  className={s.execLogDelete}
-                  onClick={() => handleDeleteLog(i)}
-                  title={(window.t ?? ((p: string) => p))('desk.execLogDelete')}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
+          {parsed.logs.length > 0 ? (
+            <ul className={s.execLogList}>
+              {parsed.logs.map((log, i) => (
+                <li key={log.time + i} className={s.execLogItem}>
+                  <span className={s.execLogTime}>{log.time}</span>
+                  <span className={s.execLogTask}>{log.task}</span>
+                  {log.result && <span className={s.execLogResult}>{log.result}</span>}
+                  <button
+                    className={s.execLogDelete}
+                    onClick={() => handleDeleteLog(i)}
+                    title={(window.t ?? ((p: string) => p))('desk.execLogDelete')}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <pre className={s.execLogRaw}>{parsed.rawLog}</pre>
+          )}
         </div>
       )}
     </div>

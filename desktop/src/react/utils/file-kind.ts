@@ -9,7 +9,7 @@ export const EXT_TO_KIND: Record<string, FileKind> = {
   // video
   mp4: 'video', webm: 'video', mov: 'video', m4v: 'video', mkv: 'video',
   // audio
-  mp3: 'audio', wav: 'audio', ogg: 'audio', flac: 'audio', m4a: 'audio',
+  mp3: 'audio', wav: 'audio', ogg: 'audio', flac: 'audio', m4a: 'audio', weba: 'audio',
   // docs
   pdf: 'pdf',
   docx: 'doc', xlsx: 'doc', xls: 'doc',
@@ -28,6 +28,14 @@ export function inferKindByExt(ext: string | undefined): FileKind {
   return EXT_TO_KIND[ext.toLowerCase()] ?? 'other';
 }
 
+export function kindOfFileName(name: string, mimeType?: string): FileKind {
+  const lowerMime = String(mimeType || '').toLowerCase();
+  if (lowerMime.startsWith('image/')) return lowerMime === 'image/svg+xml' ? 'svg' : 'image';
+  if (lowerMime.startsWith('video/')) return 'video';
+  if (lowerMime.startsWith('audio/')) return 'audio';
+  return inferKindByExt(extOfName(name));
+}
+
 const MEDIA_KINDS: ReadonlySet<FileKind> = new Set(['image', 'svg', 'video']);
 
 export function isMediaKind(kind: FileKind): boolean {
@@ -44,6 +52,10 @@ export function isImageOrSvgExt(ext: string | undefined): boolean {
   return kind === 'image' || kind === 'svg';
 }
 
+export function isAudioFileName(name: string, mimeType?: string): boolean {
+  return kindOfFileName(name, mimeType) === 'audio';
+}
+
 /**
  * 从文件名取扩展名（小写、不带点）。扩展名缺失返回 undefined。
  */
@@ -58,6 +70,7 @@ export function extOfName(name: string): string | undefined {
  * 统一构造 FileRef.id。selector 和调用方共用同一算法，避免 id 分叉。
  * - desk：desk:<path>
  * - session-attachment：sess:<sessionPath>:<messageId>:att:<path>
+ * - session-registry：sess:<sessionPath>:registry:<path>
  * - session-block-file：sess:<sessionPath>:<messageId>:block:<blockIdx>:<path>
  * - session-block-legacy-artifact：sess:<sessionPath>:<messageId>:legacy-artifact:<blockIdx>:<path>
  * - session-block-screenshot：sess:<sessionPath>:<messageId>:block:<blockIdx>:screenshot
@@ -74,6 +87,8 @@ export function buildFileRefId(parts: {
       return `desk:${parts.path}`;
     case 'session-attachment':
       return `sess:${parts.sessionPath}:${parts.messageId}:att:${parts.path}`;
+    case 'session-registry':
+      return `sess:${parts.sessionPath}:registry:${parts.path}`;
     case 'session-block-file':
       return `sess:${parts.sessionPath}:${parts.messageId}:block:${parts.blockIdx}:${parts.path}`;
     case 'session-block-legacy-artifact':

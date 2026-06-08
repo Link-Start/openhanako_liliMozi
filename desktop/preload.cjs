@@ -31,12 +31,33 @@ contextBridge.exposeInMainWorld("hana", {
   autoUpdateInstall: () => ipcRenderer.invoke("auto-update-install"),
   autoUpdateState: () => ipcRenderer.invoke("auto-update-state"),
   autoUpdateSetChannel: (ch) => ipcRenderer.invoke("auto-update-set-channel", ch),
+  getAutoLaunchStatus: () => ipcRenderer.invoke("get-auto-launch-status"),
+  setAutoLaunchEnabled: (enabled) => ipcRenderer.invoke("set-auto-launch-enabled", enabled),
+  getKeepAwakeStatus: () => ipcRenderer.invoke("get-keep-awake-status"),
+  setKeepAwakeEnabled: (enabled) => ipcRenderer.invoke("set-keep-awake-enabled", enabled),
+  quickChatReloadShortcut: () => ipcRenderer.invoke("quick-chat-reload-shortcut"),
+  quickChatShortcutStatus: () => ipcRenderer.invoke("quick-chat-shortcut-status"),
+  quickChatShow: () => ipcRenderer.invoke("quick-chat-show"),
+  quickChatHide: () => ipcRenderer.invoke("quick-chat-hide"),
+  quickChatResize: (mode) => ipcRenderer.invoke("quick-chat-resize", mode),
+  quickChatOpenSession: (sessionPath) => ipcRenderer.invoke("quick-chat-open-session", sessionPath),
+  onQuickChatOpenSession: (cb) => {
+    const handler = (_, payload) => cb(payload);
+    ipcRenderer.on("quick-chat-open-session", handler);
+    return () => ipcRenderer.removeListener("quick-chat-open-session", handler);
+  },
+  onQuickChatShown: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on("quick-chat-shown", handler);
+    return () => ipcRenderer.removeListener("quick-chat-shown", handler);
+  },
   onAutoUpdateState: (cb) => {
     const handler = (_, state) => cb(state);
     ipcRenderer.on("auto-update-state", handler);
     return () => ipcRenderer.removeListener("auto-update-state", handler);
   },
   appReady: () => ipcRenderer.invoke("app-ready"),
+  syncWindowTheme: (theme) => ipcRenderer.send("window-theme-changed", theme),
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   selectFiles: () => ipcRenderer.invoke("select-files"),
   selectSkill: () => ipcRenderer.invoke("select-skill"),
@@ -51,15 +72,22 @@ contextBridge.exposeInMainWorld("hana", {
   readFileSnapshot: (path) => ipcRenderer.invoke("read-file-snapshot", path),
   writeFileIfUnchanged: (filePath, content, expectedVersion) => ipcRenderer.invoke("write-file-if-unchanged", filePath, content, expectedVersion),
   writeFileBinary: (filePath, base64Data) => ipcRenderer.invoke("write-file-binary", filePath, base64Data),
+  copyFile: (sourcePath, destinationPath) => ipcRenderer.invoke("copy-file", sourcePath, destinationPath),
   screenshotRender: (payload) => ipcRenderer.invoke("screenshot-render", payload),
   watchFile: (filePath) => ipcRenderer.invoke("watch-file", filePath),
   unwatchFile: (filePath) => ipcRenderer.invoke("unwatch-file", filePath),
   onFileChanged: (cb) => ipcRenderer.on("file-changed", (_, filePath) => cb(filePath)),
+  watchWorkspace: (rootPath) => ipcRenderer.invoke("watch-workspace", rootPath),
+  unwatchWorkspace: (rootPath) => ipcRenderer.invoke("unwatch-workspace", rootPath),
+  onWorkspaceChanged: (cb) => ipcRenderer.on("workspace-changed", (_, payload) => cb(payload)),
   readFileBase64: (path) => ipcRenderer.invoke("read-file-base64", path),
   // 本地路径 → file:// URL（同步，纯字符串转换，无 IPC）。逻辑见 src/shared/path-to-file-url.cjs
   getFileUrl: (filePath) => pathToFileUrl(filePath),
   readDocxHtml: (path) => ipcRenderer.invoke("read-docx-html", path),
   readXlsxHtml: (path) => ipcRenderer.invoke("read-xlsx-html", path),
+  showHtmlPreview: (payload) => ipcRenderer.invoke("html-preview-show", payload),
+  updateHtmlPreviewBounds: (previewId, bounds) => ipcRenderer.invoke("html-preview-update-bounds", previewId, bounds),
+  closeHtmlPreview: (previewId) => ipcRenderer.invoke("html-preview-close", previewId),
   getFilePath: (file) => webUtils.getPathForFile(file),
   getAvatarPath: (role) => ipcRenderer.invoke("get-avatar-path", role),
   getSplashInfo: () => ipcRenderer.invoke("get-splash-info"),
@@ -94,11 +122,18 @@ contextBridge.exposeInMainWorld("hana", {
     return () => ipcRenderer.removeListener("server-restarted", handler);
   },
   // 浏览器查看器窗口
-  openBrowserViewer: () => ipcRenderer.invoke("open-browser-viewer", resolveTheme()),
-  onBrowserUpdate: (cb) => ipcRenderer.on("browser-update", (_, data) => cb(data)),
+  openBrowserViewer: (url) => ipcRenderer.invoke("open-browser-viewer", resolveTheme(), url),
+  onBrowserUpdate: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on("browser-update", handler);
+    return () => ipcRenderer.removeListener("browser-update", handler);
+  },
   browserGoBack: () => ipcRenderer.invoke("browser-go-back"),
   browserGoForward: () => ipcRenderer.invoke("browser-go-forward"),
   browserReload: () => ipcRenderer.invoke("browser-reload"),
+  browserNewTab: () => ipcRenderer.invoke("browser-new-tab"),
+  browserSwitchTab: (tabId) => ipcRenderer.invoke("browser-switch-tab", tabId),
+  browserCloseTab: (tabId) => ipcRenderer.invoke("browser-close-tab", tabId),
   closeBrowserViewer: () => ipcRenderer.invoke("close-browser-viewer"),
   browserEmergencyStop: () => ipcRenderer.invoke("browser-emergency-stop"),
   // 派生 Viewer 窗口（只读文件副本，多实例）
@@ -114,8 +149,8 @@ contextBridge.exposeInMainWorld("hana", {
   closeSkillViewer: () => ipcRenderer.invoke("close-skill-viewer"),
   // 原生拖拽（书桌文件拖到 Finder / 聊天区）
   startDrag: (filePaths) => ipcRenderer.send("start-drag", filePaths),
-  // 系统通知
-  showNotification: (title, body) => ipcRenderer.invoke("show-notification", title, body),
+  // 系统通知（agentId 标识触发的助手，主进程据此设头像 icon；缺失则无 icon）
+  showNotification: (title, body, agentId, options) => ipcRenderer.invoke("show-notification", title, body, agentId ?? null, options || null),
   // 窗口控制（Windows/Linux 自绘标题栏）
   getPlatform: () => ipcRenderer.invoke("get-platform"),
   windowMinimize: () => ipcRenderer.invoke("window-minimize"),

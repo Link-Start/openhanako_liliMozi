@@ -6,10 +6,12 @@
  * 不按流式到达顺序。
  */
 
+import type { FileVersion } from '../types';
 
 // ── 工具调用 ──
 
 export interface ToolCall {
+  id?: string;
   name: string;
   args?: Record<string, unknown>;
   done: boolean;
@@ -26,14 +28,102 @@ export interface UserAttachment {
   isDir: boolean;
   base64Data?: string;
   mimeType?: string;
+  presentation?: 'attachment' | 'voice-input' | string;
+  listed?: boolean;
   status?: 'available' | 'expired' | string;
   missingAt?: number | null;
   visionAuxiliary?: boolean;
+  transcription?: VoiceTranscription;
+  waveform?: AudioWaveform;
+}
+
+export interface AudioWaveform {
+  version: 1;
+  peaks: number[];
+  durationMs?: number;
+  source?: 'computed' | 'fallback';
+}
+
+export interface VoiceTranscription {
+  status: 'pending' | 'ready' | 'failed';
+  text?: string;
+  providerId?: string;
+  modelId?: string;
+  protocolId?: string;
+  language?: string;
+  durationMs?: number;
+  error?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface DeskContext {
   dir: string;
   fileCount: number;
+}
+
+export interface SessionRegistryFile {
+  id?: string;
+  fileId?: string;
+  sessionPath?: string;
+  filePath?: string;
+  realPath?: string;
+  label?: string;
+  displayName?: string;
+  filename?: string;
+  ext?: string;
+  mime?: string;
+  kind?: string;
+  storageKind?: string;
+  presentation?: 'attachment' | 'voice-input' | string;
+  listed?: boolean;
+  status?: 'available' | 'expired' | string;
+  missingAt?: number | null;
+  origin?: string;
+  operations?: string[];
+  createdAt?: number;
+  mtimeMs?: number;
+  size?: number | null;
+  version?: FileVersion | null;
+  isDirectory?: boolean;
+  resource?: ResourceEnvelope;
+  transcription?: VoiceTranscription;
+  waveform?: AudioWaveform;
+}
+
+export interface ResourceEnvelope {
+  schemaVersion: 1;
+  resourceId: string;
+  name: string;
+  studioId: string;
+  type: 'file' | string;
+  source: 'session_file' | string;
+  sourceId?: string;
+  fileId?: string;
+  displayName?: string;
+  filename?: string;
+  ext?: string | null;
+  mime?: string;
+  size?: number | null;
+  kind?: string;
+  isDirectory?: boolean;
+  origin?: string;
+  operations?: string[];
+  createdAt?: number | string;
+  mtimeMs?: number;
+  lifecycle: {
+    status: 'available' | 'expired' | string;
+    missingAt: number | string | null;
+  };
+  storage: {
+    provider: 'session_file' | string;
+    storageKind?: string;
+    localOnly?: boolean;
+  };
+  links: {
+    self: string;
+    content?: string;
+  };
 }
 
 // ── 内容块 ──
@@ -58,23 +148,89 @@ export interface SessionConfirmationBlock {
   payload?: Record<string, unknown>;
 }
 
+export interface SettingsUpdateChange {
+  key: string;
+  label: string;
+  before: string;
+  after: string;
+  sensitive?: boolean;
+}
+
+export interface SettingsUpdatePayload {
+  status: 'applied' | 'failed' | 'skipped' | 'needs_action' | string;
+  action: string;
+  key: string;
+  title: string;
+  summary: string;
+  target?: {
+    type?: string;
+    id?: string | null;
+    label?: string | null;
+  };
+  changes?: SettingsUpdateChange[];
+}
+
+export interface SuggestionCardBlock {
+  type: 'suggestion_card';
+  kind: 'automation_draft' | string;
+  confirmId?: string;
+  suggestionId?: string;
+  suggestionShortCode?: string;
+  operation?: 'create' | 'update' | string;
+  status: 'pending' | 'approved' | 'rejected' | string;
+  title: string;
+  description?: string;
+  target?: {
+    type?: string;
+    id?: string | null;
+    label?: string | null;
+  };
+  detail?: {
+    kind?: string;
+    operation?: 'create' | 'update' | string;
+    jobData?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  actions?: Array<{
+    id?: string;
+    kind?: string;
+    label?: string;
+  }>;
+}
+
 // 物种 A：文本装饰器（流式组装，upsert 到 blocks 数组）
 export type TextDecorator =
   | { type: 'thinking'; content: string; sealed: boolean }
   | { type: 'mood'; yuan: string; text: string }
   | { type: 'tool_group'; tools: ToolCall[]; collapsed: boolean }
-  | { type: 'text'; html: string };
+  | { type: 'text'; html: string; source?: string };
 
 // 物种 B：富内容块（通过 content_block 事件 push，不 upsert）
 export type RichBlock =
-  | { type: 'file'; fileId?: string; filePath: string; label: string; ext: string; mime?: string; kind?: string; storageKind?: string; status?: 'available' | 'expired' | string; missingAt?: number | null }
+  | { type: 'file'; fileId?: string; filePath: string; label: string; ext: string; mime?: string; kind?: string; storageKind?: string; presentation?: 'attachment' | 'voice-input' | string; listed?: boolean; status?: 'available' | 'expired' | string; missingAt?: number | null; resource?: ResourceEnvelope; mtimeMs?: number; size?: number | null; version?: FileVersion | null; waveform?: AudioWaveform; replacesTaskId?: string }
+  | { type: 'media_generation'; taskId: string; kind: 'image' | 'video' | string; status: 'pending' | 'failed' | 'aborted' | string; prompt?: string; batchId?: string; reason?: string }
   // COMPAT(create_artifact, remove no earlier than v0.133 after legacy sessions are migrated)
-  | { type: 'artifact'; artifactId: string; artifactType: string; title: string; content: string; language?: string | null; fileId?: string; filePath?: string; label?: string; ext?: string; mime?: string; kind?: string; storageKind?: string; status?: 'available' | 'expired' | string; missingAt?: number | null }
+  | { type: 'artifact'; artifactId: string; artifactType: string; title: string; content: string; language?: string | null; fileId?: string; filePath?: string; label?: string; ext?: string; mime?: string; kind?: string; storageKind?: string; presentation?: 'attachment' | 'voice-input' | string; listed?: boolean; status?: 'available' | 'expired' | string; missingAt?: number | null; resource?: ResourceEnvelope; mtimeMs?: number; size?: number | null; version?: FileVersion | null }
   | { type: 'screenshot'; base64: string; mimeType: string }
   | { type: 'skill'; skillName: string; skillFilePath: string; fileId?: string; installedFile?: Record<string, unknown>; installedSkillSource?: Record<string, unknown> }
   | { type: 'cron_confirm'; confirmId?: string; jobData: Record<string, unknown>; status: 'pending' | 'approved' | 'rejected' }
+  | SuggestionCardBlock
   | { type: 'settings_confirm'; confirmId?: string; settingKey: string; cardType: 'toggle' | 'list' | 'text'; currentValue: string; proposedValue: string; options?: string[]; optionLabels?: Record<string, string>; label: string; description?: string; frontend?: boolean; status: 'pending' | 'confirmed' | 'rejected' | 'timeout' }
+  | { type: 'settings_update'; update: SettingsUpdatePayload }
   | SessionConfirmationBlock
+  | {
+    type: 'interlude';
+    id: string;
+    variant: 'deferred_result' | string;
+    taskId?: string;
+    status?: 'success' | 'failed' | 'aborted' | string;
+    sourceKind?: 'subagent' | 'workflow' | 'tool' | string;
+    sourceLabel?: string;
+    previewSessionPath?: string;
+    previewAgentId?: string;
+    text: string;
+    detailMarkdown?: string;
+  }
   | {
     type: 'subagent';
     taskId: string;
@@ -89,6 +245,18 @@ export type RichBlock =
     streamKey: string;
     streamStatus: 'running' | 'done' | 'failed' | 'aborted';
     summary?: string;
+    label?: string | null;
+    reuseInstance?: string | null;
+  }
+  | {
+    // workflow inline 概览块（聊天流工具卡）：只携带「名 + 状态 + 时长」，不展开实时流。
+    type: 'workflow';
+    taskId: string;
+    taskTitle: string;
+    streamStatus: 'running' | 'done' | 'failed' | 'aborted';
+    summary?: string;
+    startedAt?: number | null;
+    finishedAt?: number | null;
   }
   | { type: 'plugin_card'; card: import('../types').PluginCardDetails };
 
@@ -98,6 +266,7 @@ export type ContentBlock = TextDecorator | RichBlock;
 
 export interface ChatMessage {
   id: string;              // 服务端返回的稳定 ID（JSONL 行号）
+  sourceEntryId?: string;  // Pi SDK session entry id，用于 branch-aware 的重新生成/编辑
   role: 'user' | 'assistant';
   // User
   text?: string;
@@ -116,6 +285,7 @@ export interface ChatMessage {
 
 export type ChatListItem =
   | { type: 'message'; data: ChatMessage }
+  | { type: 'interlude'; id: string; data: Extract<ContentBlock, { type: 'interlude' }> }
   | { type: 'compaction'; id: string; yuan: string };
 
 // ── Per-session 模型快照 ──
@@ -127,8 +297,14 @@ export interface SessionModel {
   id: string;
   name: string;
   provider: string;
-  /** 输入模态数组（Pi SDK 标准字段），镜像后端 /models, /models/switch 响应。 */
-  input?: ("text" | "image")[];
+  /** 输入模态数组（Pi SDK 标准字段），镜像后端 /models, /models/switch 响应；音频走 Hana 兼容能力字段。 */
+  input?: ("text" | "image" | "video" | "audio")[];
+  video?: boolean;
+  videoTransport?: string | null;
+  videoTransportSupported?: boolean;
+  audio?: boolean;
+  audioTransport?: string | null;
+  audioTransportSupported?: boolean;
   reasoning?: boolean;
   xhigh?: boolean;
   contextWindow?: number;

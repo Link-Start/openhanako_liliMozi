@@ -36,8 +36,8 @@
   background: none;
   color: inherit;
   opacity: 0.45;
-  cursor: pointer;
-  transition: opacity 0.12s;
+  cursor: default;
+  transition: opacity var(--duration-instant);
 }
 
 .remove:hover {

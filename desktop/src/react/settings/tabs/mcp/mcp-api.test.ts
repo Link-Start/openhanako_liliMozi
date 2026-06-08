@@ -10,7 +10,7 @@ vi.mock('../../api', () => ({
   hanaFetch: (...args: unknown[]) => hanaFetchMock(...args),
 }));
 
-import { addMcpConnector, removeMcpConnector, setMcpEnabled } from './mcp-api';
+import { addMcpConnector, removeMcpConnector, setMcpEnabled, updateMcpConnector } from './mcp-api';
 
 function jsonResponse(body: unknown): Response {
   return { json: async () => body } as Response;
@@ -61,5 +61,31 @@ describe('mcp-api mutations', () => {
       authType: 'none',
     })).rejects.toThrow('add failed');
     await expect(removeMcpConnector('github')).rejects.toThrow('remove failed');
+  });
+
+  it('updates connectors through the plugin connector namespace', async () => {
+    mockMcpResponses(jsonResponse({ connector: { id: 'local' }, state: {} }));
+
+    await updateMcpConnector('local', {
+      name: 'Local',
+      transport: 'stdio',
+      command: 'npx',
+      env: { API_KEY: '********' },
+      autoStart: true,
+    });
+
+    expect(hanaFetchMock).toHaveBeenCalledWith(
+      '/api/plugins/mcp/connectors/local',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          name: 'Local',
+          transport: 'stdio',
+          command: 'npx',
+          env: { API_KEY: '********' },
+          autoStart: true,
+        }),
+      }),
+    );
   });
 });

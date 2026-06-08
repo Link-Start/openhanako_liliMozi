@@ -1,5 +1,5 @@
 /**
- * DeskEmptyOverlay — 未设置工作空间路径时的空状态提示
+ * DeskEmptyOverlay — 未设置工作台路径时的空状态提示
  */
 
 import { useStore } from '../../stores';

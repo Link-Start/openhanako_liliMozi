@@ -6,9 +6,12 @@ import { DeskCwdSkillsButton, DeskCwdSkillsPanel } from '../desk/DeskCwdSkills';
 import { JianEditor } from '../desk/DeskEditor';
 import { PluginWidgetView } from '../plugin/PluginWidgetView';
 import { SessionRegistryFilesPanel } from './SessionRegistryFilesPanel';
+import { SessionTodoCard } from './SessionTodoCard';
+import { WorkflowCard } from './WorkflowCard';
+import { AgentActivityCard } from './AgentActivityCard';
+import { SessionStatusCard } from './SessionStatusCard';
 import styles from './RightWorkspacePanel.module.css';
-// @ts-expect-error — shared JS module
-import { workspaceDisplayName } from '../../../../../shared/workspace-history.js';
+import { workspaceDisplayName } from '../../../../../shared/workspace-history.ts';
 
 interface RightWorkspaceTabDef {
   id: RightWorkspaceTab;
@@ -72,15 +75,20 @@ function TabContent({ activeTab }: { activeTab: RightWorkspaceTab }) {
 
 function WorkspaceHeader() {
   const deskBasePath = useStore(s => s.deskBasePath);
+  const deskWorkspaceMountId = useStore(s => s.deskWorkspaceMountId);
+  const deskWorkspaceLabel = useStore(s => s.deskWorkspaceLabel);
   const selectedFolder = useStore(s => s.selectedFolder);
   const homeFolder = useStore(s => s.homeFolder);
   const t = window.t ?? ((p: string) => p);
-  const title = workspaceDisplayName(deskBasePath || selectedFolder || homeFolder, t('desk.title'));
+  const title = deskWorkspaceMountId
+    ? (deskWorkspaceLabel || deskWorkspaceMountId)
+    : workspaceDisplayName(deskBasePath || selectedFolder || homeFolder, t('desk.title'));
+  const titlePath = deskWorkspaceMountId ? title : (deskBasePath || selectedFolder || homeFolder || undefined);
 
   return (
     <>
       <div className={styles.workspaceHeader}>
-        <div className={styles.workspaceTitle} title={deskBasePath || selectedFolder || homeFolder || undefined}>
+        <div className={styles.workspaceTitle} title={titlePath}>
           {title}
         </div>
         <DeskCwdSkillsButton />
@@ -90,7 +98,7 @@ function WorkspaceHeader() {
   );
 }
 
-export function RightWorkspacePanel() {
+export function RightWorkspacePanel({ compact = false }: { compact?: boolean }) {
   const rightWorkspaceTab = useStore(s => s.rightWorkspaceTab);
   const setRightWorkspaceTab = useStore(s => s.setRightWorkspaceTab);
   const jianView = useStore(s => s.jianView);
@@ -116,6 +124,7 @@ export function RightWorkspacePanel() {
 
   return (
     <div className={styles.shell}>
+      {!compact && <SessionTodoCard />}
       <div
         className={`jian-card ${styles.workspaceCard}`}
         data-right-workspace-card=""
@@ -146,6 +155,13 @@ export function RightWorkspacePanel() {
         <JianDrawer />
         <JianFloatingToggle />
       </div>
+      {!compact && (
+        <>
+          <WorkflowCard />
+          <AgentActivityCard />
+          <SessionStatusCard />
+        </>
+      )}
     </div>
   );
 }

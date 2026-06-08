@@ -48,6 +48,15 @@ export async function addMcpConnector(input: McpConnectorInput): Promise<void> {
   await jsonOrError(res);
 }
 
+export async function updateMcpConnector(connectorId: string, input: McpConnectorInput): Promise<void> {
+  const res = await hanaFetch(`/api/plugins/mcp/connectors/${encodeURIComponent(connectorId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  await jsonOrError(res);
+}
+
 export async function removeMcpConnector(connectorId: string): Promise<void> {
   const res = await hanaFetch(`/api/plugins/mcp/connectors/${encodeURIComponent(connectorId)}`, {
     method: 'DELETE',

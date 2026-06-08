@@ -34,13 +34,13 @@ html {
 }
 
 body {
-  font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "Lora", "Georgia", serif;
+  font-family: var(--screenshot-font-family, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "Lora", "Georgia", serif);
   font-size: 1rem;
   line-height: 1.65;
   color: #a8b5b7;
   background-color: var(--base03);
-  padding: 5rem 0.85rem 0.67rem 0.85rem;
-  max-width: 400px;
+  padding: 5rem 0.5rem 0.67rem 0.5rem;
+  max-width: 416px;
   margin: 0 auto;
 }
 
@@ -165,6 +165,15 @@ img {
 
 strong { font-weight: 600; color: var(--base1); }
 em { font-style: italic; }
+
+/* Task Lists */
+.task-list-item {
+  list-style-type: none;
+}
+.task-list-item-checkbox {
+  margin-right: 0.5em;
+  vertical-align: middle;
+}
 
 /* Conversation Mode */
 .chat-user {

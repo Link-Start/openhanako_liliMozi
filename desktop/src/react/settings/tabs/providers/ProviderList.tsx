@@ -3,8 +3,9 @@ import { useSettingsStore } from '../../store';
 import { hanaFetch } from '../../api';
 import { t, API_FORMAT_OPTIONS } from '../../helpers';
 import { loadSettingsConfig } from '../../actions';
-import { SelectWidget } from '../../widgets/SelectWidget';
+import { SelectWidget } from '@/ui';
 import { KeyInput } from '../../widgets/KeyInput';
+import { parseProviderHeaderLines, ProviderHeadersField } from './ProviderHeadersField';
 import styles from '../../Settings.module.css';
 
 export function AddCustomButton({ onClick }: { onClick: () => void }) {
@@ -37,10 +38,11 @@ export function AddProviderOverlay({ onDone, onCancel }: { onDone: () => void; o
 }
 
 function AddProviderForm({ onDone }: { onDone: () => void }) {
-  const { showToast } = useSettingsStore();
+  const showToast = useSettingsStore(s => s.showToast);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [headersText, setHeadersText] = useState('');
   const [api, setApi] = useState('openai-completions');
 
   const submit = async () => {
@@ -49,10 +51,17 @@ function AddProviderForm({ onDone }: { onDone: () => void }) {
     if (!n) { showToast(t('settings.providers.nameRequired'), 'error'); return; }
     if (!u) { showToast(t('settings.providers.urlRequired'), 'error'); return; }
     try {
+      const headers = parseProviderHeaderLines(headersText);
       const res = await hanaFetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providers: { [n]: { base_url: u, api_key: apiKey.trim(), api, models: [] as string[] } } }),
+        body: JSON.stringify({ providers: { [n]: {
+          base_url: u,
+          api_key: apiKey.trim(),
+          headers,
+          api,
+          models: [] as string[],
+        } } }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -79,6 +88,10 @@ function AddProviderForm({ onDone }: { onDone: () => void }) {
       <div className={styles['pv-add-form-field']}>
         <label className={styles['pv-add-form-label']}>{t('settings.api.apiKey')}</label>
         <KeyInput value={apiKey} onChange={setApiKey} placeholder={t('settings.api.apiKeyPlaceholder')} />
+      </div>
+      <div className={styles['pv-add-form-field']}>
+        <label className={styles['pv-add-form-label']}>Headers</label>
+        <ProviderHeadersField value={headersText} onChange={setHeadersText} />
       </div>
       <div className={styles['pv-add-form-field']}>
         <label className={styles['pv-add-form-label']}>{t('settings.providers.apiFormat')}</label>

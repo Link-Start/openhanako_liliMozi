@@ -13,8 +13,8 @@ export function ModelEditPanel({ modelId, providerId, anchorEl, onClose, onRefre
   onClose: () => void;
   onRefresh?: () => Promise<void>;
 }) {
-  const { showToast } = useSettingsStore();
-  const meta = lookupModelMeta(modelId) || {};
+  const showToast = useSettingsStore(s => s.showToast);
+  const meta = lookupModelMeta(modelId, providerId) || {};
   const [displayName, setDisplayName] = useState(meta.displayName || meta.name || '');
   const [ctxVal, setCtxVal] = useState(String(meta.context || ''));
   const [outVal, setOutVal] = useState(String(meta.maxOutput || ''));
@@ -22,7 +22,10 @@ export function ModelEditPanel({ modelId, providerId, anchorEl, onClose, onRefre
   // 兼容读旧 meta.vision（未迁移到新字段的历史配置）；迁移 #7 之后此 fallback 恒不命中。
   const initialImage = meta.image === true || (meta.image === undefined && meta.vision === true);
   const [image, setImage] = useState<boolean>(initialImage);
+  const [video, setVideo] = useState<boolean>(meta.video === true);
+  const [audio, setAudio] = useState<boolean>(meta.audio === true);
   const [reasoning, setReasoning] = useState<boolean>(meta.reasoning === true);
+  const [dirtyCapabilities, setDirtyCapabilities] = useState<Record<string, boolean>>({});
   const panelRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<React.CSSProperties>({});
 
@@ -45,8 +48,10 @@ export function ModelEditPanel({ modelId, providerId, anchorEl, onClose, onRefre
     if (name) entry.name = name;
     if (ctx) entry.context = parseInt(ctx);
     if (maxOut) entry.maxOutput = parseInt(maxOut);
-    entry.image = image;
-    entry.reasoning = reasoning;
+    if (dirtyCapabilities.image) entry.image = image;
+    if (dirtyCapabilities.video) entry.video = video;
+    if (dirtyCapabilities.audio) entry.audio = audio;
+    if (dirtyCapabilities.reasoning) entry.reasoning = reasoning;
 
     try {
       await hanaFetch(`/api/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, {
@@ -90,14 +95,22 @@ export function ModelEditPanel({ modelId, providerId, anchorEl, onClose, onRefre
           <ComboInput presets={OUTPUT_PRESETS} value={outVal} onChange={setOutVal} placeholder="16384" />
         </div>
       </div>
-      <div className={styles['pv-model-edit-row']}>
+      <div className={`${styles['pv-model-edit-row']} ${styles['pv-model-edit-capabilities']}`}>
         <div className={styles['pv-model-edit-field']}>
           <label className={styles['pv-model-edit-label']}>{t('settings.api.vision')}</label>
-          <Toggle on={image} onChange={setImage} />
+          <Toggle ariaLabel={t('settings.api.vision')} on={image} onChange={(value) => { setImage(value); setDirtyCapabilities(prev => ({ ...prev, image: true })); }} />
+        </div>
+        <div className={styles['pv-model-edit-field']}>
+          <label className={styles['pv-model-edit-label']}>{t('settings.api.video')}</label>
+          <Toggle ariaLabel={t('settings.api.video')} on={video} onChange={(value) => { setVideo(value); setDirtyCapabilities(prev => ({ ...prev, video: true })); }} />
+        </div>
+        <div className={styles['pv-model-edit-field']}>
+          <label className={styles['pv-model-edit-label']}>{t('settings.api.audio')}</label>
+          <Toggle ariaLabel={t('settings.api.audio')} on={audio} onChange={(value) => { setAudio(value); setDirtyCapabilities(prev => ({ ...prev, audio: true })); }} />
         </div>
         <div className={styles['pv-model-edit-field']}>
           <label className={styles['pv-model-edit-label']}>{t('settings.api.reasoning')}</label>
-          <Toggle on={reasoning} onChange={setReasoning} />
+          <Toggle ariaLabel={t('settings.api.reasoning')} on={reasoning} onChange={(value) => { setReasoning(value); setDirtyCapabilities(prev => ({ ...prev, reasoning: true })); }} />
         </div>
       </div>
       <div className={styles['pv-model-edit-actions']}>

@@ -124,4 +124,78 @@ describe('ProvidersTab provider-scoped form state', () => {
     const groqKeyInput = container.querySelector('input[type="password"]');
     expect(groqKeyInput).toHaveValue('');
   });
+
+  it('treats registry-only preset providers as setup entries after deletion', async () => {
+    const registryOnlySummary = {
+      deepseek: providerSummary({
+        display_name: 'DeepSeek',
+        base_url: 'https://api.deepseek.com',
+        models: [],
+        has_credentials: false,
+        can_delete: false,
+        config_status: 'needs_setup',
+        is_configured: false,
+      }),
+    };
+
+    mocks.hanaFetch.mockImplementation((path: string) => {
+      if (path === '/api/providers/summary') {
+        return Promise.resolve(jsonResponse({ providers: registryOnlySummary }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+    useSettingsStore.setState({
+      providersSummary: registryOnlySummary,
+      selectedProviderId: null,
+      settingsConfig: { providers: {} },
+    });
+
+    render(<ProvidersTab />);
+
+    const deepseekButton = await screen.findByRole('button', { name: /DeepSeek/ });
+    expect(deepseekButton.className).toContain('dim');
+    fireEvent.click(deepseekButton);
+
+    await waitFor(() => {
+      expect(useSettingsStore.getState().selectedProviderId).toBe('deepseek');
+    });
+    expect(screen.queryByRole('button', { name: 'settings.providers.delete' })).not.toBeInTheDocument();
+  });
+
+  it('keeps registry-only non-preset providers visible as setup entries', async () => {
+    const registryOnlySummary = {
+      baichuan: providerSummary({
+        display_name: 'Baichuan',
+        base_url: 'https://api.baichuan-ai.com/v1',
+        models: [],
+        has_credentials: false,
+        can_delete: false,
+        config_status: 'needs_setup',
+        is_configured: false,
+      }),
+    };
+
+    mocks.hanaFetch.mockImplementation((path: string) => {
+      if (path === '/api/providers/summary') {
+        return Promise.resolve(jsonResponse({ providers: registryOnlySummary }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+    useSettingsStore.setState({
+      providersSummary: registryOnlySummary,
+      selectedProviderId: null,
+      settingsConfig: { providers: {} },
+    });
+
+    render(<ProvidersTab />);
+
+    const baichuanButton = await screen.findByRole('button', { name: /Baichuan/ });
+    expect(baichuanButton.className).toContain('dim');
+    fireEvent.click(baichuanButton);
+
+    await waitFor(() => {
+      expect(useSettingsStore.getState().selectedProviderId).toBe('baichuan');
+    });
+    expect(screen.getByDisplayValue('https://api.baichuan-ai.com/v1')).toBeInTheDocument();
+  });
 });

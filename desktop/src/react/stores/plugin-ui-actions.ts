@@ -1,24 +1,57 @@
 import { useStore } from './index';
 import { hanaFetch } from '../hooks/use-hana-fetch';
-import type { PluginPageInfo, PluginWidgetInfo } from '../types';
+import type { PluginPageInfo, PluginUiHostCapabilityGrant, PluginWidgetInfo } from '../types';
 
-/** Fetch plugin pages and widgets from backend, update store. */
+function collectPluginUiHostCapabilities(
+  pages: PluginPageInfo[],
+  widgets: PluginWidgetInfo[],
+  grants: PluginUiHostCapabilityGrant[],
+): Record<string, string[]> {
+  const byPlugin: Record<string, string[]> = {};
+  const add = (pluginId: string, hostCapabilities: string[] | undefined) => {
+    if (!pluginId || !Array.isArray(hostCapabilities)) return;
+    const set = new Set(byPlugin[pluginId] || []);
+    for (const capability of hostCapabilities) {
+      if (typeof capability === 'string' && capability.trim()) set.add(capability);
+    }
+    byPlugin[pluginId] = [...set];
+  };
+  for (const page of pages) add(page.pluginId, page.hostCapabilities);
+  for (const widget of widgets) add(widget.pluginId, widget.hostCapabilities);
+  for (const grant of grants) add(grant.pluginId, grant.hostCapabilities);
+  return byPlugin;
+}
+
+/** Fetch plugin pages, widgets, and persisted UI prefs from backend, update store. */
 export async function refreshPluginUI(): Promise<void> {
   try {
     let pages: PluginPageInfo[] = [];
     let widgets: PluginWidgetInfo[] = [];
+    let hostCapabilityGrants: PluginUiHostCapabilityGrant[] = [];
 
-    // hanaFetch throws on non-2xx, so wrap each call individually
-    const [pagesResult, widgetsResult] = await Promise.allSettled([
+    const [pagesResult, widgetsResult, grantsResult, prefsResult] = await Promise.allSettled([
       hanaFetch('/api/plugins/pages').then(r => r.json()),
       hanaFetch('/api/plugins/widgets').then(r => r.json()),
+      hanaFetch('/api/plugins/ui-host-capabilities').then(r => r.json()),
+      hanaFetch('/api/preferences/plugin-ui').then(r => r.json()),
     ]);
     if (pagesResult.status === 'fulfilled') pages = pagesResult.value;
     if (widgetsResult.status === 'fulfilled') widgets = widgetsResult.value;
+    if (grantsResult.status === 'fulfilled' && Array.isArray(grantsResult.value)) {
+      hostCapabilityGrants = grantsResult.value;
+    }
 
     const s = useStore.getState();
     s.setPluginPages(pages);
     s.setPluginWidgets(widgets);
+    s.setPluginUiHostCapabilities(collectPluginUiHostCapabilities(pages, widgets, hostCapabilityGrants));
+
+    if (prefsResult.status === 'fulfilled') {
+      const prefs = prefsResult.value;
+      if (Array.isArray(prefs.hiddenWidgets)) s.setHiddenWidgets(prefs.hiddenWidgets);
+      if (Array.isArray(prefs.hiddenTabs)) s.setHiddenPluginTabs(prefs.hiddenTabs);
+      if (Array.isArray(prefs.tabOrder)) s.setTabOrder(prefs.tabOrder);
+    }
 
     // If current tab is a removed plugin tab, switch to chat
     const currentTab = s.currentTab;
@@ -36,49 +69,42 @@ export async function refreshPluginUI(): Promise<void> {
         s.setJianView('desk');
       }
     }
-
-    // Clean stale pinned widgets
-    const validPinned = s.pinnedWidgets.filter(id => widgets.some(w => w.pluginId === id));
-    if (validPinned.length !== s.pinnedWidgets.length) {
-      s.setPinnedWidgets(validPinned);
-    }
   } catch (err) {
     console.warn('[plugin-ui] Failed to refresh:', err);
   }
 }
 
-/** Persist tab order, pinned widgets, and hidden tabs to preferences. */
-async function savePluginPrefs(): Promise<void> {
+function persistField(field: Record<string, unknown>): void {
+  hanaFetch('/api/preferences/plugin-ui', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(field),
+  }).catch(err => console.warn('[plugin-ui] Failed to persist prefs:', err));
+}
+
+/** Hide a widget from the titlebar. */
+export function hideWidget(pluginId: string): void {
   const s = useStore.getState();
-  try {
-    await hanaFetch('/api/preferences', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pluginTabOrder: s.tabOrder,
-        pluginPinnedWidgets: s.pinnedWidgets,
-        pluginHiddenTabs: s.hiddenPluginTabs,
-      }),
-    });
-  } catch (err) {
-    console.warn('[plugin-ui] Failed to persist prefs:', err);
+  if (!s.hiddenWidgets.includes(pluginId)) {
+    const next = [...s.hiddenWidgets, pluginId];
+    s.setHiddenWidgets(next);
+    if (s.jianView === `widget:${pluginId}`) s.setJianView('desk');
+    persistField({ hiddenWidgets: next });
   }
 }
 
-/** Pin a widget to the titlebar. */
-export function pinWidget(pluginId: string): void {
+/** Show a previously hidden widget. */
+export function showWidget(pluginId: string): void {
   const s = useStore.getState();
-  if (!s.pinnedWidgets.includes(pluginId)) {
-    s.setPinnedWidgets([...s.pinnedWidgets, pluginId]);
-    savePluginPrefs();
-  }
+  const next = s.hiddenWidgets.filter(id => id !== pluginId);
+  s.setHiddenWidgets(next);
+  persistField({ hiddenWidgets: next });
 }
 
-/** Unpin a widget from the titlebar. */
-export function unpinWidget(pluginId: string): void {
-  const s = useStore.getState();
-  s.setPinnedWidgets(s.pinnedWidgets.filter(id => id !== pluginId));
-  savePluginPrefs();
+/** Show a hidden widget entry and open its right workspace panel. */
+export function showAndOpenWidget(pluginId: string): void {
+  showWidget(pluginId);
+  openWidget(pluginId);
 }
 
 /** Switch jian sidebar to a widget view. */
@@ -100,10 +126,10 @@ export function hidePluginTab(tabId: string): void {
   const s = useStore.getState();
   const pluginId = tabId.startsWith('plugin:') ? tabId.slice(7) : tabId;
   if (!s.hiddenPluginTabs.includes(pluginId)) {
-    s.setHiddenPluginTabs([...s.hiddenPluginTabs, pluginId]);
-    // If currently viewing this tab, switch to chat
+    const next = [...s.hiddenPluginTabs, pluginId];
+    s.setHiddenPluginTabs(next);
     if (s.currentTab === `plugin:${pluginId}`) s.setCurrentTab('chat');
-    savePluginPrefs();
+    persistField({ hiddenTabs: next });
   }
 }
 
@@ -111,12 +137,13 @@ export function hidePluginTab(tabId: string): void {
 export function showPluginTab(tabId: string): void {
   const s = useStore.getState();
   const pluginId = tabId.startsWith('plugin:') ? tabId.slice(7) : tabId;
-  s.setHiddenPluginTabs(s.hiddenPluginTabs.filter(id => id !== pluginId));
-  savePluginPrefs();
+  const next = s.hiddenPluginTabs.filter(id => id !== pluginId);
+  s.setHiddenPluginTabs(next);
+  persistField({ hiddenTabs: next });
 }
 
 /** Reorder tabs (called after drag-drop). */
 export function reorderTabs(newOrder: string[]): void {
   useStore.getState().setTabOrder(newOrder);
-  savePluginPrefs();
+  persistField({ tabOrder: newOrder });
 }

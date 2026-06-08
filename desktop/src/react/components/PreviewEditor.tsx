@@ -26,12 +26,33 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { markdownHighlight, codeHighlight } from '../editor/highlight';
 import { markdownTheme, codeTheme } from '../editor/theme';
-import { markdownBlockDecoField, markdownDecoPlugin } from '../editor/md-decorations';
+import { markdownBlockDecoField, markdownDecoPlugin, markdownImageContextFacet } from '../editor/md-decorations';
+import { markdownCoverField } from '../editor/cover-field';
+import { mermaidDecoField } from '../editor/mermaid-field';
 import { linkClickHandler } from '../editor/link-handler';
 import { tableDecoField } from '../editor/table-field';
 import { csvTableField } from '../editor/csv-field';
 import { requestUserEditCheckpoint, type UserEditCheckpointReason } from '../utils/checkpoints';
-import type { FileVersion } from '../types';
+import {
+  arrayBufferToBase64,
+  buildMarkdownAttachmentPlan,
+  type MarkdownAttachmentPlan,
+} from '../utils/markdown-attachments';
+import {
+  clearAppFileDragPayload,
+  readAppFileDragPayload,
+} from '../utils/app-file-drag';
+import {
+  isMarkdownCoverOnlyUpdate,
+  mergeMarkdownCoverIntoDocument,
+  parseMarkdownCover,
+} from '../utils/markdown-cover';
+import {
+  applyMarkdownCoverImageDrop,
+  hasMarkdownCoverDropImage,
+} from '../utils/markdown-cover-drop';
+import { isRemoteWorkbenchContentRef } from '../utils/remote-file-preview';
+import type { FileVersion, RemoteWorkbenchContentRef, VersionedWriteResult } from '../types';
 
 /* ── Types ── */
 
@@ -40,17 +61,31 @@ export interface PreviewEditorHandle {
   focus(): void;
 }
 
+export interface PreviewEditorStats {
+  selectedChars: number;
+  totalChars: number;
+}
+
+export type PreviewEditorSaveDocument = (
+  content: string,
+  expectedVersion?: FileVersion | null,
+) => Promise<VersionedWriteResult>;
+
 export interface PreviewEditorProps {
   content: string;
   filePath?: string;
+  remoteContentRef?: RemoteWorkbenchContentRef | null;
   fileVersion?: FileVersion | null;
+  saveDocument?: PreviewEditorSaveDocument;
   mode: 'markdown' | 'code' | 'csv' | 'text';
   language?: string | null;
   onSelectionChange?: (view: EditorView) => void;
+  onSelectionCommit?: (view: EditorView) => void;
+  onStatsChange?: (stats: PreviewEditorStats) => void;
   onContentChange?: (content: string, fileVersion?: FileVersion | null) => void;
   /**
-   * 只读模式：禁用编辑、不挂 autosave listener、不挂 file watch。
-   * 调用方（如派生 viewer 窗口）自己管 watchFile → setContent 即可。
+   * 只读模式：禁用编辑、不挂 autosave listener。
+   * 调用方（如派生 viewer 窗口）自己把新 content 作为 prop 传入即可。
    */
   readOnly?: boolean;
 }
@@ -78,36 +113,161 @@ function clampPos(pos: number, max: number): number {
   return Math.max(0, Math.min(pos, max));
 }
 
+function countTextChars(text: string): number {
+  return Array.from(text).length;
+}
+
+function getSelectedText(state: EditorState): string {
+  return state.selection.ranges
+    .filter(range => !range.empty)
+    .map(range => state.sliceDoc(range.from, range.to))
+    .join('');
+}
+
+function getEditorStats(view: EditorView): PreviewEditorStats {
+  return {
+    selectedChars: countTextChars(getSelectedText(view.state).trim()),
+    totalChars: countTextChars(view.state.doc.toString()),
+  };
+}
+
+function restoreScrollPosition(view: EditorView, scrollTop: number, scrollLeft: number): void {
+  const restore = () => {
+    view.scrollDOM.scrollTop = scrollTop;
+    view.scrollDOM.scrollLeft = scrollLeft;
+  };
+  restore();
+  queueMicrotask(restore);
+  window.requestAnimationFrame?.(restore);
+}
+
 function replaceDocumentPreservingSelection(view: EditorView, content: string): boolean {
   const current = view.state.doc.toString();
   if (current === content) return false;
   const nextLength = content.length;
   const { anchor, head } = view.state.selection.main;
+  const { scrollTop, scrollLeft } = view.scrollDOM;
   view.dispatch({
     changes: { from: 0, to: current.length, insert: content },
     selection: EditorSelection.single(clampPos(anchor, nextLength), clampPos(head, nextLength)),
     annotations: Transaction.remote.of(true),
   });
+  restoreScrollPosition(view, scrollTop, scrollLeft);
   return true;
 }
 
-/* ── File change emitter (global singleton) ── */
+interface MarkdownAttachmentSource {
+  file?: File;
+  path?: string;
+  name: string;
+  mimeType?: string | null;
+}
 
-const _fileChangeEmitter = new EventTarget();
-let _fileChangeListenerSetup = false;
+function dataTransferHasFiles(dataTransfer: DataTransfer | null): boolean {
+  if (!dataTransfer) return false;
+  if (dataTransfer.files?.length) return true;
+  return Array.from(dataTransfer.types || []).includes('Files');
+}
 
-function setupFileChangeListener() {
-  if (_fileChangeListenerSetup) return;
-  _fileChangeListenerSetup = true;
-  window.platform?.onFileChanged((filePath: string) => {
-    _fileChangeEmitter.dispatchEvent(new CustomEvent('change', { detail: filePath }));
+function filesFromDataTransfer(dataTransfer: DataTransfer | null): File[] {
+  if (!dataTransfer) return [];
+  const files = Array.from(dataTransfer.files || []);
+  if (files.length > 0) return files;
+
+  return Array.from(dataTransfer.items || [])
+    .filter(item => item.kind === 'file')
+    .map(item => item.getAsFile())
+    .filter((file): file is File => !!file);
+}
+
+function attachmentSourcesFromFiles(files: File[]): MarkdownAttachmentSource[] {
+  return files
+    .filter(file => !file.name.endsWith('/'))
+    .map(file => ({
+      file,
+      path: window.platform?.getFilePath?.(file) || undefined,
+      name: file.name,
+      mimeType: file.type || null,
+    }));
+}
+
+function attachmentSourcesFromAppDrag(dataTransfer: DataTransfer | null): MarkdownAttachmentSource[] | null {
+  const payload = readAppFileDragPayload(dataTransfer);
+  if (!payload) return null;
+  return payload.files
+    .filter(file => !file.isDirectory && !!file.path)
+    .map(file => ({
+      path: file.path,
+      name: file.name || file.path,
+      mimeType: file.mimeType || null,
+    }));
+}
+
+async function writeMarkdownAttachment(source: MarkdownAttachmentSource, plan: MarkdownAttachmentPlan): Promise<void> {
+  let copied = false;
+  if (source.path && typeof window.platform?.copyFile === 'function') {
+    copied = await window.platform.copyFile(source.path, plan.attachmentPath);
+  }
+  if (copied) return;
+
+  if (!source.file) {
+    throw new Error(`cannot copy attachment: ${source.name}`);
+  }
+  if (typeof window.platform?.writeFileBinary !== 'function') {
+    throw new Error('writeFileBinary unavailable');
+  }
+  const base64 = arrayBufferToBase64(await source.file.arrayBuffer());
+  const ok = await window.platform.writeFileBinary(plan.attachmentPath, base64);
+  if (ok === false) {
+    throw new Error(`failed to write attachment: ${source.name}`);
+  }
+}
+
+function insertMarkdownAt(view: EditorView, markdown: string, position: number | null): void {
+  const selection = view.state.selection.main;
+  const from = position ?? selection.from;
+  const to = position ?? selection.to;
+  view.dispatch({
+    changes: { from, to, insert: markdown },
+    selection: EditorSelection.cursor(from + markdown.length),
+    scrollIntoView: true,
+    annotations: Transaction.userEvent.of('input.paste'),
   });
+}
+
+function dropPosition(view: EditorView, event: DragEvent): number | null {
+  try {
+    return view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function dragEventElement(event: DragEvent): Element | null {
+  return event.target instanceof Element ? event.target : null;
+}
+
+function editorCoverElementFromEvent(event: DragEvent): HTMLElement | null {
+  return dragEventElement(event)?.closest('.cm-markdown-cover') as HTMLElement | null;
+}
+
+function clearEditorCoverDropState(view: EditorView): void {
+  view.dom.classList.remove('cm-markdown-cover-rail-active');
+  view.dom.querySelector('.cm-markdown-cover-drop-active')?.classList.remove('cm-markdown-cover-drop-active');
+}
+
+function isEditorCoverRailDrop(view: EditorView, event: DragEvent): boolean {
+  if (parseMarkdownCover(view.state.doc.toString())) return false;
+  const rect = view.scrollDOM.getBoundingClientRect();
+  if (!Number.isFinite(event.clientY)) return false;
+  const y = event.clientY;
+  return y >= rect.top && y <= rect.top + 40;
 }
 
 /* ── Editor Component ── */
 
 export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>(
-  function PreviewEditor({ content, filePath, fileVersion, mode, language, onSelectionChange, onContentChange, readOnly = false }, ref) {
+  function PreviewEditor({ content, filePath, remoteContentRef, fileVersion, saveDocument, mode, language, onSelectionChange, onSelectionCommit, onStatsChange, onContentChange, readOnly = false }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,8 +280,17 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
     const lastCheckpointAtRef = useRef<number>(0);
     const filePathRef = useRef(filePath);
     filePathRef.current = filePath;
+    const remoteContentRefRef = useRef(remoteContentRef);
+    remoteContentRefRef.current = remoteContentRef;
+    const saveDocumentRef = useRef(saveDocument);
+    saveDocumentRef.current = saveDocument;
     const selectionCbRef = useRef(onSelectionChange);
     selectionCbRef.current = onSelectionChange;
+    const selectionCommitCbRef = useRef(onSelectionCommit);
+    selectionCommitCbRef.current = onSelectionCommit;
+    const statsCbRef = useRef(onStatsChange);
+    statsCbRef.current = onStatsChange;
+    const lastStatsRef = useRef<PreviewEditorStats | null>(null);
     const contentCbRef = useRef(onContentChange);
     contentCbRef.current = onContentChange;
 
@@ -161,6 +330,45 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
       }
     }, []);
 
+    const insertMarkdownAttachments = useCallback(async (
+      view: EditorView,
+      sources: MarkdownAttachmentSource[],
+      position: number | null = null,
+    ) => {
+      const fp = filePathRef.current;
+      if (!fp) throw new Error('markdown file path required');
+      if (sources.length === 0) return;
+
+      const plans: MarkdownAttachmentPlan[] = [];
+      for (let i = 0; i < sources.length; i += 1) {
+        const source = sources[i];
+        const plan = buildMarkdownAttachmentPlan({
+          markdownFilePath: fp,
+          originalName: source.name,
+          mimeType: source.mimeType,
+          index: i,
+        });
+        await writeMarkdownAttachment(source, plan);
+        plans.push(plan);
+      }
+
+      insertMarkdownAt(view, plans.map(plan => plan.markdown).join('\n'), position);
+    }, []);
+
+    const emitStatsIfChanged = useCallback((view: EditorView) => {
+      const next = getEditorStats(view);
+      const previous = lastStatsRef.current;
+      if (
+        previous
+        && previous.selectedChars === next.selectedChars
+        && previous.totalChars === next.totalChars
+      ) {
+        return;
+      }
+      lastStatsRef.current = next;
+      statsCbRef.current?.(next);
+    }, []);
+
     const rememberSelfWrite = useCallback((text: string) => {
       selfWriteContentsRef.current.add(text);
       window.setTimeout(() => {
@@ -170,33 +378,47 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
 
     const performSave = useCallback(async ({ text, revision }: SaveJob) => {
       const fp = filePathRef.current;
-      if (!fp) return;
+      const saveRemoteDocument = saveDocumentRef.current;
+      if (!fp && !saveRemoteDocument) return;
 
       try {
-        await createCheckpointIfDue(fp);
+        if (fp) await createCheckpointIfDue(fp);
         if (revision !== docRevisionRef.current || fp !== filePathRef.current) return;
         const expectedVersion = diskVersionRef.current;
         let nextVersion: FileVersion | null | undefined;
 
-        if (window.platform?.writeFileIfUnchanged) {
-          const result = await window.platform.writeFileIfUnchanged(fp, text, expectedVersion);
+        if (saveRemoteDocument) {
+          const result = await saveRemoteDocument(text, expectedVersion);
           if (!result?.ok) {
             if (result?.conflict) {
               const tFn = window.t ?? ((p: string) => p);
               throw new Error(tFn('settings.fileChangedOnDisk'));
             }
-            throw new Error('write-file-if-unchanged returned false');
+            throw new Error('saveDocument returned false');
           }
           nextVersion = result.version ?? null;
           if (result.version) diskVersionRef.current = result.version;
-          rememberSelfWrite(text);
         } else {
-          rememberSelfWrite(text);
-          const ok = await window.platform?.writeFile(fp, text);
-          if (ok === false) throw new Error('write-file returned false');
-          nextVersion = undefined;
+          if (!fp) return;
+          if (window.platform?.writeFileIfUnchanged) {
+            const result = await window.platform.writeFileIfUnchanged(fp, text, expectedVersion);
+            if (!result?.ok) {
+              if (result?.conflict) {
+                const tFn = window.t ?? ((p: string) => p);
+                throw new Error(tFn('settings.fileChangedOnDisk'));
+              }
+              throw new Error('write-file-if-unchanged returned false');
+            }
+            nextVersion = result.version ?? null;
+            if (result.version) diskVersionRef.current = result.version;
+          } else {
+            const ok = await window.platform?.writeFile(fp, text);
+            if (ok === false) throw new Error('write-file returned false');
+            nextVersion = undefined;
+          }
         }
         lastSavedContentRef.current = text;
+        rememberSelfWrite(text);
 
         if (revision === docRevisionRef.current && fp === filePathRef.current && nextVersion !== undefined) {
           contentCbRef.current?.(text, nextVersion);
@@ -224,6 +446,54 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
       drainSaveQueue();
     }, [drainSaveQueue]);
 
+    const applyIncomingContent = useCallback((nextContent: string, options: { publish?: boolean } = {}) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const current = view.state.doc.toString();
+      if (current === nextContent) {
+        if (options.publish) lastSavedContentRef.current = nextContent;
+        return;
+      }
+
+      if (selfWriteContentsRef.current.has(nextContent)) {
+        return;
+      }
+
+      const hasLocalUnsavedEdits = !readOnly && current !== lastSavedContentRef.current;
+      if (hasLocalUnsavedEdits) {
+        const merged = mode === 'markdown' && isMarkdownCoverOnlyUpdate(lastSavedContentRef.current, nextContent)
+          ? mergeMarkdownCoverIntoDocument(current, nextContent)
+          : null;
+        if (merged) {
+          docRevisionRef.current += 1;
+          const revision = docRevisionRef.current;
+          if (saveTimerRef.current) {
+            clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+          }
+          lastSavedContentRef.current = nextContent;
+          replaceDocumentPreservingSelection(view, merged);
+          contentCbRef.current?.(merged);
+          saveToFile(merged, revision);
+          return;
+        }
+
+        showSaveError('settings.fileChangedOnDisk', 'local edits are not saved yet');
+        return;
+      }
+
+      docRevisionRef.current += 1;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      lastSavedContentRef.current = nextContent;
+      replaceDocumentPreservingSelection(view, nextContent);
+      if (options.publish) {
+        contentCbRef.current?.(nextContent, diskVersionRef.current);
+      }
+    }, [mode, readOnly, saveToFile]);
+
     // Create editor
     useEffect(() => {
       if (!containerRef.current) return;
@@ -232,11 +502,46 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
       const isCsv = mode === 'csv';
 
       const extensions = [
-        drawSelection(),
+        ...(isMd ? [] : [drawSelection()]),
         history(),
         bracketMatching(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         EditorView.lineWrapping,
+        ...(isMd && !readOnly ? [
+          EditorView.domEventHandlers({
+            dragover(event) {
+              const appSources = attachmentSourcesFromAppDrag(event.dataTransfer);
+              if (!filePathRef.current || (!appSources && !dataTransferHasFiles(event.dataTransfer))) return false;
+              event.preventDefault();
+              if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+              return true;
+            },
+            drop(event, view) {
+              const payload = readAppFileDragPayload(event.dataTransfer);
+              const appSources = payload
+                ? attachmentSourcesFromAppDrag(event.dataTransfer)
+                : null;
+              const sources = appSources ?? attachmentSourcesFromFiles(filesFromDataTransfer(event.dataTransfer));
+              if (!filePathRef.current || sources.length === 0) return false;
+              event.preventDefault();
+              event.stopPropagation();
+              if (payload) clearAppFileDragPayload(payload.dragId);
+              const position = dropPosition(view, event);
+              void insertMarkdownAttachments(view, sources, position)
+                .catch(err => showSaveError('preview.markdownAttachmentInsertFailed', err));
+              return true;
+            },
+            paste(event, view) {
+              const sources = attachmentSourcesFromFiles(filesFromDataTransfer(event.clipboardData));
+              if (!filePathRef.current || sources.length === 0) return false;
+              event.preventDefault();
+              event.stopPropagation();
+              void insertMarkdownAttachments(view, sources)
+                .catch(err => showSaveError('preview.markdownAttachmentInsertFailed', err));
+              return true;
+            },
+          }),
+        ] : []),
         // 只读模式：禁用编辑 + 关闭 autosave；不挂 file watch（调用方自理）
         ...(readOnly
           ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
@@ -259,6 +564,9 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
           if (update.selectionSet && selectionCbRef.current) {
             selectionCbRef.current(update.view);
           }
+          if (update.docChanged || update.selectionSet) {
+            emitStatsIfChanged(update.view);
+          }
         }),
         // Dynamic compartments
         c.gutter.of(isMd || isCsv ? [] : lineNumbers()),
@@ -268,7 +576,16 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
         c.highlight.of(
           syntaxHighlighting(isMd ? markdownHighlight : codeHighlight),
         ),
-        c.conceal.of(isMd ? [markdownDecoPlugin, markdownBlockDecoField] : []),
+        c.conceal.of(isMd ? [
+          markdownImageContextFacet.of({
+            filePath,
+            getFileUrl: window.platform?.getFileUrl,
+          }),
+          markdownDecoPlugin,
+          markdownCoverField,
+          markdownBlockDecoField,
+          mermaidDecoField,
+        ] : []),
         ...(isMd ? [tableDecoField] : []),
         ...(isCsv ? [csvTableField] : []),
         c.theme.of(isMd || isCsv ? markdownTheme : codeTheme),
@@ -280,7 +597,67 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
 
       const state = EditorState.create({ doc: content, extensions });
       const view = new EditorView({ state, parent: containerRef.current });
+      const onSelectionCommitEvent = () => {
+        selectionCommitCbRef.current?.(view);
+      };
+      const onCoverDragOver = (event: DragEvent) => {
+        const canApplyCover = Boolean(filePathRef.current || isRemoteWorkbenchContentRef(remoteContentRefRef.current));
+        const coverElement = editorCoverElementFromEvent(event);
+        if (coverElement && canApplyCover && hasMarkdownCoverDropImage(event.dataTransfer)) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+          coverElement.classList.add('cm-markdown-cover-drop-active');
+          view.dom.classList.remove('cm-markdown-cover-rail-active');
+          return;
+        }
+
+        if (canApplyCover && hasMarkdownCoverDropImage(event.dataTransfer) && isEditorCoverRailDrop(view, event)) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+          view.dom.classList.add('cm-markdown-cover-rail-active');
+          return;
+        }
+
+        clearEditorCoverDropState(view);
+      };
+      const onCoverDragLeave = (event: DragEvent) => {
+        const coverElement = editorCoverElementFromEvent(event);
+        if (coverElement && !(event.relatedTarget instanceof Node && coverElement.contains(event.relatedTarget))) {
+          coverElement.classList.remove('cm-markdown-cover-drop-active');
+        }
+        if (!(event.relatedTarget instanceof Node && view.dom.contains(event.relatedTarget))) {
+          clearEditorCoverDropState(view);
+        }
+      };
+      const onCoverDrop = (event: DragEvent) => {
+        const remoteRef = isRemoteWorkbenchContentRef(remoteContentRefRef.current)
+          ? remoteContentRefRef.current
+          : null;
+        const coverElement = editorCoverElementFromEvent(event);
+        const isCoverTarget = Boolean(coverElement)
+          || (hasMarkdownCoverDropImage(event.dataTransfer) && isEditorCoverRailDrop(view, event));
+        if ((!filePathRef.current && !remoteRef) || !isCoverTarget || !hasMarkdownCoverDropImage(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        clearEditorCoverDropState(view);
+        void applyMarkdownCoverImageDrop({
+          filePath: filePathRef.current,
+          target: remoteRef,
+          dataTransfer: event.dataTransfer,
+        });
+      };
+      view.dom.addEventListener('mouseup', onSelectionCommitEvent);
+      view.dom.addEventListener('touchend', onSelectionCommitEvent);
+      view.dom.addEventListener('keyup', onSelectionCommitEvent);
+      view.dom.addEventListener('dragover', onCoverDragOver, true);
+      view.dom.addEventListener('dragleave', onCoverDragLeave, true);
+      view.dom.addEventListener('drop', onCoverDrop, true);
       viewRef.current = view;
+      lastStatsRef.current = null;
+      emitStatsIfChanged(view);
 
       return () => {
         if (saveTimerRef.current) {
@@ -288,72 +665,21 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
           saveTimerRef.current = null;
           saveToFile(view.state.doc.toString(), docRevisionRef.current);
         }
+        view.dom.removeEventListener('mouseup', onSelectionCommitEvent);
+        view.dom.removeEventListener('touchend', onSelectionCommitEvent);
+        view.dom.removeEventListener('keyup', onSelectionCommitEvent);
+        view.dom.removeEventListener('dragover', onCoverDragOver, true);
+        view.dom.removeEventListener('dragleave', onCoverDragLeave, true);
+        view.dom.removeEventListener('drop', onCoverDrop, true);
         view.destroy();
         viewRef.current = null;
       };
-    }, [mode, language, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在 mode/language/readOnly 变化时重建 CodeMirror，content/refs 故意省略以避免销毁重建
+    }, [mode, language, readOnly, filePath, remoteContentRef, emitStatsIfChanged, insertMarkdownAttachments]); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在 mode/language/readOnly/filePath/remoteContentRef 变化时重建 CodeMirror，content/refs 故意省略以避免销毁重建
 
     // content prop change → update editor (skip if already in sync)
     useEffect(() => {
-      const view = viewRef.current;
-      if (!view) return;
-      const current = view.state.doc.toString();
-      if (current !== content) {
-        docRevisionRef.current += 1;
-        if (saveTimerRef.current) {
-          clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = null;
-        }
-        replaceDocumentPreservingSelection(view, content);
-      }
-    }, [content]);
-
-    // File watching（只读模式下由调用方自理，这里跳过避免重复监听）
-    useEffect(() => {
-      if (!filePath || readOnly) return;
-      setupFileChangeListener();
-      window.platform?.watchFile(filePath);
-
-      const handler = (e: Event) => {
-        const changedPath = (e as CustomEvent).detail;
-        if (changedPath !== filePath) return;
-        void (async () => {
-          const snapshot = await window.platform?.readFileSnapshot?.(filePath);
-          const newContent = snapshot?.content ?? await window.platform?.readFile(filePath);
-          if (snapshot?.version) diskVersionRef.current = snapshot.version;
-          return newContent;
-        })()
-          .then((newContent) => {
-            if (newContent == null) return;
-            // Content comparison: same as last write → self-write, ignore
-            if (newContent === lastSavedContentRef.current || selfWriteContentsRef.current.has(newContent)) {
-              lastSavedContentRef.current = newContent;
-              return;
-            }
-            const view = viewRef.current;
-            if (!view) return;
-            const current = view.state.doc.toString();
-            if (current === newContent) return;
-            docRevisionRef.current += 1;
-            if (saveTimerRef.current) {
-              clearTimeout(saveTimerRef.current);
-              saveTimerRef.current = null;
-            }
-            lastSavedContentRef.current = newContent;
-            replaceDocumentPreservingSelection(view, newContent);
-            contentCbRef.current?.(newContent, diskVersionRef.current);
-          })
-          .catch((err) => {
-            console.warn('[PreviewEditor] reload watched file failed:', err);
-          });
-      };
-
-      _fileChangeEmitter.addEventListener('change', handler);
-      return () => {
-        _fileChangeEmitter.removeEventListener('change', handler);
-        window.platform?.unwatchFile(filePath);
-      };
-    }, [filePath, readOnly]);
+      applyIncomingContent(content);
+    }, [content, applyIncomingContent]);
 
     return <div className={`preview-editor mode-${mode}`} ref={containerRef} />;
   },

@@ -16,6 +16,7 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState } from 'react';
 import { PreviewEditor } from './react/components/PreviewEditor';
+import { watchFileChanges } from './react/services/file-change-events';
 
 type ViewerMode = 'markdown' | 'code' | 'csv';
 
@@ -36,9 +37,6 @@ function typeToMode(type: string): ViewerMode {
 // Subset of the renderer-side `window.platform` we use in the viewer.
 interface ViewerPlatform {
   readFile(path: string): Promise<string | null>;
-  watchFile(path: string): Promise<boolean>;
-  unwatchFile(path: string): Promise<boolean>;
-  onFileChanged(callback: (path: string) => void): void;
   onViewerLoad?(callback: (data: ViewerLoadPayload) => void): void;
   viewerClose?(): void;
 }
@@ -46,6 +44,10 @@ interface ViewerPlatform {
 function getPlatform(): ViewerPlatform | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- window.platform is injected by preload
   return (window as any).platform ?? null;
+}
+
+function fileUnavailableError(payload: ViewerLoadPayload): Error {
+  return new Error(`File is no longer available: ${payload.title || payload.filePath}`);
 }
 
 function ViewerApp() {
@@ -83,20 +85,24 @@ function ViewerApp() {
     platform.readFile(payload.filePath)
       .then((c) => {
         if (cancelled) return;
+        if (c == null) {
+          fail(fileUnavailableError(payload));
+          return;
+        }
         setLoadError(null);
-        setContent(c ?? '');
+        setContent(c);
       })
       .catch(fail);
 
-    // Live watch
-    platform.watchFile(payload.filePath);
-    platform.onFileChanged((changedPath) => {
+    const unwatch = watchFileChanges(payload.filePath, () => {
       if (cancelled) return;
-      if (changedPath !== payload.filePath) return;
       platform.readFile(payload.filePath)
         .then((c) => {
           if (cancelled) return;
-          if (c == null) return;
+          if (c == null) {
+            fail(fileUnavailableError(payload));
+            return;
+          }
           setLoadError(null);
           setContent(c);
         })
@@ -105,7 +111,7 @@ function ViewerApp() {
 
     return () => {
       cancelled = true;
-      platform.unwatchFile(payload.filePath);
+      unwatch();
     };
   }, [payload?.filePath]);
 

@@ -38,7 +38,7 @@ models:
 # 被 hit 过的记忆会重置衰减起点，常提起的记忆不会消失。
 # token_budget 控制 memory.md 能装多少内容。
 memory:
-  enabled: false                  # 记忆总开关：默认关闭，用户需要时在设置中开启
+  enabled: true                   # 记忆总开关：默认开启，用户需要时可在设置中关闭
   token_budget: 2500               # memory.md 的目标 token 预算
   decay_per_day: 0.02              # 高斯衰减系数 λ（越大遗忘越快）
   hit_bonus: 5                     # 每次命中加多少分
@@ -52,15 +52,19 @@ experience:
   enabled: false
 
 # 网页搜索（可选）
-# 支持免 Key 浏览器搜索：bing_browser / google_browser / duckduckgo_browser。
-# 也支持 API provider：tavily / serper / brave（需要填写 api_key）。
+# auto 会优先使用已配置的 API provider，再回退到免费浏览器搜索。
+# API provider：tavily / brave / serper。浏览器 provider：bing_browser / google_browser / duckduckgo_browser。
 search:
-  provider: "bing_browser"               # 默认免费浏览器搜索；也可填 google_browser / duckduckgo_browser / tavily / serper / brave
-  api_key: ""                            # API provider 的 key；浏览器搜索留空
+  provider: "auto"                       # 也可显式填 bing_browser / google_browser / duckduckgo_browser / tavily / brave / serper
+  api_keys:                              # auto 下可同时配置多个；没有 key 时直接走浏览器搜索
+    tavily: ""
+    brave: ""
+    serper: ""
+  api_key: ""                            # 旧单 provider 兼容字段；新配置优先用 api_keys
 
 # Skills（per-agent 技能开关）
 skills:
-  enabled: ["skill-creator"]         # 启用的 skill 名称，如 ["pdf", "literary-craft"]
+  enabled: ["skill-creator", "office-documents"]         # 启用的 skill 名称，如 ["pdf", "literary-craft"]
 
 # 工作书桌
 desk:

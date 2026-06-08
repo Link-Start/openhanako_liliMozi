@@ -30,7 +30,7 @@ vi.mock('../../../widgets/ModelWidget', () => ({
   ModelWidget: () => <div data-testid="model-widget">model-widget</div>,
 }));
 
-vi.mock('../../../widgets/SelectWidget', () => ({
+vi.mock('@/ui', () => ({
   SelectWidget: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
     <button type="button" data-testid="select-widget" onClick={() => onChange(value)}>
       select-widget

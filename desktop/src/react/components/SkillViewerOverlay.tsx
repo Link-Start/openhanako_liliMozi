@@ -9,7 +9,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '../stores';
 import { hanaFetch } from '../hooks/use-hana-fetch';
 
-import { getMdWithOpts } from '../utils/markdown';
+import { renderMarkdownPreview } from '../utils/markdown';
+import { useMermaidDiagrams } from '../hooks/use-mermaid-diagrams';
+import { Overlay } from '../ui';
 
 declare function t(key: string, vars?: Record<string, string | number>): string;
 
@@ -27,7 +29,18 @@ interface TreeItem {
   children?: TreeItem[];
 }
 
-const md = getMdWithOpts({ html: true, linkify: true, breaks: true });
+function SkillMarkdown({ html }: { html: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useMermaidDiagrams(ref, [html]);
+
+  return (
+    <div
+      ref={ref}
+      className="md-content"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 export function SkillViewerOverlay() {
   const data = useStore(s => s.skillViewerData) as SkillInfo | null;
@@ -106,13 +119,22 @@ export function SkillViewerOverlay() {
         body = content.slice(fmMatch[0].length);
         description = parseFmDescription(fmMatch[1]);
       }
-      rendered = md.render(body);
+      rendered = renderMarkdownPreview(body, {
+        filePath: activeFile,
+        getFileUrl: window.platform?.getFileUrl,
+      });
     }
   }
 
   return (
-    <div className="sv-overlay" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="sv-container">
+    <Overlay
+      open
+      onClose={close}
+      backdrop="dim"
+      zIndex={2000}
+      className="sv-container"
+      disableContainerAnimation
+    >
         {/* 顶栏 */}
         <div className="sv-topbar">
           <button className="sv-close" onClick={close}>
@@ -154,7 +176,7 @@ export function SkillViewerOverlay() {
                     <div className="sv-description-text">{description}</div>
                   </div>
                 )}
-                <div className="md-content" dangerouslySetInnerHTML={{ __html: rendered }} />
+                <SkillMarkdown html={rendered} />
               </>
             ) : (
               <pre><code>{content}</code></pre>
@@ -164,8 +186,7 @@ export function SkillViewerOverlay() {
 
         {/* Toast */}
         {toast && <div className="sv-toast show">{toast}</div>}
-      </div>
-    </div>
+    </Overlay>
   );
 }
 

@@ -13,6 +13,9 @@
     --accent:       #C99AAF;
     --accent-hover: #D8AFC0;
     --accent-light: rgba(201, 154, 175, 0.11);
+    --link:         #B9E2FF;
+    --link-hover:   #D7F0FF;
+    --link-rgb:     185, 226, 255;
 
     /* 文字 */
     --text:         #E1EAF0;

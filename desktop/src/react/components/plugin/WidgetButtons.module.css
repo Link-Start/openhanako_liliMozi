@@ -17,11 +17,11 @@
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     font-family: var(--font-ui);
     font-size: 0.7rem;
     font-weight: 500;
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--duration-fast), background var(--duration-fast);
     padding: 0;
     flex-shrink: 0;
 }
@@ -37,18 +37,15 @@
 }
 
 .dropdown {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
     min-width: 130px;
     max-width: 200px;
     background: var(--bg-card);
     border: 1px solid var(--overlay-medium);
     border-radius: var(--radius-md);
     box-shadow: 0 4px 16px var(--shadow);
-    z-index: 100;
     padding: 4px;
-    animation: dropdown-in 0.15s var(--ease-out);
+    animation: hana-fade-up var(--duration-fast) var(--ease-out);
+    -webkit-app-region: no-drag;
 }
 
 .dropdownItem {
@@ -61,12 +58,12 @@
     color: var(--text-light);
     font-family: var(--font-ui);
     font-size: 0.76rem;
-    cursor: pointer;
+    cursor: default;
     text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    transition: background 0.1s, color 0.1s;
+    transition: background var(--duration-instant), color var(--duration-instant);
 }
 
 .dropdownItem:hover {
@@ -96,9 +93,9 @@
     border-radius: var(--radius-sm);
     background: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     opacity: 0;
-    transition: opacity 0.1s, color 0.1s, background 0.1s;
+    transition: opacity var(--duration-instant), color var(--duration-instant), background var(--duration-instant);
 }
 
 .dropdownRow:hover .pinBtn {

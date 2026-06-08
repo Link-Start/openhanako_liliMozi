@@ -25,6 +25,8 @@ export interface FloatingInputPosition {
   origin: FloatingInputOrigin;
 }
 
+export type FloatingPlacement = 'bottom' | 'top';
+
 const DEFAULT_GAP = 8;
 const DEFAULT_MARGIN = 16;
 
@@ -39,10 +41,15 @@ export function computeFloatingInputPosition(
   floating: FloatingSize,
   gap = DEFAULT_GAP,
   margin = DEFAULT_MARGIN,
+  preferredPlacement: FloatingPlacement = 'bottom',
+  crossAxisOffset = 0,
 ): FloatingInputPosition {
-  const centeredLeft = anchor.left + anchor.width / 2 - floating.width / 2;
+  const centeredLeft = anchor.left + anchor.width / 2 - floating.width / 2 + crossAxisOffset;
   const left = clamp(centeredLeft, margin, viewport.width - margin - floating.width);
-  const preferredTop = anchor.bottom + gap;
+  const topPlacement = anchor.top - gap - floating.height;
+  const preferredTop = preferredPlacement === 'top' && topPlacement >= margin
+    ? topPlacement
+    : anchor.bottom + gap;
   const top = clamp(preferredTop, margin, viewport.height - margin - floating.height);
 
   return {

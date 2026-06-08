@@ -81,7 +81,7 @@ function scanDir(dir) {
     if (entry.isDirectory()) {
       if (full === adapterDir || entry.name === "node_modules") continue;
       scanDir(full);
-    } else if (/\.(js|mjs|cjs)$/.test(entry.name)) {
+    } else if (/\.(js|mjs|cjs|ts)$/.test(entry.name)) {
       const content = fs.readFileSync(full, "utf8");
       if (importPattern.test(content)) {
         leaks.push(path.relative(root, full));

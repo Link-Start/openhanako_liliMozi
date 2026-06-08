@@ -3,6 +3,10 @@
 # ═══════════════════════════════════════════
 agents/
 user/
+!skills2set/hana-plugin-creator/agents/
+!skills2set/hana-plugin-creator/agents/**
+!skills2set/office-documents/agents/
+!skills2set/office-documents/agents/**
 
 # ═══════════════════════════════════════════
 # 文档 / 参考文件
@@ -16,6 +20,11 @@ archived/
 devlog/
 handoff-*.md
 TODO.md
+
+# ═══════════════════════════════════════════
+# AI 生图原始素材
+# ═══════════════════════════════════════════
+**/jimeng-*.png
 
 # ═══════════════════════════════════════════
 # 构建产物
@@ -39,6 +48,7 @@ node_modules/
 
 # IDE / 工具
 .claude/
+.agents/skills/
 *.code-workspace
 
 # 项目私有文件
@@ -46,8 +56,12 @@ CLAUDE.md
 
 # 临时文件
 tmp/
+test-results/
+__pycache__/
+*.pyc
 /index.html
 homepage/
+desktop/src/react/animation-mockup/
 
 # 环境变量 / 凭证
 .env

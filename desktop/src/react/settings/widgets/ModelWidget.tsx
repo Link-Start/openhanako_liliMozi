@@ -43,11 +43,14 @@ export function ModelWidget({
   const searchRef = useRef<HTMLInputElement>(null);
 
   // 从唯一信源获取模型列表
-  useEffect(() => {
+  const refreshModels = React.useCallback(() => {
     hanaFetch('/api/models').then(r => r.json()).then(data => {
       setModels(data.models || []);
     }).catch(() => {});
   }, []);
+
+  // mount 时首次拉取
+  useEffect(() => { refreshModels(); }, [refreshModels]);
 
   useEffect(() => {
     if (!open) return;
@@ -107,7 +110,7 @@ export function ModelWidget({
       <button
         className={styles['mdw-trigger']}
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        onClick={(e) => { e.stopPropagation(); if (!open) refreshModels(); setOpen(!open); }}
       >
         <span className={styles['mdw-value']}>{displayValue || `— ${placeholder || t('settings.api.selectModel')} —`}</span>
         <span className={styles['mdw-arrow']}>▾</span>

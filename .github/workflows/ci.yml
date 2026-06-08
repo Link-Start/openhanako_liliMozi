@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
-        node-version: [22]
+        node-version: ["24.15.0"]
 
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +28,12 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build packages
+        run: npm run build:packages
 
       - name: Build renderer
         run: npm run build:renderer

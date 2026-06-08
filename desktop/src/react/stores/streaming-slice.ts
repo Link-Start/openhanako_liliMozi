@@ -3,6 +3,10 @@ export interface StreamingSlice {
   streamingSessions: string[];
   addStreamingSession: (path: string) => void;
   removeStreamingSession: (path: string) => void;
+  /** 后台 session 已完成新输出，但用户尚未切回查看。 */
+  unreadOutputSessionPaths: string[];
+  markSessionOutputUnread: (path: string) => void;
+  clearSessionOutputUnread: (path: string) => void;
   /** 按 session path 存储的内联错误（权威源）。text 为 null 表示无 error。 */
   inlineErrors: Record<string, string | null>;
   /** 写入某个 session 的 inline error；ttl>0 时 ttl 毫秒后自动清除（默认 5s）。新 error 覆盖旧 error 会取消旧定时器。 */
@@ -41,6 +45,15 @@ export const createStreamingSlice = (
   })),
   removeStreamingSession: (path) => set((s) => ({
     streamingSessions: s.streamingSessions.filter(p => p !== path),
+  })),
+  unreadOutputSessionPaths: [],
+  markSessionOutputUnread: (path) => set((s) => ({
+    unreadOutputSessionPaths: s.unreadOutputSessionPaths.includes(path)
+      ? s.unreadOutputSessionPaths
+      : [...s.unreadOutputSessionPaths, path],
+  })),
+  clearSessionOutputUnread: (path) => set((s) => ({
+    unreadOutputSessionPaths: s.unreadOutputSessionPaths.filter(p => p !== path),
   })),
   inlineErrors: {},
   setInlineError: (path, text, ttlMs = 5000) => {

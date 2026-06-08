@@ -10,10 +10,16 @@ import { streamBufferManager } from '../hooks/use-stream-buffer';
 import { dispatchStreamKey } from './stream-key-dispatcher';
 import { useStore } from '../stores';
 import { updateKeyed } from '../stores/create-keyed-slice';
-import { loadSessions as loadSessionsAction } from '../stores/session-actions';
+import { scheduleSessionsRefresh } from './session-refresh-scheduler';
 import { handleLegacyArtifactBlock } from '../stores/preview-actions';
 import { loadDeskFiles } from '../stores/desk-actions';
-import { loadChannels as loadChannelsAction, openChannel as openChannelAction } from '../stores/channel-actions';
+import {
+  appendChannelMessage as appendChannelMessageAction,
+  loadChannels as loadChannelsAction,
+  markChannelMessagesDirty as markChannelMessagesDirtyAction,
+  openChannel as openChannelAction,
+  upsertConversationAgentActivity as upsertConversationAgentActivityAction,
+} from '../stores/channel-actions';
 import { showError } from '../utils/ui-helpers';
 import { handleAppEvent } from './app-event-actions';
 import {
@@ -23,13 +29,19 @@ import {
   updateSessionStreamMeta,
 } from './stream-resume';
 import { TODO_TOOL_NAMES, type TodoToolName } from '../utils/todo-constants';
-import { migrateLegacyTodos } from '../utils/todo-compat';
+import { applyTodoLifecycle, migrateLegacyTodos } from '../utils/todo-compat';
 import { renderMarkdown } from '../utils/markdown';
 import { bumpMessageLiveVersion } from '../stores/message-live-version';
 
 declare function t(key: string, vars?: Record<string, string>): any;
 
 let requestContextUsage: (sessionPath: string) => void = () => {};
+
+function syncSessionPermissionMode(mode: unknown) {
+  if (mode === 'auto' || mode === 'operate' || mode === 'ask' || mode === 'read_only') {
+    useStore.getState().setSessionPermissionMode?.(mode);
+  }
+}
 
 export function configureWsMessageHandler(options: {
   requestContextUsage?: (sessionPath: string) => void;
@@ -70,6 +82,52 @@ function ensureCurrentSessionVisible(): void {
   });
 }
 
+function upsertCreatedSession(msg: any): void {
+  const incoming = msg.session && typeof msg.session === 'object' ? msg.session : {};
+  const sessionPath = typeof incoming.path === 'string' && incoming.path.trim()
+    ? incoming.path
+    : typeof msg.sessionPath === 'string' && msg.sessionPath.trim()
+      ? msg.sessionPath
+      : null;
+  if (!sessionPath) return;
+
+  const state = useStore.getState();
+  const existing: any = state.sessions.find((s: any) => s.path === sessionPath) || {};
+  const now = new Date().toISOString();
+  const next = {
+    ...existing,
+    path: sessionPath,
+    title: typeof incoming.title === 'string' ? incoming.title : existing.title ?? null,
+    firstMessage: typeof incoming.firstMessage === 'string' ? incoming.firstMessage : existing.firstMessage ?? '',
+    modified: typeof incoming.modified === 'string' ? incoming.modified : existing.modified ?? now,
+    messageCount: Number.isFinite(incoming.messageCount) ? incoming.messageCount : existing.messageCount ?? 0,
+    agentId: typeof incoming.agentId === 'string' ? incoming.agentId : existing.agentId ?? state.currentAgentId ?? null,
+    agentName: typeof incoming.agentName === 'string' ? incoming.agentName : existing.agentName ?? state.agentName ?? null,
+    cwd: typeof incoming.cwd === 'string' ? incoming.cwd : existing.cwd ?? null,
+    pinnedAt: incoming.pinnedAt ?? existing.pinnedAt ?? null,
+    hasSummary: incoming.hasSummary ?? existing.hasSummary,
+    rcAttachment: incoming.rcAttachment ?? existing.rcAttachment ?? null,
+    _optimistic: false,
+  };
+
+  useStore.setState({
+    sessions: [next, ...state.sessions.filter((s: any) => s.path !== sessionPath)]
+      .sort((a: any, b: any) => new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime()),
+  });
+}
+
+function resolveNotificationDesktopFocusPolicy(msg: any): 'always' | 'when_unfocused' {
+  if (msg.desktopFocusPolicy === 'when_session_unfocused') {
+    const completedSessionPath = typeof msg.sessionPath === 'string' && msg.sessionPath.trim()
+      ? msg.sessionPath.trim()
+      : null;
+    const currentSessionPath = useStore.getState().currentSessionPath || null;
+    if (completedSessionPath && currentSessionPath !== completedSessionPath) return 'always';
+    return 'when_unfocused';
+  }
+  return msg.desktopFocusPolicy === 'when_unfocused' ? 'when_unfocused' : 'always';
+}
+
 function hasOptimisticCurrentSession(): boolean {
   const state = useStore.getState();
   const sessionPath = state.currentSessionPath;
@@ -77,8 +135,55 @@ function hasOptimisticCurrentSession(): boolean {
   return !!state.sessions.find((s: any) => s.path === sessionPath && s._optimistic);
 }
 
+function resolvePrimaryAgentId(state: any): string | null {
+  const primary = Array.isArray(state.agents)
+    ? state.agents.find((agent: any) => agent?.isPrimary === true)
+    : null;
+  return typeof primary?.id === 'string' && primary.id ? primary.id : null;
+}
+
+function resolveDmPeerIdForEvent(state: any, msg: any): string | null {
+  const channels = Array.isArray(state.channels) ? state.channels : [];
+  const known = channels.find((channel: any) => {
+    if (!channel?.isDM || !channel.dmOwnerId || !channel.peerId) return false;
+    return (
+      (msg.from === channel.dmOwnerId && msg.to === channel.peerId)
+      || (msg.to === channel.dmOwnerId && msg.from === channel.peerId)
+    );
+  });
+  if (known?.peerId) return known.peerId;
+
+  const ownerId = resolvePrimaryAgentId(state) || state.currentAgentId || null;
+  if (!ownerId) return typeof msg.from === 'string' ? msg.from : null;
+  if (msg.from === ownerId && typeof msg.to === 'string') return msg.to;
+  if (msg.to === ownerId && typeof msg.from === 'string') return msg.from;
+  return null;
+}
+
+function applyTodoToolEnd(msg: any): void {
+  if (msg.type !== 'tool_end' || !TODO_TOOL_NAMES.includes(msg.name as TodoToolName)) return;
+  const sp = msg.sessionPath;
+  if (!sp) {
+    console.warn('[ws] tool_end(todo) missing sessionPath, skipping');
+    return;
+  }
+  const todos = applyTodoLifecycle(migrateLegacyTodos(msg.details as { todos?: unknown[] } | null));
+  useStore.getState().setSessionTodosForPath(sp, todos);
+  // bump 版本：若 loadMessages 正在 fetch 旧快照，回来时会发现
+  // 版本号变了，主动跳过 hydrate 写入，避免覆盖本次 live 状态。
+  useStore.getState().bumpTodosLiveVersion(sp);
+}
+
 function isKnownChatSession(sessionPath: string, state = useStore.getState()): boolean {
   return !!state.chatSessions?.[sessionPath] || state.sessions.some((s: any) => s.path === sessionPath);
+}
+
+function requestInputFocusForCurrentSession(sessionPath: string | null): void {
+  if (!sessionPath) return;
+  const state = useStore.getState();
+  if (state.pendingNewSession) return;
+  if (state.currentSessionPath !== sessionPath) return;
+  state.requestInputFocus?.();
 }
 
 function applyCompactionLifecycle(msg: any): void {
@@ -105,6 +210,7 @@ export function applyStreamingStatus(isStreaming: boolean, sessionPath: string |
   // 元数据层：把 isStreaming 视为 sessionPath 维度的权威信号，统一写回 streamingSessions。
   // 这一层不分焦点，任何来源（普通 status、stream_resume 恢复）都必须到达这里，
   // 否则重连后服务端说「已结束」前端却留着旧的 streaming 标记，UI 会卡在"思考中"。
+  const wasStreaming = !!sessionPath && useStore.getState().streamingSessions.includes(sessionPath);
   if (sessionPath) {
     if (isStreaming) {
       useStore.setState(s => ({
@@ -120,13 +226,21 @@ export function applyStreamingStatus(isStreaming: boolean, sessionPath: string |
     }
   }
 
+  if (!isStreaming && wasStreaming) {
+    requestInputFocusForCurrentSession(sessionPath);
+    const focused = useStore.getState().currentSessionPath;
+    if (sessionPath && sessionPath !== focused) {
+      useStore.getState().markSessionOutputUnread?.(sessionPath);
+    }
+  }
+
   // 渲染层：只有焦点 session 才影响 UI 占位 / sessions 列表。
   const focused = useStore.getState().currentSessionPath;
   if (sessionPath && sessionPath !== focused) return;
   if (isStreaming) {
     ensureCurrentSessionVisible();
   } else if (hasOptimisticCurrentSession()) {
-    loadSessionsAction().catch(err => console.warn('[ws] loadSessions failed:', err));
+    scheduleSessionsRefresh('optimistic_session_settled');
   }
 }
 
@@ -153,6 +267,15 @@ function sameJsonish(a: any, b: any): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
+function normalizeMessageTimestamp(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
 function replayUserMessageAlreadyHydrated(sessionPath: string, message: any): boolean {
   const session = useStore.getState().chatSessions[sessionPath];
   const last = session?.items?.[session.items.length - 1];
@@ -162,6 +285,39 @@ function replayUserMessageAlreadyHydrated(sessionPath: string, message: any): bo
     (last.data.quotedText || '') === (message?.quotedText || '') &&
     attachmentsEqual(last.data.attachments, message?.attachments) &&
     sameJsonish(last.data.deskContext, message?.deskContext);
+}
+
+function applyVoiceTranscriptionUpdate(msg: any): void {
+  const sessionPath = typeof msg.sessionPath === 'string' ? msg.sessionPath : '';
+  const fileId = typeof msg.fileId === 'string' ? msg.fileId : '';
+  const transcription = msg.transcription && typeof msg.transcription === 'object' ? msg.transcription : null;
+  if (!sessionPath || !fileId || !transcription) return;
+
+  let changed = false;
+  useStore.setState((s: any) => {
+    const session = s.chatSessions?.[sessionPath];
+    if (!session) return {};
+    const items = session.items.map((item: any) => {
+      if (item?.type !== 'message' || !Array.isArray(item.data?.attachments)) return item;
+      let itemChanged = false;
+      const attachments = item.data.attachments.map((attachment: any) => {
+        if (attachment?.fileId !== fileId) return attachment;
+        itemChanged = true;
+        return { ...attachment, transcription };
+      });
+      if (!itemChanged) return item;
+      changed = true;
+      return { ...item, data: { ...item.data, attachments } };
+    });
+    if (!changed) return {};
+    return {
+      chatSessions: {
+        ...s.chatSessions,
+        [sessionPath]: { ...session, items },
+      },
+    };
+  });
+  if (changed) bumpMessageLiveVersion(sessionPath);
 }
 
 // ── 消息分发（大 switch） ──
@@ -186,7 +342,7 @@ export function handleServerMessage(msg: any): void {
   }
 
   if (msg.type !== 'stream_resume' && isStreamScopedMessage(msg)) {
-    updateSessionStreamMeta(msg);
+    if (!updateSessionStreamMeta(msg)) return;
   }
 
   if (msg.type === 'compaction_start' || msg.type === 'compaction_end') {
@@ -200,6 +356,9 @@ export function handleServerMessage(msg: any): void {
       streamBufferManager.handle(msg);
     }
     dispatchStreamKey(msg.sessionPath, msg);
+    applyTodoToolEnd(msg);
+    applyToolEndSessionFile(msg);
+    applyContentBlockSessionFile(msg);
     return;
   }
 
@@ -208,27 +367,21 @@ export function handleServerMessage(msg: any): void {
     streamBufferManager.handle(msg);
     // turn_end 后仍需执行部分通用逻辑（loadSessions、context_usage）
     if (msg.type === 'turn_end') {
-      loadSessionsAction();
+      scheduleSessionsRefresh('turn_end');
       const turnSp = msg.sessionPath;
       if (turnSp) {
         requestContextUsage(turnSp);
+        requestInputFocusForCurrentSession(turnSp);
       } else {
         console.warn('[ws] turn_end missing sessionPath, skipping context_usage request');
       }
     }
     // tool_end 后更新 todo（兼容新旧工具名 + 新旧格式）
-    if (msg.type === 'tool_end' && TODO_TOOL_NAMES.includes(msg.name as TodoToolName)) {
-      const sp = msg.sessionPath;
-      if (!sp) {
-        console.warn('[ws] tool_end(todo) missing sessionPath, skipping');
-      } else {
-        const todos = migrateLegacyTodos(msg.details as { todos?: unknown[] } | null);
-        useStore.getState().setSessionTodosForPath(sp, todos);
-        // bump 版本：若 loadMessages 正在 fetch 旧快照，回来时会发现
-        // 版本号变了，主动跳过 hydrate 写入，避免覆盖本次 live 状态。
-        useStore.getState().bumpTodosLiveVersion(sp);
-      }
+    applyTodoToolEnd(msg);
+    if (msg.type === 'tool_end') {
+      applyToolEndSessionFile(msg);
     }
+    applyContentBlockSessionFile(msg);
     // COMPAT(create_artifact, remove no earlier than v0.133):
     // 旧 artifact block 进入当前 Preview 面板。
     if (msg.type === 'content_block' && msg.block?.type === 'artifact' && state.currentTab === 'chat') {
@@ -239,6 +392,18 @@ export function handleServerMessage(msg: any): void {
 
   // 非聊天渲染事件走传统 switch
   switch (msg.type) {
+    case 'session_branch_reset': {
+      const sp = msg.sessionPath;
+      const targetId = msg.clientMessageId || msg.messageId;
+      if (!sp || !targetId) { console.warn('[ws] session_branch_reset missing sessionPath or message id'); break; }
+      const truncated = useStore.getState().truncateSessionFromMessage(sp, targetId);
+      bumpMessageLiveVersion(sp);
+      if (!truncated) {
+        console.warn('[ws] session_branch_reset target message not found:', sp, targetId);
+      }
+      break;
+    }
+
     case 'stream_resume':
       replayStreamResume(msg);
       break;
@@ -253,6 +418,11 @@ export function handleServerMessage(msg: any): void {
       }
       break;
 
+    case 'session_created':
+      upsertCreatedSession(msg);
+      scheduleSessionsRefresh('session_created');
+      break;
+
     case 'desk_changed':
       loadDeskFiles();
       break;
@@ -262,19 +432,42 @@ export function handleServerMessage(msg: any): void {
       if (!bsp) { console.warn('[ws] event missing sessionPath:', msg.type); break; }
       const bRunning = !!msg.running;
       const bUrl = msg.url || null;
-      const prevThumbnail = state.browserBySession[bsp]?.thumbnail ?? null;
-      const bThumbnail = bRunning ? (msg.thumbnail || prevThumbnail) : null;
+      const prev = state.browserBySession[bsp] ?? null;
+      const hasFreshThumbnail = bRunning && typeof msg.thumbnail === 'string' && msg.thumbnail.length > 0;
+      const bThumbnail = bRunning ? (hasFreshThumbnail ? msg.thumbnail : prev?.thumbnail ?? null) : null;
+      const thumbnailCapturedAt = bRunning
+        ? hasFreshThumbnail
+          ? (typeof msg.thumbnailCapturedAt === 'number' ? msg.thumbnailCapturedAt : Date.now())
+          : prev?.thumbnailCapturedAt ?? null
+        : null;
+      const thumbnailUrl = bRunning
+        ? hasFreshThumbnail
+          ? (typeof msg.thumbnailUrl === 'string' ? msg.thumbnailUrl : bUrl)
+          : prev?.thumbnailUrl ?? null
+        : null;
+      const thumbnailFresh = bRunning && hasFreshThumbnail;
       updateKeyed('browserBySession', bsp,
-        { running: bRunning, url: bUrl, thumbnail: bThumbnail },
+        { running: bRunning, url: bUrl, thumbnail: bThumbnail, thumbnailCapturedAt, thumbnailUrl, thumbnailFresh },
       );
       // renderBrowserCard — no-op (browser card rendering handled by React)
-      if (window.platform?.updateBrowserViewer) {
+      if (typeof window !== 'undefined' && window.platform?.updateBrowserViewer) {
         window.platform.updateBrowserViewer({
           running: bRunning,
           url: bUrl,
           thumbnail: bThumbnail,
+          thumbnailCapturedAt,
+          thumbnailUrl,
+          thumbnailFresh,
         });
       }
+      break;
+    }
+
+    case 'todo_update': {
+      const sp = msg.sessionPath;
+      if (!sp) { console.warn('[ws] event missing sessionPath:', msg.type); break; }
+      useStore.getState().setSessionTodosForPath(sp, Array.isArray(msg.todos) ? msg.todos : []);
+      useStore.getState().bumpTodosLiveVersion(sp);
       break;
     }
 
@@ -322,13 +515,34 @@ export function handleServerMessage(msg: any): void {
 
     case 'activity_update':
       if (msg.activity) {
-        useStore.setState({ activities: [msg.activity, ...state.activities.slice(0, 499)] });
+        useStore.setState((current: any) => {
+          const incoming = msg.activity;
+          const existing = current.activities.find((activity: any) => activity.id === incoming.id);
+          const merged = existing ? { ...existing, ...incoming } : incoming;
+          return {
+            activities: [
+              merged,
+              ...current.activities.filter((activity: any) => activity.id !== incoming.id),
+            ].slice(0, 500),
+          };
+        });
+      }
+      break;
+
+    case 'agent_activity':
+      // 统一 Agent Activity 真相源（ActivityHub 广播）：subagent / workflow / 巡检
+      if (msg.entry?.id) {
+        useStore.getState().upsertAgentActivity(msg.entry);
       }
       break;
 
     case 'notification':
       if (window.hana?.showNotification) {
-        window.hana.showNotification(msg.title, msg.body);
+        // agentId 标识触发通知的助手，主进程据此读取该 agent 头像作为通知 icon。
+        // 缺失时透传 null，主进程退回无 icon，禁止从当前焦点 agent 兜底。
+        window.hana.showNotification(msg.title, msg.body, msg.agentId ?? null, {
+          desktopFocusPolicy: resolveNotificationDesktopFocusPolicy(msg),
+        });
       }
       break;
 
@@ -342,7 +556,7 @@ export function handleServerMessage(msg: any): void {
 
     case 'app_event':
       if (msg.event?.type) {
-        handleAppEvent(msg.event.type, msg.event.payload || {});
+        handleAppEvent(msg.event.type, msg.event.payload || {}, { source: msg.event.source || 'server' });
       }
       break;
 
@@ -369,6 +583,7 @@ export function handleServerMessage(msg: any): void {
           role: 'user',
           text,
           textHtml: text ? renderMarkdown(text) : undefined,
+          timestamp: normalizeMessageTimestamp(msg.message.timestamp),
           attachments: msg.message.attachments,
           quotedText: msg.message.quotedText,
           skills: msg.message.skills,
@@ -379,6 +594,11 @@ export function handleServerMessage(msg: any): void {
       if (sp === useStore.getState().currentSessionPath) {
         useStore.setState({ welcomeVisible: false });
       }
+      break;
+    }
+
+    case 'voice_transcription_update': {
+      applyVoiceTranscriptionUpdate(msg);
       break;
     }
 
@@ -413,11 +633,41 @@ export function handleServerMessage(msg: any): void {
       break;
     }
 
+    case 'session_metadata_updated': {
+      const sp = msg.sessionPath;
+      const metadata = msg.metadata && typeof msg.metadata === 'object' ? msg.metadata : {};
+      if (!sp) { console.warn('[ws] event missing sessionPath:', msg.type); break; }
+      const hasPinnedAt = Object.prototype.hasOwnProperty.call(metadata, 'pinnedAt');
+      const hasProjectId = Object.prototype.hasOwnProperty.call(metadata, 'projectId');
+      if (hasPinnedAt || hasProjectId) {
+        useStore.setState((s) => ({
+          sessions: s.sessions.map((session) => {
+            if (session.path !== sp) return session;
+            return {
+              ...session,
+              ...(hasPinnedAt
+                ? { pinnedAt: typeof metadata.pinnedAt === 'string' ? metadata.pinnedAt : null }
+                : {}),
+              ...(hasProjectId
+                ? { projectId: typeof metadata.projectId === 'string' && metadata.projectId.trim() ? metadata.projectId.trim() : null }
+                : {}),
+            };
+          }),
+        }));
+      }
+      if (sp === useStore.getState().currentSessionPath && typeof metadata.thinkingLevel === 'string') {
+        useStore.getState().setThinkingLevel(metadata.thinkingLevel);
+      }
+      break;
+    }
+
     case 'plan_mode': {
       const sp = msg.sessionPath;
       if (!sp || sp === useStore.getState().currentSessionPath) {
+        const mode = msg.mode || (msg.enabled ? 'read_only' : 'operate');
+        syncSessionPermissionMode(mode);
         window.dispatchEvent(new CustomEvent('hana-plan-mode', {
-          detail: { enabled: !!msg.enabled, mode: msg.enabled ? 'read_only' : 'operate' },
+          detail: { enabled: !!msg.enabled, mode },
         }));
       }
       break;
@@ -426,6 +676,7 @@ export function handleServerMessage(msg: any): void {
     case 'permission_mode': {
       const sp = msg.sessionPath;
       if (!sp || sp === useStore.getState().currentSessionPath) {
+        syncSessionPermissionMode(msg.mode);
         window.dispatchEvent(new CustomEvent('hana-plan-mode', {
           detail: { enabled: msg.mode === 'read_only', mode: msg.mode },
         }));
@@ -436,10 +687,12 @@ export function handleServerMessage(msg: any): void {
     case 'access_mode': {
       const sp = msg.sessionPath;
       if (!sp || sp === useStore.getState().currentSessionPath) {
+        const mode = msg.permissionMode || msg.mode;
+        syncSessionPermissionMode(mode);
         window.dispatchEvent(new CustomEvent('hana-plan-mode', {
           detail: {
             enabled: msg.readOnly === true,
-            mode: msg.permissionMode || msg.mode,
+            mode,
           },
         }));
       }
@@ -448,18 +701,37 @@ export function handleServerMessage(msg: any): void {
 
     case 'channel_new_message': {
       const store = useStore.getState();
-      const isViewing = store.currentTab === 'channels' && store.currentChannel === msg.channelName && document.visibilityState === 'visible';
-      if (msg.channelName && isViewing) {
+      const knownChannel = store.channels.some((channel) => channel.id === msg.channelName);
+      const isVisibleCurrentChannel =
+        store.currentTab === 'channels'
+        && store.currentChannel === msg.channelName
+        && document.visibilityState === 'visible';
+      if (msg.channelName && msg.message) {
+        if (!knownChannel) loadChannelsAction();
+        appendChannelMessageAction(msg.channelName, msg.message, { markRead: isVisibleCurrentChannel });
+      } else if (msg.channelName && isVisibleCurrentChannel) {
+        markChannelMessagesDirtyAction(msg.channelName);
         openChannelAction(msg.channelName);
       } else if (msg.channelName) {
+        markChannelMessagesDirtyAction(msg.channelName);
         loadChannelsAction();
       }
       break;
     }
 
+    case 'channel_created': {
+      loadChannelsAction();
+      break;
+    }
+
     case 'dm_new_message': {
-      const dmId = `dm:${msg.from}`;
       const store2 = useStore.getState();
+      const peerId = resolveDmPeerIdForEvent(store2, msg);
+      if (!peerId) {
+        loadChannelsAction();
+        break;
+      }
+      const dmId = `dm:${peerId}`;
       const isViewingDM = store2.currentTab === 'channels' && store2.currentChannel === dmId && document.visibilityState === 'visible';
       if (isViewingDM) {
         openChannelAction(dmId, true);
@@ -469,12 +741,21 @@ export function handleServerMessage(msg: any): void {
       break;
     }
 
+    case 'conversation_agent_activity': {
+      if (msg.activity) {
+        upsertConversationAgentActivityAction(msg.activity);
+      }
+      break;
+    }
+
     case 'context_usage': {
       const sp = msg.sessionPath;
       if (!sp) { console.warn('[ws] event missing sessionPath:', msg.type); break; }
-      if (msg.tokens != null && msg.contextWindow != null) {
+      const existingWindow = useStore.getState().contextBySession[sp]?.window ?? null;
+      const window = msg.contextWindow ?? existingWindow;
+      if (msg.tokens != null || window != null || msg.percent != null) {
         updateKeyed('contextBySession', sp,
-          { tokens: msg.tokens ?? null, window: msg.contextWindow ?? null, percent: msg.percent ?? null },
+          { tokens: msg.tokens ?? null, window, percent: msg.percent ?? null },
           (_s, d) => ({ contextTokens: d.tokens, contextWindow: d.window, contextPercent: d.percent }),
         );
       }
@@ -492,7 +773,7 @@ export function handleServerMessage(msg: any): void {
       // 更新所有 session 中匹配 confirmId 的确认卡片状态。确认块可能不在最后一条消息，
       // 输入区也从消息块派生 pending 状态，所以这里按 session/message/block 三层显式定位。
       const nextStatusFor = (blockType: string): string => {
-        if (msg.action === 'confirmed') return blockType === 'cron_confirm' ? 'approved' : 'confirmed';
+        if (msg.action === 'confirmed') return blockType === 'cron_confirm' || blockType === 'suggestion_card' ? 'approved' : 'confirmed';
         if (msg.action === 'timeout') return 'timeout';
         return 'rejected';
       };
@@ -510,6 +791,7 @@ export function handleServerMessage(msg: any): void {
             const blocks = item.data.blocks.map((b: any) => {
               const matchesType = b.type === 'settings_confirm'
                 || b.type === 'cron_confirm'
+                || b.type === 'suggestion_card'
                 || b.type === 'session_confirmation';
               if (!matchesType || b.confirmId !== msg.confirmId) return b;
               messageChanged = true;
@@ -545,9 +827,47 @@ export function handleServerMessage(msg: any): void {
     }
 
     case 'status': {
+      const sp = msg.sessionPath || null;
+      if (sp) {
+        if (msg.isStreaming) streamBufferManager.beginTurn(sp);
+        else streamBufferManager.finishTurn(sp);
+      }
       // streamingSessions 维护 + 焦点 UI 占位一并由 applyStreamingStatus 处理
-      applyStreamingStatus(msg.isStreaming, msg.sessionPath || null);
+      applyStreamingStatus(msg.isStreaming, sp);
       break;
     }
   }
+}
+
+function applyToolEndSessionFile(msg: any): void {
+  const sp = msg.sessionPath;
+  const sessionFile = msg.details?.sessionFile;
+  if (!sp || !sessionFile) return;
+  useStore.getState().upsertSessionRegistryFile?.(sp, sessionFile);
+}
+
+function applyContentBlockSessionFile(msg: any): void {
+  const sp = msg.sessionPath;
+  const block = msg.block;
+  if (!sp || block?.type !== 'file') return;
+  useStore.getState().upsertSessionRegistryFile?.(sp, {
+    id: block.fileId,
+    fileId: block.fileId,
+    filePath: block.filePath,
+    label: block.label,
+    ext: block.ext,
+    mime: block.mime,
+    kind: block.kind,
+    storageKind: block.storageKind,
+    presentation: block.presentation,
+    listed: block.listed,
+    status: block.status,
+    missingAt: block.missingAt,
+    mtimeMs: block.mtimeMs,
+    size: block.size,
+    version: block.version,
+    resource: block.resource,
+    origin: block.origin,
+    operations: block.operations,
+  });
 }

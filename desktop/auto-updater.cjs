@@ -63,6 +63,14 @@ function logUpdate(message) {
   } catch {}
 }
 
+function isMissingLatestMetadataError(err) {
+  const message = err?.message || String(err || "");
+  return (
+    /\blatest(?:-mac)?\.ya?ml\b/i.test(message)
+    && /(cannot find|not found|missing|404)/i.test(message)
+  );
+}
+
 function getRendererWindows() {
   const windows = [];
   try {
@@ -324,6 +332,12 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("error", (err) => {
+    if (isMissingLatestMetadataError(err)) {
+      logUpdate(`update metadata not ready; treating as no update available: ${err?.message || String(err)}`);
+      if (_updateState.status === "installing" && _setIsUpdating) _setIsUpdating(false);
+      setState({ status: "latest", error: null, progress: null });
+      return;
+    }
     // 下载中出错才设 error，idle/latest 状态的检查失败静默忽略
     if (_updateState.status !== "idle" && _updateState.status !== "latest") {
       logUpdate(`error: ${err?.message || String(err)}`);
@@ -344,7 +358,11 @@ function registerIpcHandlers() {
     try {
       await autoUpdater.checkForUpdates();
     } catch (err) {
-      setState({ status: "error", error: err?.message || String(err) });
+      if (isMissingLatestMetadataError(err)) {
+        setState({ status: "latest", error: null, progress: null });
+      } else {
+        setState({ status: "error", error: err?.message || String(err) });
+      }
     }
   });
 

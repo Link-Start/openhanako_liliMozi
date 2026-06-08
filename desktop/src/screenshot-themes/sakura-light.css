@@ -27,7 +27,7 @@ html {
 
 /* body 全宽，不做限宽，让 ::after 能贴到画面边缘 */
 body {
-  font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "Lora", "Georgia", serif;
+  font-family: var(--screenshot-font-family, "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "Lora", "Georgia", serif);
   font-size: 1rem;
   line-height: 1.65;
   color: var(--sakura-text);
@@ -40,9 +40,9 @@ body {
 
 /* article 做居中限宽，承担原来 body 的排版职责 */
 article {
-  max-width: 400px;
+  max-width: 416px;
   margin: 0 auto;
-  padding: 5rem 0.85rem 0.67rem 0.85rem;
+  padding: 5rem 0.5rem 0.67rem 0.5rem;
 }
 
 /* 顶部 header：文件名紧贴花，整体靠右 */
@@ -50,9 +50,9 @@ article {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  max-width: 400px;
+  max-width: 416px;
   margin: 0 auto;
-  padding: 1.5rem 0.85rem 0.5rem 0.85rem;
+  padding: 1.5rem 0.5rem 0.5rem 0.5rem;
 }
 
 .page-title {
@@ -128,7 +128,7 @@ a {
   color: var(--sakura-link);
   text-decoration: none;
   border-bottom: 1px solid rgba(255, 240, 242, 0.4);
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-fast);
 }
 
 a:hover {
@@ -241,8 +241,12 @@ em {
 }
 
 /* Task Lists */
-input[type="checkbox"] {
+.task-list-item {
+  list-style-type: none;
+}
+.task-list-item-checkbox {
   margin-right: 0.5em;
+  vertical-align: middle;
 }
 
 /* Definition Lists */

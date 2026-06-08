@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useSettingsStore } from '../store';
 import { t, VALID_THEMES, autoSaveConfig } from '../helpers';
-import { SelectWidget } from '../widgets/SelectWidget';
+import { SelectWidget } from '@/ui';
 import { Toggle } from '../widgets/Toggle';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
@@ -12,9 +12,21 @@ import {
   normalizeEditorTypography,
   type EditorMarkdownTypography,
 } from '../../editor/typography';
-import { isPaperTextureEnabled } from '../../../shared/appearance-preferences';
+import {
+  isPaperTextureBlockedTheme,
+  isPaperTextureEnabled,
+} from '../../../shared/appearance-preferences';
+import { persistAppearancePreferences } from '../../services/appearance-sync';
+import {
+  FOLLOW_READING_FONT_ID,
+  READING_FONT_PRESETS,
+  fontPresetIdFromSerif,
+  normalizeFontSelectionId,
+  serifFromFontPresetId,
+} from '../../utils/font-presets';
+import { readConfigBoolean } from '../resource-state';
 import styles from '../Settings.module.css';
-import registry from '../../../shared/theme-registry.cjs';
+import registry from '../../../shared/theme-registry';
 
 const platform = window.platform;
 const i18n = window.i18n;
@@ -29,7 +41,29 @@ const THEME_MODE_KEYS: Record<string, string> = Object.fromEntries([
   [registry.AUTO_OPTION.id, registry.AUTO_OPTION.i18nMode],
 ]);
 
-type MarkdownTypographyKey = keyof EditorMarkdownTypography;
+const VOICE_RECORD_SHORTCUT_MAC = ['⌘', '⇧', 'M'];
+const VOICE_RECORD_SHORTCUT_DEFAULT = ['Ctrl', 'Shift', 'M'];
+
+type MarkdownTypographyKey = Exclude<keyof EditorMarkdownTypography, 'fontPreset'>;
+
+interface AppearancePrefs {
+  currentTheme: string;
+  serifEnabled: boolean;
+  paperTextureEnabled: boolean;
+  paperTextureBlocked: boolean;
+  leavesOverlayEnabled: boolean;
+}
+
+function readAppearancePrefs(): AppearancePrefs {
+  const concreteTheme = document.documentElement.getAttribute('data-theme');
+  return {
+    currentTheme: registry.migrateSavedTheme(localStorage.getItem(registry.STORAGE_KEY)),
+    serifEnabled: localStorage.getItem('hana-font-serif') !== '0',
+    paperTextureEnabled: isPaperTextureEnabled(localStorage),
+    paperTextureBlocked: isPaperTextureBlockedTheme(concreteTheme),
+    leavesOverlayEnabled: localStorage.getItem('hana-leaves-overlay') === '1',
+  };
+}
 
 const EDITOR_FONT_SIZE_ROWS: Array<{
   key: MarkdownTypographyKey;
@@ -42,21 +76,43 @@ const EDITOR_FONT_SIZE_ROWS: Array<{
   { key: 'heading1FontSize', label: 'settings.editor.markdownHeading1FontSize', hint: 'settings.editor.markdownHeading1FontSizeHint', min: 16, max: 40 },
   { key: 'heading2FontSize', label: 'settings.editor.markdownHeading2FontSize', hint: 'settings.editor.markdownHeading2FontSizeHint', min: 15, max: 34 },
   { key: 'heading3FontSize', label: 'settings.editor.markdownHeading3FontSize', hint: 'settings.editor.markdownHeading3FontSizeHint', min: 14, max: 30 },
-  { key: 'heading4FontSize', label: 'settings.editor.markdownHeading4FontSize', hint: 'settings.editor.markdownHeading4FontSizeHint', min: 13, max: 28 },
-  { key: 'heading5FontSize', label: 'settings.editor.markdownHeading5FontSize', hint: 'settings.editor.markdownHeading5FontSizeHint', min: 12, max: 26 },
-  { key: 'heading6FontSize', label: 'settings.editor.markdownHeading6FontSize', hint: 'settings.editor.markdownHeading6FontSizeHint', min: 12, max: 24 },
 ];
 
 export function InterfaceTab() {
-  const { settingsConfig } = useSettingsStore();
-  const currentTheme = registry.migrateSavedTheme(localStorage.getItem(registry.STORAGE_KEY));
-  const serifEnabled = localStorage.getItem('hana-font-serif') !== '0';
-  const paperTextureEnabled = isPaperTextureEnabled(localStorage);
-  const leavesOverlayEnabled = localStorage.getItem('hana-leaves-overlay') === '1';
+  const settingsConfig = useSettingsStore(s => s.settingsConfig);
+  const platformName = useSettingsStore(s => s.platformName);
+  const [appearancePrefs, setAppearancePrefs] = useState<AppearancePrefs>(() => readAppearancePrefs());
+  const refreshAppearancePrefs = useCallback(() => {
+    setAppearancePrefs(readAppearancePrefs());
+  }, []);
+  const syncAppearancePrefs = useCallback((patch: Record<string, unknown>) => {
+    persistAppearancePreferences(patch).catch((err) => {
+      console.warn('[settings] appearance sync failed:', err);
+    });
+  }, []);
+  const {
+    currentTheme,
+    serifEnabled,
+    paperTextureEnabled,
+    paperTextureBlocked,
+    leavesOverlayEnabled,
+  } = appearancePrefs;
+  const readingFontPresetId = fontPresetIdFromSerif(serifEnabled);
   const editorTypography = useMemo(
     () => normalizeEditorTypography(settingsConfig?.editor),
     [settingsConfig?.editor],
   );
+  const fontSelectOptions = [
+    { value: FOLLOW_READING_FONT_ID, label: t('settings.fonts.followReading') },
+    ...READING_FONT_PRESETS.map(preset => ({
+      value: preset.id,
+      label: t(preset.labelKey),
+    })),
+  ];
+  const hardwareAccelerationEnabled = readConfigBoolean(settingsConfig, cfg => cfg.hardware_acceleration, true);
+  const voiceShortcutKeys = platformName === 'darwin'
+    ? VOICE_RECORD_SHORTCUT_MAC
+    : VOICE_RECORD_SHORTCUT_DEFAULT;
 
   const saveEditorTypography = async (patch: Partial<EditorMarkdownTypography>) => {
     const previousConfig = useSettingsStore.getState().settingsConfig || {};
@@ -76,6 +132,20 @@ export function InterfaceTab() {
     useSettingsStore.setState({ settingsConfig: previousConfig });
     applyEditorTypography(restored);
     platform?.settingsChanged?.('editor-typography-changed', { editor: restored });
+  };
+
+  const saveHardwareAcceleration = async (next: boolean) => {
+    const previousConfig = useSettingsStore.getState().settingsConfig || {};
+    useSettingsStore.setState({ settingsConfig: { ...previousConfig, hardware_acceleration: next } });
+
+    const saved = await autoSaveConfig({ hardware_acceleration: next }, { silent: true });
+    if (saved) {
+      platform?.settingsChanged?.('hardware-acceleration-changed', { hardware_acceleration: next });
+      useSettingsStore.getState().showToast(t('settings.autoSaved'), 'success');
+      return;
+    }
+
+    useSettingsStore.setState({ settingsConfig: previousConfig });
   };
 
   const locale = settingsConfig?.locale || 'zh-CN';
@@ -116,10 +186,10 @@ export function InterfaceTab() {
               className={`${styles['theme-card']}${currentTheme === theme ? ' ' + styles['active'] : ''}`}
               data-theme={theme}
               onClick={() => {
-                setTheme?.(theme);
-                localStorage.setItem(registry.STORAGE_KEY, theme);
+                window.setTheme?.(theme);
                 platform?.settingsChanged?.('theme-changed', { theme });
-                useSettingsStore.setState({});
+                syncAppearancePrefs({ theme });
+                refreshAppearancePrefs();
               }}
             >
               <div className={styles['theme-card-name']}>{t(THEME_NAME_KEYS[theme])}</div>
@@ -129,31 +199,50 @@ export function InterfaceTab() {
         </div>
       </SettingsSection>
 
+      <SettingsSection
+        title={t('settings.appearance.font')}
+        description={t('settings.appearance.fontHint')}
+        variant="flush"
+      >
+        <div className={styles['font-options']} aria-label={t('settings.appearance.font')}>
+          {READING_FONT_PRESETS.map(preset => (
+            <button
+              key={preset.id}
+              type="button"
+              className={`${styles['font-card']}${readingFontPresetId === preset.id ? ' ' + styles['active'] : ''}`}
+              aria-pressed={readingFontPresetId === preset.id}
+              onClick={() => {
+                const next = serifFromFontPresetId(preset.id);
+                window.setSerifFont?.(next);
+                platform?.settingsChanged?.('font-changed', { serif: next });
+                syncAppearancePrefs({ serif: next });
+                refreshAppearancePrefs();
+              }}
+            >
+              <span className={styles['font-card-sample']} style={{ fontFamily: preset.fontFamily }}>
+                {t(preset.labelKey)}
+              </span>
+              <span className={styles['font-card-desc']}>{t(preset.descriptionKey)}</span>
+            </button>
+          ))}
+        </div>
+      </SettingsSection>
+
       <SettingsSection title={t('settings.appearance.title')}>
         <SettingsRow
-          label={t('settings.appearance.serifFont')}
-          hint={t('settings.appearance.serifFontHint')}
-          control={
-            <Toggle
-              on={serifEnabled}
-              onChange={(next) => {
-                setSerifFont?.(next);
-                platform?.settingsChanged?.('font-changed', { serif: next });
-                useSettingsStore.setState({});
-              }}
-            />
-          }
-        />
-        <SettingsRow
           label={t('settings.appearance.paperTexture')}
-          hint={t('settings.appearance.paperTextureHint')}
+          hint={paperTextureBlocked
+            ? t('settings.appearance.paperTextureDarkDisabledHint')
+            : t('settings.appearance.paperTextureHint')}
           control={
             <Toggle
-              on={paperTextureEnabled}
+              on={paperTextureBlocked ? false : paperTextureEnabled}
+              disabled={paperTextureBlocked}
               onChange={(next) => {
-                (window as any).setPaperTexture?.(next);
+                window.setPaperTexture?.(next);
                 platform?.settingsChanged?.('paper-texture-changed', { enabled: next });
-                useSettingsStore.setState({});
+                syncAppearancePrefs({ paperTexture: next });
+                refreshAppearancePrefs();
               }}
             />
           }
@@ -170,14 +259,44 @@ export function InterfaceTab() {
                   detail: { type: 'leaves-overlay-changed', enabled: next },
                 }));
                 platform?.settingsChanged?.('leaves-overlay-changed', { enabled: next });
-                useSettingsStore.setState({});
+                syncAppearancePrefs({ leavesOverlay: next });
+                refreshAppearancePrefs();
               }}
             />
           }
         />
       </SettingsSection>
 
+      <SettingsSection title={t('settings.interface.system')}>
+        <SettingsRow
+          label={t('settings.interface.hardwareAcceleration')}
+          hint={t('settings.interface.hardwareAccelerationHint')}
+          control={
+            <Toggle
+              on={hardwareAccelerationEnabled}
+              onChange={saveHardwareAcceleration}
+            />
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection title={t('settings.editor.title')}>
+        <SettingsRow
+          label={t('settings.editor.markdownFont')}
+          hint={t('settings.editor.markdownFontHint')}
+          control={
+            <SelectWidget
+              options={fontSelectOptions}
+              value={editorTypography.markdown.fontPreset}
+              onChange={(value) => saveEditorTypography({
+                fontPreset: normalizeFontSelectionId(value, {
+                  allowFollow: true,
+                  fallback: FOLLOW_READING_FONT_ID,
+                }),
+              })}
+            />
+          }
+        />
         {EDITOR_FONT_SIZE_ROWS.map(row => (
           <SettingsRow
             key={row.key}
@@ -230,11 +349,11 @@ export function InterfaceTab() {
           control={
             <SelectWidget
               options={[
-                { value: 'zh-CN', label: '简体中文' },
-                { value: 'zh-TW', label: '繁體中文' },
-                { value: 'ja', label: '日本語' },
-                { value: 'ko', label: '한국어' },
-                { value: 'en', label: 'English' },
+                { value: 'zh-CN', label: t('settings.locale.zhCN') },
+                { value: 'zh-TW', label: t('settings.locale.zhTW') },
+                { value: 'ja', label: t('settings.locale.ja') },
+                { value: 'ko', label: t('settings.locale.ko') },
+                { value: 'en', label: t('settings.locale.en') },
               ]}
               value={localeVal}
               onChange={async (val) => {
@@ -256,6 +375,23 @@ export function InterfaceTab() {
               value={currentTz}
               onChange={(val) => autoSaveConfig({ timezone: val })}
             />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.interface.shortcuts')}>
+        <SettingsRow
+          label={t('settings.interface.voiceRecordingShortcut')}
+          hint={t('settings.interface.voiceRecordingShortcutHint')}
+          control={
+            <div
+              className={styles['shortcut-keycaps']}
+              aria-label={voiceShortcutKeys.join(' + ')}
+            >
+              {voiceShortcutKeys.map(key => (
+                <kbd key={key} className={styles['shortcut-keycap']}>{key}</kbd>
+              ))}
+            </div>
           }
         />
       </SettingsSection>

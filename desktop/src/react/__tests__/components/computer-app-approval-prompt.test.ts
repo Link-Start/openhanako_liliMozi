@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { InputArea } from '../../components/InputArea';
 import { AssistantMessage } from '../../components/chat/AssistantMessage';
@@ -39,6 +39,8 @@ vi.mock('@tiptap/react', () => ({
     }),
     getText: () => '',
     getJSON: () => ({ type: 'doc', content: [] }),
+    state: { tr: { setMeta: vi.fn(() => ({})) } },
+    view: { dispatch: vi.fn() },
     on: vi.fn(),
     off: vi.fn(),
   }),
@@ -127,6 +129,8 @@ function seedSession() {
     inlineErrors: {},
     attachedFiles: [],
     docContextAttached: false,
+    quoteCandidate: null,
+    quotedSelections: [],
     quotedSelection: null,
     models: [],
     previewItems: [],
@@ -159,8 +163,11 @@ function seedSession() {
 }
 
 describe('computer app approval prompt', () => {
-  beforeEach(() => {
+  afterEach(() => {
     cleanup();
+  });
+
+  beforeEach(() => {
     vi.clearAllMocks();
     seedSession();
   });
@@ -298,6 +305,32 @@ describe('computer app approval prompt', () => {
     expect(menuItem.closest('[role="menu"]')).toBeTruthy();
   });
 
+  it('shows full tool action parameters in a tooltip outside the clipped confirmation card', async () => {
+    const longCommand = 'python scripts/generate_report.py --workspace "/very/long/path/with spaces/project" --write-output --explain-every-step';
+    const block = {
+      type: 'session_confirmation',
+      confirmId: 'confirm-tool-tooltip',
+      kind: 'tool_action_approval',
+      surface: 'input',
+      status: 'pending',
+      title: '允许 Hana 执行这次操作',
+      body: '当前会话处于先问模式，这次操作会改变本地或外部状态。',
+      subject: { label: 'bash', detail: 'command: python scripts/generate_report.py --workspace "/very/long/path/with spaces/project"' },
+      severity: 'elevated',
+      actions: { confirmLabel: '同意', rejectLabel: '拒绝' },
+      payload: { toolName: 'bash', params: { command: longCommand, timeout: 120000 } },
+    } as const;
+
+    render(React.createElement(SessionConfirmationPrompt, { block }));
+
+    fireEvent.mouseEnter(screen.getByTestId('session-confirmation-summary'));
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain(longCommand);
+    expect(tooltip.textContent).toContain('"timeout": 120000');
+    expect(tooltip.closest('[data-confirm-id="confirm-tool-tooltip"]')).toBeNull();
+  });
+
   it('does not offer ask-mode bypass on computer app approval prompts', () => {
     const block = {
       type: 'session_confirmation',
@@ -317,7 +350,7 @@ describe('computer app approval prompt', () => {
     expect(screen.queryByRole('button', { name: '更多确认选项' })).toBeNull();
   });
 
-  it('keeps the input confirmation as a short card sliding from behind the input box', () => {
+  it('keeps the input confirmation as a same-width card sliding from behind the input box', () => {
     const css = fs.readFileSync(
       path.join(process.cwd(), 'desktop/src/react/components/input/InputArea.module.css'),
       'utf8',
@@ -332,10 +365,12 @@ describe('computer app approval prompt', () => {
 
     expect(inputSource).toContain("styles['input-stack']");
     expect(stackBlock).toMatch(/width:\s*100%/);
-    expect(promptBlock).toMatch(/width:\s*calc\(100%\s*-\s*4rem\)/);
+    expect(promptBlock).toMatch(/width:\s*100%/);
+    expect(promptBlock).toMatch(/max-width:\s*100%/);
     expect(promptBlock).toMatch(/background:\s*var\(--bg-card\)/);
-    expect(promptBlock).toMatch(/border-radius:\s*var\(--radius-lg\)/);
-    expect(promptBlock).toMatch(/margin:\s*0 auto -2rem/);
+    expect(promptBlock).toMatch(/border-radius:\s*var\(--radius-chat-card\)/);
+    expect(promptBlock).toMatch(/margin:\s*0 0 -2rem/);
+    expect(promptBlock).toMatch(/padding:\s*1rem 1rem 2\.24rem/);
     expect(promptBlock).not.toContain('color-mix');
     expect(promptBlock).not.toContain('border-bottom-color: transparent');
     expect(inputWrapperBlock).toMatch(/position:\s*relative/);

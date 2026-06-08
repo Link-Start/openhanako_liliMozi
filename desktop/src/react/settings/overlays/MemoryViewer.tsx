@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSettingsStore } from '../store';
 import { hanaFetch } from '../api';
 import { t, escapeHtml } from '../helpers';
+import { Overlay } from '../../ui';
 import styles from '../Settings.module.css';
 
 export function MemoryViewer() {
@@ -54,19 +55,23 @@ export function MemoryViewer() {
     }
   };
 
-  const close = () => setVisible(false);
-
-  if (!visible) return null;
+  const close = useCallback(() => setVisible(false), []);
 
   return (
-    <div className={`${styles['memory-viewer-overlay']} ${styles['visible']}`} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className={styles['memory-viewer']}>
+    <Overlay
+      open={visible}
+      onClose={close}
+      backdrop="blur"
+      zIndex={100}
+      className={styles['memory-viewer']}
+      backdropClassName={styles['memory-viewer-backdrop']}
+      disableContainerAnimation
+    >
         <div className={styles['memory-viewer-header']}>
           <h3 className={styles['memory-viewer-title']}>{t('settings.memory.actions.viewTitle')}</h3>
           <button className={styles['memory-viewer-close']} onClick={close}>✕</button>
         </div>
         <div className={styles['memory-viewer-body']} dangerouslySetInnerHTML={{ __html: html }} />
-      </div>
-    </div>
+    </Overlay>
   );
 }

@@ -5,18 +5,29 @@ import {
   t, lookupModelMeta, formatContext, autoSaveGlobalModels,
 } from '../../helpers';
 import { loadSettingsConfig } from '../../actions';
-import { SelectWidget } from '../../widgets/SelectWidget';
+import { SelectWidget } from '@/ui';
 import { ModelWidget } from '../../widgets/ModelWidget';
 import { KeyInput } from '../../widgets/KeyInput';
 import { Toggle } from '../../widgets/Toggle';
 import styles from '../../Settings.module.css';
+import {
+  AUTO_SEARCH_PROVIDER,
+  SEARCH_API_PROVIDER_IDS,
+  isBrowserSearchProvider,
+  isSearchApiProvider,
+  normalizeSearchApiKeys,
+} from '../../../../../../shared/search-providers.ts';
 
 type ModelRef = { id: string; provider: string };
 
-const BROWSER_SEARCH_PROVIDERS = new Set(['bing_browser', 'google_browser', 'duckduckgo_browser']);
+const SEARCH_API_PROVIDER_LABELS: Record<string, string> = {
+  tavily: 'Tavily',
+  brave: 'Brave Search',
+  serper: 'Serper (Google)',
+};
 
 function searchProviderNeedsApiKey(provider: string): boolean {
-  return !!provider && !BROWSER_SEARCH_PROVIDERS.has(provider);
+  return isSearchApiProvider(provider);
 }
 
 function ToolModelTestBtn({ modelRef }: { modelRef: unknown }) {
@@ -74,41 +85,45 @@ function ToolModelTestBtn({ modelRef }: { modelRef: unknown }) {
 }
 
 export function OtherModelsSection({ providers }: { providers: Record<string, { models?: string[]; base_url?: string }> }) {
-  const { globalModelsConfig, showToast } = useSettingsStore();
-  const savedSearchKey = globalModelsConfig?.search?.api_key || '';
-  const [searchApiKey, setSearchApiKey] = useState('');
-  const [searchKeyEdited, setSearchKeyEdited] = useState(false);
+  const globalModelsConfig = useSettingsStore(s => s.globalModelsConfig);
+  const showToast = useSettingsStore(s => s.showToast);
+  const savedSearchApiKeys = normalizeSearchApiKeys(globalModelsConfig?.search?.api_keys || {});
+  const savedLegacySearchKey = globalModelsConfig?.search?.api_key || '';
+  const [searchApiKeys, setSearchApiKeys] = useState<Record<string, string>>({});
+  const [searchKeyEdited, setSearchKeyEdited] = useState<Record<string, boolean>>({});
 
   // 从后端同步已保存的 key
   useEffect(() => {
-    if (!searchKeyEdited && savedSearchKey) setSearchApiKey(savedSearchKey);
-  }, [savedSearchKey, searchKeyEdited]);
+    setSearchApiKeys((prev) => {
+      const next = { ...prev };
+      for (const provider of SEARCH_API_PROVIDER_IDS) {
+        if (searchKeyEdited[provider]) continue;
+        const legacyForSelectedProvider = globalModelsConfig?.search?.provider === provider ? savedLegacySearchKey : '';
+        next[provider] = savedSearchApiKeys[provider] || legacyForSelectedProvider || '';
+      }
+      return next;
+    });
+  }, [globalModelsConfig?.search?.provider, savedLegacySearchKey, JSON.stringify(savedSearchApiKeys), searchKeyEdited]);
 
-  const searchProvider = globalModelsConfig?.search?.provider || '';
-  const searchIsBrowserProvider = BROWSER_SEARCH_PROVIDERS.has(searchProvider);
-  const searchNeedsApiKey = searchProviderNeedsApiKey(searchProvider);
+  const searchProvider = globalModelsConfig?.search?.provider || AUTO_SEARCH_PROVIDER;
+  const searchIsAutoProvider = searchProvider === AUTO_SEARCH_PROVIDER;
+  const searchIsBrowserProvider = isBrowserSearchProvider(searchProvider);
+  const explicitSearchApiProvider = searchProviderNeedsApiKey(searchProvider) ? searchProvider : '';
 
-  useEffect(() => {
-    if (searchIsBrowserProvider) {
-      setSearchApiKey('');
-      setSearchKeyEdited(false);
-    }
-  }, [searchIsBrowserProvider]);
-
-  const verifySearch = async () => {
-    const provider = (globalModelsConfig?.search?.provider || '').trim();
-    const apiKey = searchApiKey.trim();
+  const verifySearch = async (provider: string) => {
+    const apiKey = (searchApiKeys[provider] || '').trim();
     if (!provider) { showToast(t('settings.search.noProvider'), 'error'); return; }
     if (searchProviderNeedsApiKey(provider) && !apiKey) { showToast(t('settings.search.noKey'), 'error'); return; }
     try {
       const res = await hanaFetch('/api/search/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, api_key: apiKey }),
+        body: JSON.stringify({ provider, api_key: apiKey, search_provider: searchProvider }),
       });
       const data = await res.json();
       if (data.ok) {
         showToast(t('settings.search.verified'), 'success');
+        setSearchKeyEdited((prev) => ({ ...prev, [provider]: false }));
         await loadSettingsConfig();
       } else {
         showToast(t('settings.search.verifyFailed') + (data.error ? ': ' + data.error : ''), 'error');
@@ -140,9 +155,30 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
   const utilityVal = toModelRef(globalModelsConfig?.models?.utility);
   const utilityLargeVal = toModelRef(globalModelsConfig?.models?.utility_large);
   const visionVal = toModelRef(globalModelsConfig?.models?.vision);
-  const visionAuxiliaryEnabled = globalModelsConfig?.models?.vision_enabled === true;
+  const visionAuxiliaryEnabled = globalModelsConfig ? globalModelsConfig.models?.vision_enabled === true : undefined;
   const imageCapableOnly = (model: { input?: string[] }) => (
     Array.isArray(model.input) && model.input.includes('image')
+  );
+  const updateSearchApiKey = (provider: string, value: string) => {
+    setSearchApiKeys((prev) => ({ ...prev, [provider]: value }));
+    setSearchKeyEdited((prev) => ({ ...prev, [provider]: true }));
+  };
+  const renderSearchApiKeyRow = (provider: string) => (
+    <div className={styles['search-api-key-row']} key={provider}>
+      {searchIsAutoProvider && (
+        <span className={styles['search-api-key-label']}>{SEARCH_API_PROVIDER_LABELS[provider] || provider}</span>
+      )}
+      <div className={styles['search-api-key-controls']}>
+        <KeyInput
+          value={searchApiKeys[provider] || ''}
+          onChange={(v) => updateSearchApiKey(provider, v)}
+          placeholder={t('settings.api.apiKeyPlaceholder')}
+        />
+        <button className={styles['search-verify-btn']} onClick={() => verifySearch(provider)}>
+          {t('settings.search.verify')}
+        </button>
+      </div>
+    </div>
   );
 
   return (
@@ -207,6 +243,7 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
             <ToolModelTestBtn modelRef={globalModelsConfig?.models?.vision || ''} />
           </div>
           <span className={styles['settings-form-hint']}>{t('settings.api.visionModelHint')}</span>
+          <span className={styles['settings-form-hint']}>{t('settings.api.visionModelMissingHint')}</span>
         </div>
       </div>
       <div className={styles['settings-form-grid']}>
@@ -214,20 +251,23 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
           <label className={styles['settings-form-label']}>{t('settings.api.searchProviderField')}</label>
           <SelectWidget
             options={[
-              { value: '', label: 'Default (Bing Browser)' },
+              { value: AUTO_SEARCH_PROVIDER, label: 'Auto (API -> AnySearch -> Browser)' },
               { value: 'bing_browser', label: 'Bing (Browser)' },
               { value: 'google_browser', label: 'Google (Browser)' },
               { value: 'duckduckgo_browser', label: 'DuckDuckGo (Browser)' },
               { value: 'tavily', label: 'Tavily' },
-              { value: 'serper', label: 'Serper (Google)' },
               { value: 'brave', label: 'Brave Search' },
+              { value: 'serper', label: 'Serper (Google)' },
             ]}
             value={searchProvider}
-            onChange={(val) => autoSaveGlobalModels({
-              search: BROWSER_SEARCH_PROVIDERS.has(val)
-                ? { provider: val, api_key: '' }
-                : { provider: val },
-            })}
+            onChange={(val) => {
+              setSearchKeyEdited({});
+              autoSaveGlobalModels({
+                search: (val === AUTO_SEARCH_PROVIDER || isBrowserSearchProvider(val))
+                  ? { provider: val, api_key: '' }
+                  : { provider: val },
+              });
+            }}
             placeholder={t('settings.api.searchProviderField')}
           />
         </div>
@@ -235,16 +275,16 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
           <label className={styles['settings-form-label']}>{t('settings.api.searchApiKey')}</label>
           {searchIsBrowserProvider ? (
             <span className={styles['settings-form-hint']}>{t('settings.api.searchApiKeyNotRequired')}</span>
+          ) : searchIsAutoProvider ? (
+            <>
+              <div className={styles['search-api-key-list']}>
+                {SEARCH_API_PROVIDER_IDS.map((provider) => renderSearchApiKeyRow(provider))}
+              </div>
+              <span className={styles['settings-form-hint']}>{t('settings.api.searchApiKeysAutoHint')}</span>
+            </>
           ) : (
             <>
-              <KeyInput
-                value={searchApiKey}
-                onChange={(v) => { setSearchApiKey(v); setSearchKeyEdited(true); }}
-                placeholder={t('settings.api.apiKeyPlaceholder')}
-              />
-              <button className={styles['search-verify-btn']} onClick={verifySearch}>
-                {t('settings.search.verify')}
-              </button>
+              {explicitSearchApiProvider && renderSearchApiKeyRow(explicitSearchApiProvider)}
               <span className={styles['settings-form-hint']}>{t('settings.api.searchApiKeyHint')}</span>
             </>
           )}

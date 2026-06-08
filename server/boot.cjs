@@ -7,7 +7,7 @@
  */
 (async () => {
   try {
-    await import("./index.js");
+    await import("./index.ts");
   } catch (err) {
     console.error(`[server] 启动失败: ${err.message}`);
     console.error(err.stack);

@@ -55,12 +55,16 @@ export function PlatformSection({
 }: PlatformSectionProps) {
   const lastFieldIndex = credentialFields.length - 1;
 
+  // status === undefined 表示 b.status 还没加载完，Toggle 走加载态；
+  // 加载完成但本平台未配置时 status.enabled 可能是 false/undefined，统一显示关。
+  const toggleOn = status === undefined ? undefined : !!status.enabled;
+
   /** 状态点 + 文字 + Toggle 作为 section 右上角 context */
   const statusContext = (
     <div className="bridge-platform-header" style={{ margin: 0 }}>
       <BridgeStatusDot status={status?.status} />
       <BridgeStatusText status={status?.status} error={status?.error} />
-      <Toggle on={!!status?.enabled} onChange={onToggle} />
+      <Toggle on={toggleOn} onChange={onToggle} />
     </div>
   );
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createChatSlice, type ChatSlice } from '../../stores/chat-slice';
-import type { SessionModel } from '../../stores/chat-types';
-import { registerStreamBufferInvalidator } from '../../stores/stream-invalidator';
+import type { ChatListItem, SessionModel } from '../../stores/chat-types';
+import { registerStreamBufferInvalidator, registerStreamResumeMetaInvalidator } from '../../stores/stream-invalidator';
 
 function makeSlice(): ChatSlice {
   let state: ChatSlice;
@@ -24,6 +24,20 @@ const MODEL: SessionModel = {
   reasoning: true,
   contextWindow: 1_000_000,
 };
+
+function interludeItem(id: string): ChatListItem {
+  return {
+    type: 'interlude',
+    id,
+    data: {
+      type: 'interlude',
+      id,
+      variant: 'deferred_result',
+      status: 'success',
+      text: '后台回复已抵达',
+    },
+  };
+}
 
 describe('chat-slice', () => {
   let slice: ChatSlice;
@@ -79,6 +93,15 @@ describe('chat-slice', () => {
         loadingMore: false,
         oldestId: undefined,
       });
+    });
+
+    it('oldestId 取第一条 message，不被前置幕间条目占位', () => {
+      slice.initSession('/a', [
+        interludeItem('deferred:task-1:success'),
+        { type: 'message', data: { id: 'a1', role: 'assistant', blocks: [] } },
+      ], true);
+
+      expect(slice.chatSessions['/a']?.oldestId).toBe('a1');
     });
 
     it('LRU 淘汰只影响 chatSessions，不动 sessionModelsByPath', () => {
@@ -139,6 +162,14 @@ describe('chat-slice', () => {
       expect(invalidator).toHaveBeenCalledWith('/a');
     });
 
+    it('通知 stream resume meta invalidate 对应 session（避免丢渲染缓存后从旧 seq 续传）', () => {
+      const invalidator = vi.fn();
+      registerStreamResumeMetaInvalidator(invalidator);
+      slice.initSession('/a', [], false);
+      slice.clearSession('/a');
+      expect(invalidator).toHaveBeenCalledWith('/a');
+    });
+
     it('LRU eviction 时也 invalidate 被淘汰 session 的 streamBuffer', () => {
       const invalidator = vi.fn();
       registerStreamBufferInvalidator(invalidator);
@@ -151,6 +182,278 @@ describe('chat-slice', () => {
       // 第 9 次 initSession 会淘汰最老的 /s0（keys.find(k => k !== path)）
       expect(invalidator).toHaveBeenCalledWith('/s0');
       expect(slice.scrollPositions['/s0']).toBeUndefined();
+    });
+
+    it('LRU eviction 时也 invalidate 被淘汰 session 的 stream resume meta', () => {
+      const invalidator = vi.fn();
+      registerStreamResumeMetaInvalidator(invalidator);
+      for (let i = 0; i < 9; i++) {
+        slice.initSession(`/s${i}`, [], false);
+      }
+      expect(invalidator).toHaveBeenCalledWith('/s0');
+    });
+  });
+
+  describe('insertInterludeItemNearTaskResult', () => {
+    it('workflow 幕间插到同一轮连续 assistant 片段之后', () => {
+      slice.initSession('/a', [
+        { type: 'message', data: { id: 'u1', role: 'user', text: 'run workflow' } },
+        {
+          type: 'message',
+          data: {
+            id: 'a-card',
+            role: 'assistant',
+            blocks: [{
+              type: 'workflow',
+              taskId: 'workflow-1',
+              taskTitle: '冒烟测试',
+              streamStatus: 'running',
+            }],
+          },
+        },
+        {
+          type: 'message',
+          data: {
+            id: 'a-text',
+            role: 'assistant',
+            blocks: [{ type: 'text', html: '<p>Workflow 已经提交后台运行了。</p>' }],
+          },
+        },
+      ], false);
+
+      const inserted = slice.insertInterludeItemNearTaskResult('/a', 'workflow-1', {
+        type: 'interlude',
+        id: 'deferred:workflow-1:success',
+        variant: 'deferred_result',
+        taskId: 'workflow-1',
+        status: 'success',
+        sourceKind: 'workflow',
+        text: 'Hanako 收到了来自 冒烟测试 workflow 的结果',
+      });
+
+      expect(inserted).toBe(true);
+      expect(slice.chatSessions['/a']?.items.map((item) => (
+        item.type === 'message' ? item.data.id : item.id
+      ))).toEqual(['u1', 'a-card', 'a-text', 'deferred:workflow-1:success']);
+    });
+
+    it('媒体结果幕间仍然插到结果文件前', () => {
+      slice.initSession('/a', [
+        { type: 'message', data: { id: 'u1', role: 'user', text: 'draw' } },
+        {
+          type: 'message',
+          data: {
+            id: 'a-media',
+            role: 'assistant',
+            blocks: [{
+              type: 'file',
+              replacesTaskId: 'task-img',
+              filePath: '/tmp/image.png',
+              label: 'image.png',
+              ext: 'png',
+            }],
+          },
+        },
+      ], false);
+
+      const inserted = slice.insertInterludeItemNearTaskResult('/a', 'task-img', {
+        type: 'interlude',
+        id: 'deferred:task-img:success',
+        variant: 'deferred_result',
+        taskId: 'task-img',
+        status: 'success',
+        sourceKind: 'tool',
+        text: '图片结果已抵达',
+      });
+
+      expect(inserted).toBe(true);
+      expect(slice.chatSessions['/a']?.items.map((item) => (
+        item.type === 'message' ? item.data.id : item.id
+      ))).toEqual(['u1', 'deferred:task-img:success', 'a-media']);
+    });
+  });
+
+  describe('truncateSessionFromMessage', () => {
+    it('只截断目标 session 从指定消息开始的尾部，其它 session 不动', () => {
+      slice.initSession('/a', [
+        { type: 'message', data: { id: 'u1', role: 'user', text: 'old' } },
+        { type: 'message', data: { id: 'a1', role: 'assistant', blocks: [] } },
+        { type: 'message', data: { id: 'u2', role: 'user', text: 'retry' } },
+        { type: 'message', data: { id: 'a2', role: 'assistant', blocks: [] } },
+      ], false);
+      slice.initSession('/b', [
+        { type: 'message', data: { id: 'b1', role: 'user', text: 'keep' } },
+      ], false);
+
+      expect(slice.truncateSessionFromMessage('/a', 'u2')).toBe(true);
+
+      expect(slice.chatSessions['/a']?.items.map(item => item.type === 'message' ? item.data.id : item.id)).toEqual(['u1', 'a1']);
+      expect(slice.chatSessions['/b']?.items.map(item => item.type === 'message' ? item.data.id : item.id)).toEqual(['b1']);
+    });
+
+    it('找不到消息时保持原状态并返回 false', () => {
+      slice.initSession('/a', [
+        { type: 'message', data: { id: 'u1', role: 'user', text: 'old' } },
+      ], false);
+
+      expect(slice.truncateSessionFromMessage('/a', 'missing')).toBe(false);
+      expect(slice.chatSessions['/a']?.items).toHaveLength(1);
+    });
+  });
+
+  describe('resolveBlockByTaskId', () => {
+    it('按 sessionPath + taskId 替换任意 assistant 消息里的媒体生成占位', () => {
+      slice.initSession('/a', [
+        { type: 'message', data: { id: 'u1', role: 'user', text: 'draw' } },
+        {
+          type: 'message',
+          data: {
+            id: 'a1',
+            role: 'assistant',
+            blocks: [{
+              type: 'media_generation',
+              taskId: 'task-img',
+              kind: 'image',
+              status: 'pending',
+              prompt: 'a moonlit room',
+            }],
+          },
+        },
+        { type: 'message', data: { id: 'u2', role: 'user', text: 'next' } },
+      ], false);
+
+      expect(slice.resolveBlockByTaskId('/a', 'task-img', {
+        type: 'file',
+        replacesTaskId: 'task-img',
+        fileId: 'sf_img',
+        filePath: '/tmp/generated.png',
+        label: 'generated.png',
+        ext: 'png',
+        mime: 'image/png',
+        kind: 'image',
+      })).toBe(true);
+
+      const message = slice.chatSessions['/a']?.items[1];
+      expect(message?.type).toBe('message');
+      if (message?.type !== 'message') throw new Error('expected message item');
+      expect(message.data.blocks).toEqual([
+        expect.objectContaining({
+          type: 'file',
+          fileId: 'sf_img',
+          filePath: '/tmp/generated.png',
+        }),
+      ]);
+      expect(slice.chatSessions['/a']?.items).toHaveLength(3);
+    });
+
+    it('重复收到同一个 taskId 的完成块时视为已消费，不追加重复文件', () => {
+      slice.initSession('/a', [{
+        type: 'message',
+        data: {
+          id: 'a1',
+          role: 'assistant',
+          blocks: [{
+            type: 'file',
+            replacesTaskId: 'task-img',
+            fileId: 'sf_img',
+            filePath: '/tmp/generated.png',
+            label: 'generated.png',
+            ext: 'png',
+          }],
+        },
+      }], false);
+
+      expect(slice.resolveBlockByTaskId('/a', 'task-img', {
+        type: 'file',
+        replacesTaskId: 'task-img',
+        fileId: 'sf_img_2',
+        filePath: '/tmp/generated-2.png',
+        label: 'generated-2.png',
+        ext: 'png',
+      })).toBe(true);
+
+      const message = slice.chatSessions['/a']?.items[0];
+      expect(message?.type).toBe('message');
+      if (message?.type !== 'message') throw new Error('expected message item');
+      expect(message.data.blocks).toEqual([
+        expect.objectContaining({
+          type: 'file',
+          fileId: 'sf_img',
+          filePath: '/tmp/generated.png',
+        }),
+      ]);
+    });
+
+    it('允许重试后的完成块替换失败的媒体生成块', () => {
+      slice.initSession('/a', [{
+        type: 'message',
+        data: {
+          id: 'a1',
+          role: 'assistant',
+          blocks: [{
+            type: 'media_generation',
+            taskId: 'task-img',
+            kind: 'image',
+            status: 'failed',
+            reason: 'API returned no images',
+            prompt: 'a moonlit room',
+          }],
+        },
+      }], false);
+
+      expect(slice.resolveBlockByTaskId('/a', 'task-img', {
+        type: 'file',
+        replacesTaskId: 'task-img',
+        fileId: 'sf_retry',
+        filePath: '/tmp/retry.png',
+        label: 'retry.png',
+        ext: 'png',
+      })).toBe(true);
+
+      const message = slice.chatSessions['/a']?.items[0];
+      expect(message?.type).toBe('message');
+      if (message?.type !== 'message') throw new Error('expected message item');
+      expect(message.data.blocks).toEqual([
+        expect.objectContaining({
+          type: 'file',
+          fileId: 'sf_retry',
+          filePath: '/tmp/retry.png',
+        }),
+      ]);
+    });
+
+    it('不在错误 session 或非 assistant 消息里替换', () => {
+      slice.initSession('/a', [{
+        type: 'message',
+        data: {
+          id: 'u1',
+          role: 'user',
+          blocks: [{
+            type: 'media_generation',
+            taskId: 'task-img',
+            kind: 'image',
+            status: 'pending',
+          }],
+        } as never,
+      }], false);
+      slice.initSession('/b', [], false);
+
+      expect(slice.resolveBlockByTaskId('/b', 'task-img', {
+        type: 'file',
+        replacesTaskId: 'task-img',
+        fileId: 'sf_img',
+        filePath: '/tmp/generated.png',
+        label: 'generated.png',
+        ext: 'png',
+      })).toBe(false);
+      expect(slice.resolveBlockByTaskId('/a', 'task-img', {
+        type: 'file',
+        replacesTaskId: 'task-img',
+        fileId: 'sf_img',
+        filePath: '/tmp/generated.png',
+        label: 'generated.png',
+        ext: 'png',
+      })).toBe(false);
     });
   });
 });

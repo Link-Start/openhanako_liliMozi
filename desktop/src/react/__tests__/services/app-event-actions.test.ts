@@ -8,10 +8,12 @@ const mockHanaFetch = vi.fn();
 const mockApplyAgentIdentity = vi.fn(async () => {});
 const mockLoadAgents = vi.fn(async () => {});
 const mockLoadSessions = vi.fn(async () => {});
+const mockSwitchSession = vi.fn(async () => {});
 const mockLoadModels = vi.fn(async () => {});
 const mockActivateWorkspaceDesk = vi.fn(async () => {});
 const mockLoadChannels = vi.fn(async () => {});
 const mockApplyEditorTypography = vi.fn();
+const mockRefreshPreviewItemsFromFile = vi.fn(async () => {});
 
 vi.mock('../../stores', () => ({
   useStore: {
@@ -34,6 +36,7 @@ vi.mock('../../stores/agent-actions', () => ({
 
 vi.mock('../../stores/session-actions', () => ({
   loadSessions: mockLoadSessions,
+  switchSession: mockSwitchSession,
 }));
 
 vi.mock('../../utils/ui-helpers', () => ({
@@ -52,6 +55,10 @@ vi.mock('../../editor/typography', () => ({
   applyEditorTypography: mockApplyEditorTypography,
 }));
 
+vi.mock('../../utils/preview-file-refresh', () => ({
+  refreshPreviewItemsFromFile: mockRefreshPreviewItemsFromFile,
+}));
+
 function jsonResponse(body: unknown): Response {
   return { json: async () => body } as unknown as Response;
 }
@@ -68,10 +75,12 @@ describe('handleAppEvent', () => {
     mockApplyAgentIdentity.mockReset();
     mockLoadAgents.mockReset();
     mockLoadSessions.mockReset();
+    mockSwitchSession.mockReset();
     mockLoadModels.mockReset();
     mockActivateWorkspaceDesk.mockReset();
     mockLoadChannels.mockReset();
     mockApplyEditorTypography.mockReset();
+    mockRefreshPreviewItemsFromFile.mockReset();
     vi.resetModules();
 
     (globalThis as Record<string, unknown>).window = {
@@ -92,10 +101,6 @@ describe('handleAppEvent', () => {
 
   it('agent-switched applies agent identity, reloads dependent data, and resets agent-scoped UI state', async () => {
     mockHanaFetch
-      .mockResolvedValueOnce(jsonResponse({
-        desk: { home_folder: '/agent-home' },
-        cwd_history: ['/recent'],
-      }))
       .mockResolvedValueOnce(jsonResponse({ jobs: [{ id: 'job-1' }] }));
     Object.assign(mockState, {
       currentChannel: { id: 'old' },
@@ -105,7 +110,16 @@ describe('handleAppEvent', () => {
     });
 
     const { handleAppEvent } = await import('../../services/app-event-actions');
-    handleAppEvent('agent-switched', { agentName: 'Hana', agentId: 'agent-a' });
+    handleAppEvent('agent-switched', {
+      agentName: 'Hana',
+      agentId: 'agent-a',
+      sessionPath: '/sessions/agent-a.jsonl',
+      cwd: '/agent-cwd',
+      homeFolder: '/agent-home',
+      workspaceFolders: ['/reference'],
+      cwdHistory: ['/agent-cwd', '/recent'],
+      memoryMasterEnabled: false,
+    });
     await flushPromises();
 
     expect(mockApplyAgentIdentity).toHaveBeenCalledWith({
@@ -113,6 +127,7 @@ describe('handleAppEvent', () => {
       agentId: 'agent-a',
     });
     expect(mockLoadSessions).toHaveBeenCalledTimes(1);
+    expect(mockSwitchSession).toHaveBeenCalledWith('/sessions/agent-a.jsonl');
     expect(mockLoadChannels).toHaveBeenCalledTimes(1);
     expect(mockLoadModels).toHaveBeenCalledTimes(1);
     expect(mockState.currentChannel).toBeNull();
@@ -125,6 +140,10 @@ describe('handleAppEvent', () => {
     expect(mockState.channelIsDM).toBe(false);
     expect(mockState.thinkingLevel).toBe('auto');
     expect(mockState.activities).toEqual([]);
+    expect(mockState.homeFolder).toBe('/agent-home');
+    expect(mockState.workspaceFolders).toEqual(['/reference']);
+    expect(mockState.cwdHistory).toEqual(['/agent-cwd', '/recent']);
+    expect(mockState.memoryMasterEnabled).toBe(false);
   });
 
   it('models-changed reloads models', async () => {
@@ -145,6 +164,19 @@ describe('handleAppEvent', () => {
 
     expect(mockLoadModels).toHaveBeenCalledTimes(1);
     expect(requestContextUsage).toHaveBeenCalledWith('/session/a.jsonl');
+  });
+
+  it('skills-changed increments the skill catalog revision and emits a browser event', async () => {
+    Object.assign(mockState, { skillCatalogVersion: 2 });
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+
+    handleAppEvent('skills-changed', { agentId: 'agent-a' });
+
+    expect(mockState.skillCatalogVersion).toBe(3);
+    expect((globalThis as any).window.dispatchEvent).toHaveBeenCalledTimes(1);
+    const event = ((globalThis as any).window.dispatchEvent as any).mock.calls[0][0] as CustomEvent;
+    expect(event.type).toBe('hana-skills-changed');
+    expect(event.detail).toEqual({ agentId: 'agent-a' });
   });
 
   it('agent-updated for a non-current agent refreshes the agent list without applying identity', async () => {
@@ -200,21 +232,24 @@ describe('handleAppEvent', () => {
 
   it('agent-switched reads the next agent memory gate from config', async () => {
     mockHanaFetch
-      .mockResolvedValueOnce(jsonResponse({
-        memory: { enabled: false },
-        desk: { home_folder: '/agent-home' },
-        cwd_history: ['/recent'],
-      }))
       .mockResolvedValueOnce(jsonResponse({ jobs: [] }));
     Object.assign(mockState, { currentAgentId: 'agent-a', memoryMasterEnabled: true });
     const { handleAppEvent } = await import('../../services/app-event-actions');
 
-    handleAppEvent('agent-switched', { agentName: 'Other', agentId: 'agent-b' });
+    handleAppEvent('agent-switched', {
+      agentName: 'Other',
+      agentId: 'agent-b',
+      sessionPath: '/sessions/agent-b.jsonl',
+      cwd: '/agent-home',
+      homeFolder: '/agent-home',
+      cwdHistory: ['/recent'],
+      memoryMasterEnabled: false,
+    });
     await vi.waitFor(() => {
       expect(mockState.memoryMasterEnabled).toBe(false);
     });
 
-    expect(mockHanaFetch).toHaveBeenCalledWith('/api/config');
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/config');
   });
 
   it('theme-changed applies the selected theme', async () => {
@@ -235,6 +270,35 @@ describe('handleAppEvent', () => {
     expect(mockApplyEditorTypography).toHaveBeenCalledWith({
       markdown: { bodyFontSize: 17 },
     });
+  });
+
+  it('does not echo desktop IPC network proxy broadcasts back to the main process', async () => {
+    const settingsChanged = vi.fn();
+    (globalThis as any).window.platform = { settingsChanged };
+
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+    (handleAppEvent as any)(
+      'network-proxy-changed',
+      { network_proxy: { mode: 'direct' } },
+      { source: 'desktop-ipc' },
+    );
+
+    expect(settingsChanged).not.toHaveBeenCalled();
+  });
+
+  it('forwards server network proxy app events to the desktop shell once', async () => {
+    const settingsChanged = vi.fn();
+    (globalThis as any).window.platform = { settingsChanged };
+
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+    (handleAppEvent as any)(
+      'network-proxy-changed',
+      { network_proxy: { mode: 'direct' } },
+      { source: 'server' },
+    );
+
+    expect(settingsChanged).toHaveBeenCalledTimes(1);
+    expect(settingsChanged).toHaveBeenCalledWith('network-proxy-changed', { network_proxy: { mode: 'direct' } });
   });
 
   it('agent-workspace-changed updates only the current agent workspace and activates the desk', async () => {
@@ -260,7 +324,7 @@ describe('handleAppEvent', () => {
     expect(mockState.selectedFolder).toBe('/new-home');
     expect(mockState.workspaceFolders).toEqual([]);
     expect(mockState.cwdHistory).toEqual(['/old-home']);
-    expect(mockActivateWorkspaceDesk).toHaveBeenCalledWith('/new-home');
+    expect(mockActivateWorkspaceDesk).toHaveBeenCalledWith('/new-home', { mountId: null });
 
     mockActivateWorkspaceDesk.mockClear();
     handleAppEvent('agent-workspace-changed', {
@@ -273,5 +337,63 @@ describe('handleAppEvent', () => {
     expect(mockState.selectedFolder).toBe('/new-home');
     expect(mockState.cwdHistory).toEqual(['/old-home']);
     expect(mockActivateWorkspaceDesk).not.toHaveBeenCalled();
+  });
+
+  it('refreshes open preview items when a markdown cover is updated by a tool', async () => {
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+
+    handleAppEvent('markdown-cover-updated', { filePath: '/notes/demo.md' });
+
+    expect(mockRefreshPreviewItemsFromFile).toHaveBeenCalledWith('/notes/demo.md');
+  });
+
+  it('refreshes open preview items when an agent updates a session file', async () => {
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+
+    handleAppEvent('session-file-updated', {
+      sessionPath: '/sessions/a.jsonl',
+      filePath: '/notes/demo.md',
+      origin: 'agent_edit',
+    });
+
+    expect(mockRefreshPreviewItemsFromFile).toHaveBeenCalledWith('/notes/demo.md');
+  });
+
+  it('agent-created reloads both agents and channels so the new DM appears immediately', async () => {
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+
+    handleAppEvent('agent-created', { agentId: 'agent-new' });
+
+    expect(mockLoadAgents).toHaveBeenCalledTimes(1);
+    expect(mockLoadChannels).toHaveBeenCalledTimes(1);
+  });
+
+  it('agent-deleted reloads both agents and channels so the stale DM disappears immediately', async () => {
+    Object.assign(mockState, { currentChannel: 'other-channel' });
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+
+    handleAppEvent('agent-deleted', { agentId: 'agent-gone' });
+
+    expect(mockLoadAgents).toHaveBeenCalledTimes(1);
+    expect(mockLoadChannels).toHaveBeenCalledTimes(1);
+  });
+
+  it('agent-deleted clears current session state when the open DM belongs to the deleted agent', async () => {
+    Object.assign(mockState, {
+      currentChannel: 'dm:agent-gone',
+      channelMessages: [{ sender: 'agent-gone', body: 'hi', timestamp: '2026-01-01' }],
+      channelHeaderName: 'agent-gone',
+      channelHeaderMembersText: '2 members',
+      channelIsDM: true,
+    });
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+
+    handleAppEvent('agent-deleted', { agentId: 'agent-gone' });
+
+    expect(mockState.currentChannel).toBeNull();
+    expect(mockState.channelMessages).toEqual([]);
+    expect(mockState.channelHeaderName).toBe('');
+    expect(mockState.channelHeaderMembersText).toBe('');
+    expect(mockState.channelIsDM).toBe(false);
   });
 });

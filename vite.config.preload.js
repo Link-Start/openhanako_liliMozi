@@ -32,7 +32,7 @@ export default defineConfig({
       // All user files (e.g. src/shared/path-to-file-url.cjs) MUST be inlined.
       external: ["electron"],
     },
-    target: "node22",
+    target: "node24",
     minify: "esbuild",
     sourcemap: false,
   },

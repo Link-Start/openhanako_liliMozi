@@ -12,6 +12,7 @@ import { useStore } from '../stores';
 import { getWebSocket } from './websocket';
 import { clearChat } from '../stores/agent-actions';
 import { loadMessages } from '../stores/session-actions';
+import { registerStreamResumeMetaInvalidator } from '../stores/stream-invalidator';
 
 // 延迟导入，打破循环依赖
 let _handleServerMessage: ((msg: any) => void) | null = null;
@@ -26,17 +27,33 @@ export function injectHandlers(
 }
 
 // ── 流恢复版本计数 ──
-let _streamResumeRebuildVersion = 0;
+const _streamResumeRebuildVersions: Record<string, number> = {};
 let _streamResumeRebuildingFor: string | null = null;
 
 // ── Session 流元数据（module-level，不走 Zustand） ──
-const _sessionStreams: Record<string, { streamId: string | null; lastSeq: number }> = {};
+const MAX_CONSUMED_SEQS = 10_000;
 
-export function getSessionStreamMeta(sessionPath?: string): { streamId: string | null; lastSeq: number } | null {
+type SessionStreamMeta = {
+  streamId: string | null;
+  lastSeq: number;
+  consumedSeqs: Set<number>;
+};
+
+const _sessionStreams: Record<string, SessionStreamMeta> = {};
+
+export function invalidateSessionStreamMeta(sessionPath?: string): void {
+  if (sessionPath == null) {
+    for (const key of Object.keys(_sessionStreams)) delete _sessionStreams[key];
+    return;
+  }
+  delete _sessionStreams[sessionPath];
+}
+
+export function getSessionStreamMeta(sessionPath?: string): SessionStreamMeta | null {
   const path = sessionPath || useStore.getState().currentSessionPath;
   if (!path) return null;
   if (!_sessionStreams[path]) {
-    _sessionStreams[path] = { streamId: null, lastSeq: 0 };
+    _sessionStreams[path] = { streamId: null, lastSeq: 0, consumedSeqs: new Set() };
   }
   return _sessionStreams[path];
 }
@@ -45,23 +62,28 @@ export function isStreamScopedMessage(msg: any): boolean {
   return !!(msg && msg.sessionPath && (msg.streamId || Number.isFinite(msg.seq)));
 }
 
-export function updateSessionStreamMeta(meta: any = {}): void {
+export function updateSessionStreamMeta(meta: any = {}): boolean {
   const sessionPath = meta.sessionPath || useStore.getState().currentSessionPath;
-  if (!sessionPath) return;
+  if (!sessionPath) return true;
 
   const entry = getSessionStreamMeta(sessionPath);
-  if (!entry) return;
+  if (!entry) return true;
 
   if (meta.streamId) {
     if (entry.streamId && entry.streamId !== meta.streamId) {
       entry.lastSeq = 0;
+      entry.consumedSeqs.clear();
     }
     entry.streamId = meta.streamId;
   }
 
   if (Number.isFinite(meta.seq)) {
-    entry.lastSeq = Math.max(entry.lastSeq || 0, meta.seq);
+    const seq = Math.max(0, Math.floor(meta.seq));
+    if (entry.consumedSeqs.has(seq)) return false;
+    markConsumedSeq(entry, seq);
   }
+
+  return true;
 }
 
 export function isStreamResumeRebuilding(): string | null {
@@ -88,47 +110,126 @@ export function requestStreamResume(sessionPath?: string, opts: any = {}): void 
 
 // ── 流恢复 / 重建 ──
 
-async function rebuildCurrentSessionFromResume(msg: any): Promise<void> {
+function nextResumeRebuildVersion(sessionPath: string): number {
+  const next = (_streamResumeRebuildVersions[sessionPath] ?? 0) + 1;
+  _streamResumeRebuildVersions[sessionPath] = next;
+  return next;
+}
+
+function isLatestResumeRebuild(sessionPath: string, version: number): boolean {
+  return _streamResumeRebuildVersions[sessionPath] === version;
+}
+
+function shouldHydrateCompletedEmptyResume(msg: any): boolean {
+  if (msg.isStreaming) return false;
+  if (!msg.streamId) return false;
+  if (Array.isArray(msg.events) && msg.events.length > 0) return false;
+  return Number.isFinite(msg.nextSeq) && msg.nextSeq > 1;
+}
+
+function resolveRuntimeStreaming(msg: any): boolean {
+  return typeof msg.runtimeIsStreaming === 'boolean'
+    ? msg.runtimeIsStreaming
+    : !!msg.isStreaming;
+}
+
+function prepareStreamMeta(sessionPath: string, streamId: string | null, opts: { resetConsumed?: boolean } = {}): SessionStreamMeta | null {
+  const meta = getSessionStreamMeta(sessionPath);
+  if (!meta) return null;
+  if (streamId) {
+    if (meta.streamId && meta.streamId !== streamId) {
+      meta.lastSeq = 0;
+      meta.consumedSeqs.clear();
+    }
+    meta.streamId = streamId;
+  }
+  if (opts.resetConsumed) {
+    meta.lastSeq = 0;
+    meta.consumedSeqs.clear();
+  }
+  return meta;
+}
+
+function markConsumedSeq(meta: SessionStreamMeta, seq: unknown): void {
+  const value = Number(seq);
+  if (!Number.isFinite(value)) return;
+  const normalized = Math.max(0, Math.floor(value));
+  meta.lastSeq = Math.max(meta.lastSeq || 0, normalized);
+  meta.consumedSeqs.add(normalized);
+  pruneConsumedSeqs(meta);
+}
+
+function pruneConsumedSeqs(meta: SessionStreamMeta): void {
+  if (meta.consumedSeqs.size <= MAX_CONSUMED_SEQS) return;
+  const sorted = [...meta.consumedSeqs].sort((a, b) => a - b);
+  const removeCount = meta.consumedSeqs.size - MAX_CONSUMED_SEQS;
+  for (let i = 0; i < removeCount; i += 1) {
+    meta.consumedSeqs.delete(sorted[i]);
+  }
+}
+
+function dispatchReplayEvent(sessionPath: string, streamId: string | null, entry: any, meta: SessionStreamMeta | null): void {
+  const seq = Number.isFinite(entry?.seq) ? Math.max(0, Math.floor(Number(entry.seq))) : null;
+  if (seq !== null && meta?.consumedSeqs.has(seq)) return;
+
+  _handleServerMessage?.({
+    ...entry.event,
+    sessionPath,
+    streamId,
+    seq: entry.seq,
+    __fromReplay: true,
+  });
+
+  if (seq !== null && meta) {
+    markConsumedSeq(meta, seq);
+  }
+}
+
+async function rebuildSessionFromResume(msg: any, opts: { finishTurnBeforeHydrate?: boolean } = {}): Promise<void> {
   const currentSessionPath = useStore.getState().currentSessionPath;
   const sessionPath = msg.sessionPath || currentSessionPath;
-  if (!sessionPath || sessionPath !== currentSessionPath) return;
+  if (!sessionPath) return;
 
-  const myVersion = ++_streamResumeRebuildVersion;
-  _streamResumeRebuildingFor = sessionPath;
+  const isCurrentSession = sessionPath === currentSessionPath;
+  const myVersion = nextResumeRebuildVersion(sessionPath);
+  if (isCurrentSession) _streamResumeRebuildingFor = sessionPath;
   try {
-    // 清掉旧 buffer 防止脏写
-    streamBufferManager.clear(sessionPath);
+    if (opts.finishTurnBeforeHydrate) {
+      streamBufferManager.finishTurn(sessionPath);
+    } else {
+      // 清掉旧 buffer 防止脏写
+      streamBufferManager.clear(sessionPath);
+    }
 
-    clearChat();
+    if (isCurrentSession) {
+      clearChat();
+    } else {
+      useStore.getState().clearSession?.(sessionPath);
+    }
     await loadMessages(sessionPath);
 
-    if (myVersion !== _streamResumeRebuildVersion) return;
-    if (useStore.getState().currentSessionPath !== sessionPath) return;
+    if (!isLatestResumeRebuild(sessionPath, myVersion)) return;
+    if (isCurrentSession && useStore.getState().currentSessionPath !== sessionPath) return;
 
-    const meta = getSessionStreamMeta(sessionPath);
-    if (meta) {
-      meta.streamId = msg.streamId || null;
-      meta.lastSeq = 0;
-    }
+    const streamId = msg.streamId || null;
+    const meta = prepareStreamMeta(sessionPath, streamId, { resetConsumed: true });
 
     for (const entry of msg.events || []) {
-      _handleServerMessage?.({
-        ...entry.event,
-        sessionPath,
-        streamId: msg.streamId || null,
-        seq: entry.seq,
-        __fromReplay: true,
-      });
+      dispatchReplayEvent(sessionPath, streamId, entry, meta);
     }
 
-    _applyStreamingStatus?.(msg.isStreaming, sessionPath);
+    if (meta && Number.isFinite(msg.nextSeq)) {
+      meta.lastSeq = Math.max(meta.lastSeq || 0, Math.max(0, msg.nextSeq - 1));
+    }
+
+    _applyStreamingStatus?.(resolveRuntimeStreaming(msg), sessionPath);
 
     const ws = getWebSocket();
-    if (useStore.getState().currentSessionPath === sessionPath && ws?.readyState === WebSocket.OPEN && msg.isStreaming) {
+    if (isCurrentSession && useStore.getState().currentSessionPath === sessionPath && ws?.readyState === WebSocket.OPEN && msg.isStreaming) {
       requestStreamResume(sessionPath);
     }
   } finally {
-    if (myVersion === _streamResumeRebuildVersion && _streamResumeRebuildingFor === sessionPath) {
+    if (isLatestResumeRebuild(sessionPath, myVersion) && _streamResumeRebuildingFor === sessionPath) {
       _streamResumeRebuildingFor = null;
     }
   }
@@ -137,34 +238,31 @@ async function rebuildCurrentSessionFromResume(msg: any): Promise<void> {
 export function replayStreamResume(msg: any): void {
   const currentSessionPath = useStore.getState().currentSessionPath;
   const sessionPath = msg.sessionPath || currentSessionPath;
-  if (!sessionPath || sessionPath !== currentSessionPath) return;
+  if (!sessionPath) return;
 
-  if (msg.reset || msg.truncated) {
-    rebuildCurrentSessionFromResume(msg).catch((err) => {
+  const completedEmptyResume = shouldHydrateCompletedEmptyResume(msg);
+  if (msg.reset || msg.truncated || completedEmptyResume) {
+    rebuildSessionFromResume(msg, { finishTurnBeforeHydrate: completedEmptyResume }).catch((err) => {
       console.error('[stream] rebuild failed:', err);
       _streamResumeRebuildingFor = null;
     });
     return;
   }
 
-  const meta = getSessionStreamMeta(sessionPath);
-  if (meta && msg.streamId) {
-    if (msg.reset) meta.lastSeq = 0;
-    if (meta.streamId && meta.streamId !== msg.streamId) {
-      meta.lastSeq = 0;
-    }
-    meta.streamId = msg.streamId;
-  }
+  const streamId = msg.streamId || null;
+  const meta = prepareStreamMeta(sessionPath, streamId);
 
   for (const entry of msg.events || []) {
-    _handleServerMessage?.({
-      ...entry.event,
-      sessionPath,
-      streamId: msg.streamId || null,
-      seq: entry.seq,
-      __fromReplay: true,
-    });
+    dispatchReplayEvent(sessionPath, streamId, entry, meta);
   }
 
-  _applyStreamingStatus?.(msg.isStreaming, sessionPath);
+  if (meta && Number.isFinite(msg.nextSeq)) {
+    meta.lastSeq = Math.max(meta.lastSeq || 0, Math.max(0, msg.nextSeq - 1));
+  }
+
+  _applyStreamingStatus?.(resolveRuntimeStreaming(msg), sessionPath);
 }
+
+registerStreamResumeMetaInvalidator((sessionPath) => {
+  invalidateSessionStreamMeta(sessionPath);
+});

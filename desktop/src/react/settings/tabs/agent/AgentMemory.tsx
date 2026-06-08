@@ -1,18 +1,150 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSettingsStore } from '../../store';
-import { hanaFetch } from '../../api';
 import { t, autoSaveConfig, savePins } from '../../helpers';
+import { hanaFetch } from '../../api';
 import { PinItem } from './AgentPins';
 import { SettingsSection } from '../../components/SettingsSection';
+import { Toggle } from '../../widgets/Toggle';
 import styles from '../../Settings.module.css';
 
-export function MemorySection({ hasUtilityModel, memoryEnabled, isViewingOther, currentPins }: {
-  hasUtilityModel: boolean;
-  memoryEnabled: boolean;
-  isViewingOther: boolean;
+type MemoryHealthStatus = 'healthy' | 'degraded' | 'unhealthy' | 'disabled' | 'unavailable';
+
+type MemoryStepHealth = {
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMsg: string | null;
+  failCount: number;
+};
+
+type MemoryHealthPayload = {
+  agentId: string;
+  status: MemoryHealthStatus;
+  reason: string | null;
+  enabled: boolean;
+  steps: Record<string, MemoryStepHealth>;
+  failedSteps: string[];
+  maxFailCount: number;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+};
+
+const healthToneByStatus: Record<MemoryHealthStatus, string> = {
+  healthy: 'ok',
+  degraded: 'attention',
+  unhealthy: 'error',
+  disabled: 'muted',
+  unavailable: 'muted',
+};
+
+function formatHealthTime(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function memoryStepLabel(step: string): string {
+  const key = `settings.memory.health.steps.${step}`;
+  const label = t(key);
+  return label === key ? step : label;
+}
+
+function formatFailedStepLabels(steps: string[]): string {
+  const labels = steps.map(memoryStepLabel);
+  if (labels.length <= 1) return labels[0] || '';
+  const sepKey = 'settings.memory.health.stepSeparator';
+  const separator = t(sepKey);
+  return labels.join(separator === sepKey ? ', ' : separator);
+}
+
+function pickLastErrorMessage(health: MemoryHealthPayload): string | null {
+  for (const step of health.failedSteps) {
+    const message = health.steps[step]?.lastErrorMsg;
+    if (message) return message;
+  }
+  return null;
+}
+
+function MemoryHealthNotice({ health, error }: {
+  health: MemoryHealthPayload | null;
+  error: string | null;
+}) {
+  if (!error && (!health || health.status === 'healthy')) return null;
+
+  const status: MemoryHealthStatus = error ? 'unavailable' : (health?.status || 'unavailable');
+  const tone = healthToneByStatus[status];
+  const failedStepLabels = health ? formatFailedStepLabels(health.failedSteps) : '';
+  const lastErrorAt = formatHealthTime(health?.lastErrorAt || null);
+  const lastErrorMessage = health ? pickLastErrorMessage(health) : null;
+
+  return (
+    <div className={`${styles['memory-health-strip']} ${styles[`memory-health-${tone}`]}`} role="status">
+      <div className={styles['memory-health-main']}>
+        <span className={styles['memory-health-dot']} />
+        <span className={styles['memory-health-title']}>{t(`settings.memory.health.${status}`)}</span>
+      </div>
+      <div className={styles['memory-health-detail']}>
+        {failedStepLabels && (
+          <span>{t('settings.memory.health.failedSteps', { steps: failedStepLabels })}</span>
+        )}
+        {lastErrorAt && (
+          <span>{t('settings.memory.health.lastError', { time: lastErrorAt })}</span>
+        )}
+        {lastErrorMessage && (
+          <span>{t('settings.memory.health.errorMessage', { message: lastErrorMessage })}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function MemorySection({ agentId, hasUtilityModel, memoryEnabled, currentPins }: {
+  agentId: string | null;
+  hasUtilityModel: boolean | undefined;
+  memoryEnabled: boolean | undefined;
   currentPins: string[];
 }) {
   const [pinInput, setPinInput] = useState('');
+  const [health, setHealth] = useState<MemoryHealthPayload | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!agentId || hasUtilityModel !== true || memoryEnabled !== true) {
+      setHealth(null);
+      setHealthError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+    setHealthError(null);
+
+    hanaFetch(`/api/memories/health?agentId=${encodeURIComponent(agentId)}`, {
+      signal: controller.signal,
+      timeout: 10_000,
+    })
+      .then((res) => res.json())
+      .then((data: MemoryHealthPayload) => {
+        if (!active) return;
+        setHealth(data);
+      })
+      .catch((err) => {
+        if (!active || controller.signal.aborted) return;
+        setHealth(null);
+        setHealthError(err?.message || String(err));
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [agentId, hasUtilityModel, memoryEnabled]);
 
   const addPin = () => {
     const val = pinInput.trim();
@@ -32,23 +164,29 @@ export function MemorySection({ hasUtilityModel, memoryEnabled, isViewingOther, 
 
   /* 记忆开关作为 section title 右侧 context（和 WorkTab 的 AgentSelect 作 context 同构）
    * hasUtilityModel=false 时 toggle 禁用，below 显示提示 */
+  const utilityModelReady = hasUtilityModel !== undefined;
+  const memoryToggleOn = !utilityModelReady ? undefined : hasUtilityModel ? memoryEnabled : false;
   const memoryToggle = (
-    <button
-      className={`hana-toggle${hasUtilityModel && memoryEnabled ? ' on' : ''}${!hasUtilityModel ? ' disabled' : ''}`}
-      onClick={() => hasUtilityModel && autoSaveConfig({ memory: { enabled: !memoryEnabled } })}
-      disabled={!hasUtilityModel}
-      title={!hasUtilityModel ? t('settings.memory.needsUtilityModel') : undefined}
+    <Toggle
+      on={memoryToggleOn}
+      onChange={(enabled) => {
+        if (hasUtilityModel) autoSaveConfig({ memory: { enabled } });
+      }}
+      disabled={!utilityModelReady || !hasUtilityModel}
+      title={utilityModelReady && !hasUtilityModel ? t('settings.memory.needsUtilityModel') : undefined}
     />
   );
 
   return (
     <SettingsSection title={t('settings.memory.sectionTitle')} context={memoryToggle}>
       <div style={{ padding: 'var(--space-sm) var(--space-md)' }}>
-        {!hasUtilityModel && (
+        {utilityModelReady && !hasUtilityModel && (
           <p className={styles['settings-inline-note']} style={{ opacity: 0.6, marginTop: 0, marginBottom: 'var(--space-md)' }}>{t('settings.memory.needsUtilityModel')}</p>
         )}
 
-        <div className={!hasUtilityModel || !memoryEnabled ? 'settings-disabled' : ''}>
+        <div className={hasUtilityModel !== true || memoryEnabled !== true ? 'settings-disabled' : ''}>
+          <MemoryHealthNotice health={health} error={healthError} />
+
           <div className={styles['settings-subsection']}>
             <div className={styles['settings-subsection-header']}>
               <h3 className={styles['settings-subsection-title']}>{t('settings.pins.title')}</h3>
@@ -104,110 +242,10 @@ export function MemorySection({ hasUtilityModel, memoryEnabled, isViewingOther, 
               >
                 {t('settings.memory.actions.clear')}
               </button>
-              <MemoryMoreDropdown isViewingOther={isViewingOther} />
             </div>
           </div>
         </div>{/* settings-disabled wrapper */}
       </div>
     </SettingsSection>
-  );
-}
-
-function MemoryMoreDropdown({ isViewingOther }: { isViewingOther: boolean }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const store = useSettingsStore();
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
-  }, [open]);
-
-  const exportMemories = async () => {
-    setOpen(false);
-    try {
-      const aid = store.getSettingsAgentId();
-      const res = await hanaFetch(`/api/memories/export?agentId=${aid}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      // eslint-disable-next-line no-restricted-syntax -- ephemeral download link for memory export
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `hana-memories-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      store.showToast(t('settings.memory.actions.exportSuccess'), 'success');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      store.showToast(t('settings.saveFailed') + ': ' + msg, 'error');
-    }
-  };
-
-  const importMemories = async () => {
-    setOpen(false);
-    // eslint-disable-next-line no-restricted-syntax -- ephemeral file picker for memory import
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.addEventListener('change', async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const json = JSON.parse(text);
-        const entries = json.facts || json.memories;
-        if (!Array.isArray(entries) || entries.length === 0) {
-          store.showToast(t('settings.memory.actions.invalidFile'), 'error');
-          return;
-        }
-        store.showToast(t('settings.memory.actions.importing'), 'success');
-        const aid = store.getSettingsAgentId();
-        const res = await hanaFetch(`/api/memories/import?agentId=${aid}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ facts: entries }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        const importMsg = t('settings.memory.actions.importSuccess').replace('{count}', data.imported);
-        store.showToast(importMsg, 'success');
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        store.showToast(t('settings.saveFailed') + ': ' + errMsg, 'error');
-      }
-    });
-    input.click();
-  };
-
-  return (
-    <div className={`${styles['memory-action-dropdown']}${open  ? ' ' + styles['open'] : ''}`} ref={ref}>
-      <button className={`${styles['memory-action-btn']} ${styles['secondary']}`} onClick={() => setOpen(!open)}>
-        <span>{t('settings.memory.actions.more')}</span>
-        <svg className={styles['memory-more-arrow']} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      <div className={styles['memory-more-popup']}>
-        <button className={styles['memory-more-option']} onClick={exportMemories}>
-          {t('settings.memory.actions.export')}
-        </button>
-        <button
-          className={styles['memory-more-option']}
-          onClick={importMemories}
-          disabled={isViewingOther}
-          title={isViewingOther ? t('settings.memory.activeOnly') : ''}
-        >
-          {t('settings.memory.actions.import')}
-        </button>
-      </div>
-    </div>
   );
 }

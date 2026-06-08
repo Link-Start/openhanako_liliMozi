@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useStore } from '../../stores';
 import { useI18n } from '../../hooks/use-i18n';
 import { getWebSocket } from '../../services/websocket';
-import { shouldShowContextRing } from './context-ring-visibility';
+import { Tooltip } from '../../ui';
+import { shouldShowContextRingTokenLabel } from './context-ring-visibility';
 import styles from './InputArea.module.css';
 
 export function ContextRing() {
@@ -12,7 +13,6 @@ export function ContextRing() {
   const [contextWindow, setContextWindow] = useState<number | null>(null);
   const [percent, setPercent] = useState<number | null>(null);
   const [compacting, setCompacting] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   // 从 Zustand store 同步 context 数据（keyed store 优先，compat global 兜底）
   const currentSessionPath = useStore(s => s.currentSessionPath);
@@ -26,13 +26,9 @@ export function ContextRing() {
   const storeCompacting = useStore(s => currentSessionPath ? s.compactingSessions.includes(currentSessionPath) : false);
 
   useEffect(() => {
-    if (storeContextTokens != null) {
-      setTokens(storeContextTokens);
-      setContextWindow(storeContextWindow);
-      setPercent(storeContextPercent);
-    } else {
-      setTokens(null);
-    }
+    setTokens(storeContextTokens ?? null);
+    setContextWindow(storeContextWindow ?? null);
+    setPercent(storeContextPercent ?? null);
     setCompacting(storeCompacting);
   }, [storeContextTokens, storeContextWindow, storeContextPercent, storeCompacting]);
 
@@ -44,9 +40,10 @@ export function ContextRing() {
     }
   }, [compacting]);
 
+  if (!currentSessionPath) return null;
+  const displayTokens = tokens ?? 0;
   const pct = percent ?? 0;
-  if (tokens == null) return null;
-  if (!shouldShowContextRing({ tokens, contextWindow, compacting })) return null;
+  const showTokenLabel = shouldShowContextRingTokenLabel(tokens);
 
   // SVG 圆环参数（更小更粗）
   const r = 6;
@@ -58,41 +55,52 @@ export function ContextRing() {
   const yuan = agentYuan || 'hanako';
 
   // token 数量格式化
-  const tokensK = Math.round(tokens / 1000);
+  const tokensK = Math.round(displayTokens / 1000);
   const windowK = contextWindow != null ? Math.round(contextWindow / 1000) : 0;
 
-  return (
-    <span className={styles['context-ring-wrap']}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <button
-        className={`${styles['context-ring']}${compacting ? ` ${styles.compacting}` : ''}`}
-        data-yuan={yuan}
-        onClick={handleClick}
-        disabled={compacting}
-      >
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <circle cx={center} cy={center} r={r} fill="none" stroke="var(--ring-bg)" strokeWidth={sw} />
-          <circle
-            cx={center} cy={center} r={r}
-            fill="none"
-            stroke="var(--ring-fg)"
-            strokeWidth={sw}
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            transform={`rotate(-90 ${center} ${center})`}
-            className={styles['context-ring-progress']}
-          />
-        </svg>
-      </button>
-      {hovered && (
-        <div className={styles['context-ring-tooltip']}>
-          <div>{t('input.contextWindow', { windowK })}</div>
-          <div>{t('input.tokensUsed', { tokensK, pct: Math.round(pct) })}</div>
-        </div>
+  const tooltipContent = (
+    <>
+      <div>{t('input.contextWindow', { windowK })}</div>
+      {tokens != null && (
+        <div>{t('input.tokensUsed', { tokensK, pct: Math.round(pct) })}</div>
       )}
-    </span>
+    </>
+  );
+
+  return (
+    <Tooltip content={tooltipContent} placement="top" align="end">
+      {({ ref, ...tooltipProps }) => (
+        <span
+          className={styles['context-ring-wrap']}
+          ref={(node) => ref(node)}
+          {...tooltipProps}
+        >
+          <button
+            className={`${styles['context-ring']}${compacting ? ` ${styles.compacting}` : ''}`}
+            data-yuan={yuan}
+            onClick={handleClick}
+            disabled={compacting}
+          >
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              <circle cx={center} cy={center} r={r} fill="none" stroke="var(--ring-bg)" strokeWidth={sw} />
+              <circle
+                cx={center} cy={center} r={r}
+                fill="none"
+                stroke="var(--ring-fg)"
+                strokeWidth={sw}
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                transform={`rotate(-90 ${center} ${center})`}
+                className={styles['context-ring-progress']}
+              />
+            </svg>
+            {showTokenLabel && (
+              <span className={styles['context-ring-label']}>{tokensK}k</span>
+            )}
+          </button>
+        </span>
+      )}
+    </Tooltip>
   );
 }

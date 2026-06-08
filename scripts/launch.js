@@ -4,15 +4,11 @@
  * 解决 POSIX `VAR=val cmd` 语法和 `~` 在 Windows 上不工作的问题
  */
 import { spawn } from "node:child_process";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { createRequire } from "node:module";
+import { applyDevEnvironment } from "./dev-env.js";
 
 const require = createRequire(import.meta.url);
-process.env.HANA_HOME = join(homedir(), ".hanako-dev");
-// 本地 Electron 再拉起 server 时，显式把当前 Node runtime 传下去。
-// 这样开发模式的 server/source 进程就不会误用 Electron 自带 Node，避免 native addon ABI 漂移。
-process.env.HANA_DEV_NODE_BIN = process.execPath;
+applyDevEnvironment(process.env);
 
 const mode = process.argv[2];
 const extra = process.argv.slice(3);
@@ -34,11 +30,11 @@ switch (mode) {
     break;
   case "cli":
     bin = process.execPath;
-    args = ["index.js", ...extra];
+    args = ["cli/entry.ts", ...extra];
     break;
   case "server":
     bin = process.execPath;
-    args = ["server/index.js", ...extra];
+    args = ["server/index.ts", ...extra];
     break;
   default:
     console.error("Usage: node scripts/launch.js <electron|electron-dev|electron-vite|cli|server>");

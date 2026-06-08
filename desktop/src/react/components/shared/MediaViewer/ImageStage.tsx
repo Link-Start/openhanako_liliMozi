@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FileRef } from '../../../types/file-ref';
 import { loadMediaSource } from './media-source';
+import { fileRefVersionToken } from '../../../services/resource-url';
 import { useMediaTransform } from './use-media-transform';
 import styles from './MediaViewer.module.css';
 
@@ -19,6 +20,7 @@ export function ImageStage({ file, viewport, neighbors, zoomCmd, onReady, onErro
   const [src, setSrc] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const imgElRef = useRef<HTMLImageElement | null>(null);
+  const fileVersionToken = fileRefVersionToken(file);
 
   // 加载当前图
   useEffect(() => {
@@ -29,9 +31,9 @@ export function ImageStage({ file, viewport, neighbors, zoomCmd, onReady, onErro
       .then((s) => { if (!cancelled) setSrc(s.url); })
       .catch((err) => { if (!cancelled) onError?.(err); });
     return () => { cancelled = true; };
-    // 依赖 id 而非 file/onError：file 是引用类型每次新建；onError 仅在错误时被调用
+    // 依赖稳定 id + version；file 是引用类型每次新建，onError 仅在错误时被调用。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file.id]);
+  }, [file.id, fileVersionToken]);
 
   // 邻近预加载（触发浏览器缓存）
   // 仅对 image/svg 预加载：loadMediaSource 只支持这两类，其他 kind 会抛 "unsupported media kind"。
@@ -46,9 +48,14 @@ export function ImageStage({ file, viewport, neighbors, zoomCmd, onReady, onErro
     };
     preload(neighbors?.prev);
     preload(neighbors?.next);
-    // 依赖 id 而非对象：邻居切换时才需要重新预加载
+    // 依赖稳定 id + version；邻居切换或覆盖更新时才需要重新预加载。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [neighbors?.prev?.id, neighbors?.next?.id]);
+  }, [
+    neighbors?.prev?.id,
+    neighbors?.prev ? fileRefVersionToken(neighbors.prev) : null,
+    neighbors?.next?.id,
+    neighbors?.next ? fileRefVersionToken(neighbors.next) : null,
+  ]);
 
   const transformApi = useMediaTransform({
     natural,

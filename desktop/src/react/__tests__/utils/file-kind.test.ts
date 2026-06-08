@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferKindByExt, isMediaKind, EXT_TO_KIND, buildFileRefId } from '../../utils/file-kind';
+import { inferKindByExt, isMediaKind, EXT_TO_KIND, buildFileRefId, kindOfFileName, isAudioFileName } from '../../utils/file-kind';
 
 describe('inferKindByExt', () => {
   it.each([
@@ -7,7 +7,7 @@ describe('inferKindByExt', () => {
     ['gif', 'image'], ['webp', 'image'], ['bmp', 'image'], ['avif', 'image'],
     ['svg', 'svg'],
     ['mp4', 'video'], ['webm', 'video'], ['mov', 'video'], ['m4v', 'video'], ['mkv', 'video'],
-    ['mp3', 'audio'], ['wav', 'audio'], ['ogg', 'audio'], ['flac', 'audio'], ['m4a', 'audio'],
+    ['mp3', 'audio'], ['wav', 'audio'], ['ogg', 'audio'], ['flac', 'audio'], ['m4a', 'audio'], ['weba', 'audio'],
     ['pdf', 'pdf'],
     ['docx', 'doc'], ['xlsx', 'doc'], ['xls', 'doc'],
     ['md', 'markdown'], ['markdown', 'markdown'],
@@ -43,6 +43,24 @@ describe('isMediaKind', () => {
     expect(isMediaKind('code')).toBe(false);
     expect(isMediaKind('markdown')).toBe(false);
     expect(isMediaKind('other')).toBe(false);
+  });
+});
+
+describe('kindOfFileName', () => {
+  it('uses mime type when present', () => {
+    expect(kindOfFileName('clip.bin', 'audio/webm')).toBe('audio');
+    expect(kindOfFileName('still.bin', 'image/png')).toBe('image');
+    expect(kindOfFileName('movie.bin', 'video/mp4')).toBe('video');
+  });
+
+  it('falls back to the central extension table', () => {
+    expect(kindOfFileName('voice.m4a')).toBe('audio');
+    expect(kindOfFileName('photo.jpeg')).toBe('image');
+  });
+
+  it('detects audio filenames via the same helper', () => {
+    expect(isAudioFileName('voice.ogg')).toBe(true);
+    expect(isAudioFileName('voice.txt')).toBe(false);
   });
 });
 

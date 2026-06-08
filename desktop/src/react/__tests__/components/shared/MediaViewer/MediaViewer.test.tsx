@@ -13,6 +13,7 @@ const f = (id: string, kind: FileRef['kind'] = 'image'): FileRef => ({
 
 describe('MediaViewer interaction', () => {
   beforeEach(() => {
+    window.t = ((key: string) => key) as typeof window.t;
     useStore.getState().closeMediaViewer();
     (window as any).platform = {
       readFileBase64: vi.fn(async () => 'BASE64'),

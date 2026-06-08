@@ -9,11 +9,41 @@ interface KeyInputProps {
   onChange: (val: string) => void;
   placeholder?: string;
   onBlur?: () => void;
+  onReveal?: () => Promise<string | null | undefined>;
+  onRevealValue?: (val: string) => void;
+  onRevealError?: (err: unknown) => void;
 }
 
-export function KeyInput({ value, onChange, placeholder, onBlur }: KeyInputProps) {
+export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRevealValue, onRevealError }: KeyInputProps) {
   const t = window.t || ((k: string) => k);
   const [visible, setVisible] = useState(false);
+  const [revealing, setRevealing] = useState(false);
+
+  const toggleVisible = async () => {
+    if (visible) {
+      setVisible(false);
+      return;
+    }
+
+    if (!onReveal) {
+      setVisible(true);
+      return;
+    }
+
+    setRevealing(true);
+    try {
+      const revealed = await onReveal();
+      if (typeof revealed === 'string') {
+        if (onRevealValue) onRevealValue(revealed);
+        else onChange(revealed);
+      }
+      setVisible(true);
+    } catch (err) {
+      onRevealError?.(err);
+    } finally {
+      setRevealing(false);
+    }
+  };
 
   return (
     <div className={styles['settings-key-wrapper']}>
@@ -28,7 +58,8 @@ export function KeyInput({ value, onChange, placeholder, onBlur }: KeyInputProps
       <button
         className={styles['settings-key-toggle']}
         type="button"
-        onClick={() => setVisible(!visible)}
+        disabled={revealing}
+        onClick={() => { void toggleVisible(); }}
       >
         {visible ? t('settings.api.hideKey') : t('settings.api.showKey')}
       </button>

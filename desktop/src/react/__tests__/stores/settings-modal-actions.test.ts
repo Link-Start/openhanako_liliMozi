@@ -41,14 +41,14 @@ describe('settings modal actions', () => {
     });
   });
 
-  it('reopens on the last tab during the same runtime when no tab is requested', () => {
+  it('maps the removed Computer Use tab to experiments when reopening', () => {
     openSettingsModal('computer');
     closeSettingsModal();
     openSettingsModal();
 
     expect(useStore.getState().settingsModal).toEqual({
       open: true,
-      activeTab: 'computer',
+      activeTab: 'experiments',
     });
   });
 

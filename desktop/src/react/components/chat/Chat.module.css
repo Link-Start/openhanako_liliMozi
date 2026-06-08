@@ -9,7 +9,8 @@
 .messageGroup {
     display: flex;
     flex-direction: column;
-    animation: msgIn 0.3s var(--ease-out);
+    --slide-y: 8px;
+    animation: hana-fade-up var(--duration-slow) var(--ease-out);
 }
 
 .messageGroup:first-child .avatarRow {
@@ -26,6 +27,12 @@
     padding-left: var(--space-sm);
     margin-left: 2px;
     position: relative;
+}
+
+.messageGroupInterludeOnly {
+    align-items: stretch;
+    padding-left: 0;
+    margin-left: 0;
 }
 
 /* 头像行 */
@@ -79,16 +86,11 @@
     margin-top: var(--space-xs);
 }
 
-@keyframes msgIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
 /* 用户消息 */
 .messageUser {
     background: rgba(0, 0, 0, 0.045);
     padding: var(--space-sm) var(--space-md);
-    border-radius: var(--radius-md) var(--radius-md) var(--radius-sm) var(--radius-md);
+    border-radius: var(--radius-chat-card) var(--radius-chat-card) var(--radius-chat-card-inner) var(--radius-chat-card);
     color: var(--text);
     font-size: 0.95rem;
     word-break: break-word;
@@ -96,6 +98,122 @@
 
 .messageUser .userText p:last-child {
     margin-bottom: 0;
+}
+
+.messageUserEditing {
+    width: min(520px, 78vw);
+    max-width: 92%;
+    padding: 0;
+    overflow: hidden;
+}
+
+.userEditTextarea {
+    display: block;
+    width: 100%;
+    min-height: 78px;
+    max-height: 240px;
+    resize: vertical;
+    box-sizing: border-box;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    line-height: 1.65;
+    padding: var(--space-sm) var(--space-md);
+}
+
+.messageFooterActions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 20px;
+    margin-top: 2px;
+    color: var(--text-muted);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.messageFooterActionsRight {
+    align-self: flex-end;
+    justify-content: flex-end;
+}
+
+.messageFooterActionsLeft {
+    align-self: flex-start;
+    justify-content: flex-start;
+}
+
+.messageGroupUser:hover .messageFooterActions,
+.messageGroupAssistant:hover .messageFooterActions,
+.messageFooterActions:focus-within,
+.messageFooterActionsVisible {
+    opacity: 0.72;
+    pointer-events: auto;
+}
+
+.messageFooterActionsTimePersistent {
+    opacity: 0.72;
+}
+
+.messageFooterActions:hover {
+    opacity: 1;
+}
+
+.messageFooterTime {
+    font-size: 0.64rem;
+    line-height: 1;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.messageFooterBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: default;
+    transition: color var(--duration-instant), background var(--duration-instant), opacity var(--duration-instant);
+}
+
+.messageFooterBtn svg {
+    width: 12px;
+    height: 12px;
+}
+
+.messageFooterBtn:hover {
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.messageFooterBtn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.messageFooterActionsTimePersistent .messageFooterBtn {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.messageGroupUser:hover .messageFooterActionsTimePersistent .messageFooterBtn,
+.messageGroupAssistant:hover .messageFooterActionsTimePersistent .messageFooterBtn,
+.messageFooterActionsTimePersistent:focus-within .messageFooterBtn,
+.messageFooterActionsTimePersistent:hover .messageFooterBtn {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.messageFooterBtnActive {
+    color: var(--accent);
+    background: transparent;
 }
 
 /* 用户附件 */
@@ -106,14 +224,53 @@
     margin-bottom: 0.3rem;
 }
 
+.messageGroupUser .userAttachments {
+    align-self: flex-end;
+    justify-content: flex-end;
+    max-width: 92%;
+}
+
 .userAttachments:last-child {
     margin-bottom: 0;
 }
 
+.voiceInputCard {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.42rem;
+    max-width: min(18rem, 100%);
+    padding: 0.72rem 0.72rem 0.52rem;
+    color: var(--text);
+    background: color-mix(in srgb, var(--bg-card) 88%, rgba(var(--accent-rgb), 0.08));
+    border-radius: var(--radius-md);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+}
+
+.voiceInputTranscript {
+    max-width: 100%;
+    padding: 0 0.08rem;
+    color: var(--text);
+    font-size: 0.98rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.voiceInputCard .voiceInputAudioStrip {
+    height: 2rem;
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+}
+
 .attachCard {
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chat-card);
     overflow: hidden;
-    cursor: pointer;
+    cursor: default;
 }
 
 .attachCard:hover {
@@ -124,7 +281,7 @@
     max-width: 200px;
     max-height: 150px;
     background: var(--attach-bg, rgba(0, 0, 0, 0.04));
-    border-radius: 8px;
+    border-radius: var(--radius-chat-card);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
     object-fit: contain;
 }
@@ -164,21 +321,34 @@
     font-family: var(--font-serif);
 }
 
+.messageAssistantInterludeOnly {
+    width: 100%;
+    max-width: 100%;
+}
+
 /* ── Message action buttons (shared by user & assistant) ── */
 
 .msgActions {
+    --msg-actions-gap: 6px;
+    --msg-actions-hotspot-width: 78px;
     position: absolute;
-    top: 4px;
+    bottom: 4px;
     right: 4px;
-    display: flex;
-    gap: 2px;
-    background: var(--hana-bg);
-    border: 1px solid var(--hana-border);
-    border-radius: 4px;
-    padding: 2px;
     opacity: 0;
-    transition: opacity 0.15s;
+    padding: 3px;
+    margin: -3px;
+    transition: opacity var(--duration-fast);
     z-index: 2;
+}
+
+.msgActions::before {
+    content: "";
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    right: 100%;
+    width: calc(var(--msg-actions-hotspot-width) + var(--msg-actions-gap));
+    pointer-events: auto;
 }
 
 .msgActionsLeft {
@@ -186,30 +356,65 @@
     right: auto;
 }
 
+.msgActionsLeft::before {
+    right: auto;
+    left: 100%;
+}
+
 .msgActionsVisible { opacity: 1 !important; }
 
 .messageGroupAssistant:hover .msgActions,
-.messageGroupUser:hover .msgActions { opacity: 0.6; }
+.messageGroupUser:hover .msgActions { opacity: 1; }
 .msgActions:hover { opacity: 1 !important; }
+
+.msgActionsPopover {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + var(--msg-actions-gap));
+    transform: translateY(-50%);
+    display: flex;
+    gap: 2px;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 0;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--overlay-light, rgba(0, 0, 0, 0.08));
+    border-radius: var(--radius-md);
+    padding: 2px 3px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast);
+}
+
+.msgActions:hover .msgActionsPopover {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.msgActionsLeft .msgActionsPopover {
+    right: auto;
+    left: calc(100% + var(--msg-actions-gap));
+}
 
 .msgActionBtn {
     display: flex;
     align-items: center;
     gap: 2px;
     position: relative;
-    background: none;
+    background: transparent;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     padding: 3px;
-    cursor: pointer;
-    color: var(--hana-text-muted);
+    cursor: default;
+    color: var(--text-muted);
     line-height: 1;
-    transition: color 0.12s, background 0.12s;
+    transition: color var(--duration-instant), background var(--duration-instant);
 }
 
 .msgActionBtn:hover {
-    color: var(--hana-text);
-    background: var(--hana-border);
+    color: var(--text);
+    background: var(--overlay-light);
 }
 
 .msgActionBtn:disabled {
@@ -218,12 +423,26 @@
 }
 
 .msgActionBtnActive {
-    color: var(--hana-accent, #4a9) !important;
+    color: var(--accent) !important;
+    background: rgba(var(--accent-rgb), 0.10);
     opacity: 1;
 }
 
+.msgActionBtnActive:hover {
+    color: var(--accent) !important;
+    background: rgba(var(--accent-rgb), 0.16);
+}
+
 .msgActionBtnCopied {
-    color: var(--hana-accent, #4a9) !important;
+    color: var(--accent) !important;
+}
+
+.streamTailChunk {
+    animation: hana-stream-tail-in 100ms var(--ease-out) both;
+}
+
+.streamMarkdownBlockEnter {
+    animation: hana-stream-tail-in 110ms var(--ease-out) both;
 }
 
 .msgActionBadge {
@@ -232,7 +451,7 @@
     height: 14px;
     line-height: 14px;
     text-align: center;
-    background: var(--hana-accent, #4a9);
+    background: var(--accent);
     color: #fff;
     border-radius: 7px;
     padding: 0 3px;
@@ -241,7 +460,7 @@
 
 /* 选中消息的视觉提示 */
 .messageGroupSelected {
-    background: rgba(68, 170, 153, 0.05);
+    background: var(--accent-light);
     border-radius: 4px;
 }
 
@@ -252,6 +471,7 @@
     margin: var(--space-xs) 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 0.8rem;
+    animation: hana-chat-soft-down-in 170ms var(--ease-out) both;
 }
 
 .moodWrapper[data-yuan="hanako"] { --mood-accent: var(--accent); }
@@ -262,7 +482,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    cursor: pointer;
+    cursor: default;
     color: var(--mood-accent);
     opacity: 0.6;
     font-style: italic;
@@ -278,7 +498,7 @@
     display: inline-block;
     font-style: normal;
     font-size: 0.75rem;
-    transition: transform 0.15s ease;
+    transition: transform var(--duration-fast) ease;
 }
 
 .moodArrowOpen {
@@ -298,28 +518,142 @@
     opacity: 0.7;
 }
 
+/* ── 幕间消息 ── */
+
+.interludeRow {
+    width: 100%;
+    margin: var(--space-lg) 0;
+    display: flex;
+    justify-content: center;
+    font-family: var(--font-sans);
+    animation: hana-chat-soft-down-in 130ms var(--ease-out) both;
+}
+
+.interludeTrigger {
+    width: min(100%, 680px);
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 2px 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    cursor: default;
+}
+
+.interludeTriggerInteractive {
+    transition: color var(--duration-instant) var(--ease-out);
+}
+
+.interludeTriggerInteractive:hover,
+.interludeTriggerInteractive:focus-visible {
+    color: var(--text);
+    outline: none;
+}
+
+.interludeLine {
+    flex: 0 1 44px;
+    min-width: 18px;
+    height: 1px;
+    background: color-mix(in srgb, var(--text-muted) 32%, transparent);
+}
+
+.interludeText {
+    min-width: 0;
+    max-width: min(72%, 520px);
+    overflow: hidden;
+    color: inherit;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.interludePopover {
+    position: fixed;
+    z-index: 2147482500;
+    box-sizing: border-box;
+    overflow: auto;
+    max-width: 360px;
+    max-height: 420px;
+    padding: 12px 14px;
+    color: var(--text);
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--overlay-light, rgba(0, 0, 0, 0.08));
+    border-radius: var(--radius-chat-surface);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04);
+    animation: hana-fade-up var(--duration-fast) var(--ease-out);
+}
+
+.interludePopoverMarkdown {
+    font-family: var(--font-serif);
+    font-size: 0.82rem;
+    line-height: 1.62;
+}
+
+.interludePopoverMarkdown :global(pre) {
+    max-height: 220px;
+}
+
+:global(.mobile-desktop-root) .interludeTrigger {
+    pointer-events: none;
+}
+
 /* ── Cron 确认卡片 ── */
 
 .cronConfirmCard {
     margin: var(--space-sm) 0;
     padding: var(--space-md);
+    animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
     background: var(--bg-card, #fff);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-chat-card);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
     font-size: 0.82rem;
     width: fit-content;
-    max-width: 360px;
+    min-width: min(360px, 100%);
+    max-width: min(460px, 100%);
+}
+
+.cronConfirmHeader {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 14px;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    cursor: default;
 }
 
 .cronConfirmTitle {
     font-weight: 600;
     color: var(--text);
-    margin-bottom: 2px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .cronConfirmMeta {
     color: var(--text-muted);
     font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.cronConfirmChevron {
+    color: var(--text-light);
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.cronConfirmChevron[data-open="false"] {
+    transform: rotate(-90deg);
 }
 
 .cronConfirmPrompt {
@@ -328,6 +662,62 @@
     font-size: 0.75rem;
     font-style: italic;
     line-height: 1.4;
+}
+
+.cronConfirmFields {
+    margin-top: var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.cronConfirmFieldGrid {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: var(--space-xs);
+}
+
+.cronConfirmField {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+}
+
+.cronConfirmField input,
+.cronConfirmField select,
+.cronConfirmField textarea {
+    width: 100%;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.74rem;
+    outline: none;
+}
+
+.cronConfirmField input,
+.cronConfirmField select {
+    height: 1.65rem;
+    padding: 0 7px;
+}
+
+.cronConfirmField textarea {
+    resize: vertical;
+    min-height: 4.8rem;
+    max-height: 10rem;
+    padding: 6px 7px;
+    line-height: 1.45;
+}
+
+.cronConfirmField input:focus,
+.cronConfirmField select:focus,
+.cronConfirmField textarea:focus {
+    border-color: rgba(var(--accent-rgb), 0.35);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.08);
 }
 
 .cronConfirmActions {
@@ -342,8 +732,8 @@
     border-radius: var(--radius-sm);
     font-size: 0.75rem;
     font-family: inherit;
-    cursor: pointer;
-    transition: opacity 0.15s;
+    cursor: default;
+    transition: opacity var(--duration-fast);
 }
 
 .cronConfirmBtn:hover { opacity: 0.85; }
@@ -368,17 +758,250 @@
 .cronConfirmStatusApproved { color: var(--green); }
 .cronConfirmStatusRejected { color: var(--text-muted); }
 
+.automationDraftOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2400;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: min(8vh, 64px) min(8vw, 96px);
+    background: rgba(48, 43, 38, 0.22);
+    backdrop-filter: blur(1.5px);
+}
+
+.automationDraftModal {
+    width: min(600px, 100%);
+    max-height: min(78vh, 680px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    padding: 22px 24px 18px;
+    border-radius: var(--radius-chat-card);
+    border: 1px solid rgba(0, 0, 0, 0.045);
+    background: var(--bg-card, var(--bg));
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16), 0 2px 10px rgba(0, 0, 0, 0.06);
+    color: var(--text);
+}
+
+.automationDraftHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.automationDraftTitleInput {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 1.05rem;
+    line-height: 1.35;
+}
+
+.automationDraftTitleInput:focus {
+    box-shadow: none;
+}
+
+.automationDraftIconButton {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: default;
+}
+
+.automationDraftIconButton:hover {
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.automationDraftPrompt {
+    width: 100%;
+    min-height: 220px;
+    max-height: 44vh;
+    resize: vertical;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.92rem;
+    line-height: 1.65;
+}
+
+.automationDraftFooter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(116px, 0.32fr) auto;
+    align-items: end;
+    gap: var(--space-sm);
+    padding-top: var(--space-xs);
+}
+
+.automationDraftField {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+}
+
+.automationDraftAgentSelect {
+    width: 100%;
+    max-width: none;
+}
+
+.automationDraftControlButton {
+    width: 100%;
+    min-width: 0;
+    height: 1.65rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    padding: 0 7px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.72rem;
+    line-height: 1;
+    text-align: left;
+    cursor: default;
+    transition: background var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.automationDraftControlButton:hover {
+    border-color: rgba(var(--accent-rgb), 0.2);
+    background: rgba(var(--accent-rgb), 0.025);
+}
+
+.automationDraftControlButton:focus-visible {
+    outline: none;
+    border-color: rgba(var(--accent-rgb), 0.35);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.08);
+}
+
+.automationDraftAgentAvatar {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.automationDraftAgentName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.automationDraftControlArrow {
+    width: 13px;
+    height: 13px;
+    color: var(--text-muted);
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.automationDraftControlArrow[data-open="true"] {
+    transform: rotate(180deg);
+}
+
+.automationDraftAgentPopup {
+    min-width: 150px;
+}
+
+.automationDraftAgentOption {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.automationDraftSchedule {
+    min-width: 0;
+}
+
+.automationDraftActions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-xs);
+}
+
+.automationDraftTextButton,
+.automationDraftPrimaryButton {
+    border: 0;
+    border-radius: var(--radius-md);
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 7px 14px;
+    cursor: default;
+}
+
+.automationDraftTextButton {
+    background: transparent;
+    color: var(--text-muted);
+}
+
+.automationDraftTextButton:hover {
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.035);
+}
+
+.automationDraftPrimaryButton {
+    background: var(--accent);
+    color: var(--bg-card, #fff);
+}
+
+.automationDraftPrimaryButton:hover {
+    opacity: 0.88;
+}
+
+@media (max-width: 720px) {
+    .automationDraftOverlay {
+        align-items: flex-end;
+        padding: var(--space-md);
+    }
+
+    .automationDraftModal {
+        max-height: 86vh;
+        padding: 18px;
+    }
+
+    .automationDraftFooter {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+    }
+
+    .automationDraftActions {
+        justify-content: flex-end;
+    }
+}
+
 /* ── 设置确认卡片 ── */
 
 .settingsConfirmCard {
     margin: var(--space-md) 0;
     padding: var(--space-lg) var(--space-lg) var(--space-md);
     background: var(--bg-card, #fff);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-chat-card);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
     font-size: 0.88rem;
     min-width: 320px;
     max-width: 420px;
+    animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
 }
 
 .settingsConfirmCardDone {
@@ -420,7 +1043,7 @@
     flex-direction: column;
     gap: 0;
     background: var(--overlay-light, rgba(0,0,0,0.03));
-    border-radius: var(--radius-md, 8px);
+    border-radius: var(--radius-chat-card);
     overflow: hidden;
     max-height: 240px;
     overflow-y: auto;
@@ -428,7 +1051,7 @@
 
 .settingsConfirmOption {
     padding: 9px 14px;
-    cursor: pointer;
+    cursor: default;
     font-size: 0.85rem;
     font-family: inherit;
     color: var(--hana-text);
@@ -436,7 +1059,7 @@
     border: none;
     border-bottom: 1px solid var(--overlay-light, rgba(0,0,0,0.06));
     text-align: left;
-    transition: background 0.1s;
+    transition: background var(--duration-instant);
 }
 
 .settingsConfirmOption:last-child {
@@ -484,8 +1107,8 @@
     border-radius: var(--radius-sm);
     font-size: 0.82rem;
     font-family: inherit;
-    cursor: pointer;
-    transition: opacity 0.15s, box-shadow 0.15s;
+    cursor: default;
+    transition: opacity var(--duration-fast), box-shadow var(--duration-fast);
 }
 
 .settingsConfirmBtn:hover { opacity: 0.9; }
@@ -517,92 +1140,107 @@
 
 .settingsConfirmStatusConfirmed { color: var(--accent); }
 
-/* ── Xing 反省卡片 ── */
+/* ── 设置修改结果卡片 ── */
 
-.xingCard {
-    margin: var(--space-sm) auto;
-    padding: var(--space-md) var(--space-lg);
+.settingsUpdateCard {
+    margin: var(--space-md) 0;
+    padding: var(--space-md);
     background: var(--bg-card, #fff);
-    border-radius: var(--radius-md);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
-    width: 600px;
-    max-width: 100%;
-    font-family: var(--font-serif);
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    font-size: 0.86rem;
+    min-width: 300px;
+    max-width: 460px;
+    animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
 }
 
-.xingCardTitle {
-    text-align: center;
+.settingsUpdateCardApplied {
+    border-left: 3px solid var(--accent);
+}
+
+.settingsUpdateCardFailed {
+    border-left: 3px solid var(--red, #b24a3b);
+}
+
+.settingsUpdateHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+}
+
+.settingsUpdateTitle {
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 1rem;
     color: var(--text);
-    margin-bottom: var(--space-sm);
 }
 
-.xingCardDivider {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: var(--space-sm) 0;
-}
-
-.xingCardStatus {
-    text-align: center;
+.settingsUpdateStatus {
+    flex: 0 0 auto;
     color: var(--text-muted);
-    font-size: 0.82rem;
-    font-style: italic;
-    padding: var(--space-md) 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
 }
 
-.xingCardStatus .thinkingDots {
-    display: inline-block;
-    margin-left: 4px;
-    vertical-align: baseline;
-    font-family: var(--font-serif);
-    font-weight: 700;
-    letter-spacing: 0.1em;
-}
-
-.xingCardStatus .thinkingDots::after {
-    content: '';
-    animation: typewriterDots 1.4s steps(1, end) infinite;
-}
-
-.xingCardBody {
-    font-size: 0.85rem;
-    line-height: 1.65;
-}
-
-.xingCardCopy {
-    display: block;
-    margin: var(--space-sm) auto 0;
-    padding: 4px 16px;
-    font-size: 0.75rem;
-    font-family: inherit;
+.settingsUpdateSummary {
+    margin-top: var(--space-xs);
     color: var(--text-muted);
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    line-height: 1.45;
 }
 
-.xingCardCopy:hover {
-    color: var(--accent);
-    border-color: var(--accent);
+.settingsUpdateChanges {
+    margin-top: var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
-.xingCardLoading .xingCardCopy { display: none; }
+.settingsUpdateChange {
+    display: grid;
+    grid-template-columns: minmax(88px, 0.38fr) minmax(0, 1fr);
+    gap: var(--space-sm);
+    align-items: center;
+    padding-top: 6px;
+    border-top: 1px solid var(--overlay-light, rgba(0,0,0,0.06));
+}
 
+.settingsUpdateChangeLabel {
+    color: var(--text-muted);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.settingsUpdateChangeValue {
+    color: var(--text);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
 
 /* ── 工具调用折叠组 ── */
 
 .toolGroup {
+    position: relative;
     margin: var(--space-xs) 0;
-    border-left: 2px solid var(--accent);
+    padding-left: 2px;
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     background: var(--tool-bg);
     overflow: hidden;
     width: fit-content;
     max-width: 100%;
+    animation: hana-chat-soft-down-in 110ms var(--ease-out) both;
+}
+
+.toolGroup::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    transform-origin: top;
+    animation: hana-tool-bar-in 100ms var(--ease-out) 55ms both;
 }
 
 .toolGroupSummary {
@@ -617,7 +1255,7 @@
 }
 
 .toolGroupSummaryClickable {
-    cursor: pointer;
+    cursor: default;
 }
 
 .toolGroupSummaryClickable:hover {
@@ -639,10 +1277,6 @@
     padding: 0 0.75rem 0.3rem;
 }
 
-.toolGroupContentCollapsed {
-    display: none;
-}
-
 /* 单条工具时隐藏标题行 */
 .toolGroupSingle .toolGroupSummary {
     display: none;
@@ -652,17 +1286,109 @@
     padding: 0;
 }
 
+/* ── 连续过程大折叠 ── */
+
+.processFoldMessage {
+    width: 100%;
+}
+
+.processFoldSummary {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: var(--space-xs) 0;
+    padding: 0.4rem 0.75rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--overlay-subtle);
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.processFoldSummary:hover {
+    background: var(--tool-bg);
+    color: var(--tool-text);
+}
+
+.processFoldSummaryOpen {
+    margin-bottom: 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.processFoldTitle {
+    display: inline-flex;
+    max-width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0.42rem;
+}
+
+.processFoldTitleText {
+    min-width: 0;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.processFoldArrow {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.processFoldSummaryOpen .processFoldArrow {
+    transform: rotate(90deg);
+}
+
+.processFoldPanel {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 0 var(--space-xs);
+    padding: 0.4rem 0.75rem;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    background: var(--overlay-subtle);
+    background: color-mix(in srgb, var(--overlay-subtle) 62%, transparent);
+}
+
+.processFoldMessage + .processFoldPanel {
+    margin-top: 0;
+}
+
+.processFoldPanel .messageGroupAssistant {
+    margin-left: 0;
+    padding-left: 0;
+    animation: none;
+}
+
+.processFoldPanel .messageGroupAssistant + .messageGroupAssistant {
+    margin-top: var(--space-sm);
+}
+
+.processFoldPanel .message {
+    max-width: 100%;
+}
+
 /* ── 工具调用指示器 ── */
 
 .toolIndicator {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
     font-size: 0.78rem;
     color: var(--tool-text);
     padding: 0.2rem 0;
     line-height: 1.5;
-    max-width: 400px;
+    max-width: 100%;
 }
 
 .toolGroupSingle .toolIndicator {
@@ -671,7 +1397,11 @@
 }
 
 .toolDesc {
-    flex-shrink: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .toolDetail {
@@ -686,8 +1416,8 @@
 }
 
 .toolDetailLink {
-    cursor: pointer;
-    transition: color 0.15s;
+    cursor: default;
+    transition: color var(--duration-fast);
 }
 
 .toolDetailLink:hover {
@@ -697,12 +1427,18 @@
 }
 
 .toolTag {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 9rem;
     font-size: 0.68rem;
     color: var(--text-muted);
     background: var(--overlay-subtle);
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
     font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .toolDots {
@@ -716,7 +1452,7 @@
 
 .toolDots::after {
     content: '';
-    animation: typewriterDots 1.4s steps(1, end) infinite;
+    animation: hana-typewriter-dots 1.4s steps(1, end) infinite;
 }
 
 .toolStatus {
@@ -738,13 +1474,14 @@
     margin: var(--space-xs) 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 0.8rem;
+    animation: hana-chat-soft-down-in 130ms var(--ease-out) both;
 }
 
 .thinkingBlockSummary {
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    cursor: pointer;
+    cursor: default;
     color: var(--text-muted);
     font-style: italic;
     user-select: none;
@@ -765,14 +1502,14 @@
 
 .thinkingBlockSummary .thinkingDots::after {
     content: '';
-    animation: typewriterDots 1.4s steps(1, end) infinite;
+    animation: hana-typewriter-dots 1.4s steps(1, end) infinite;
 }
 
 .thinkingBlockArrow {
     display: inline-block;
     font-style: normal;
     font-size: 0.75rem;
-    transition: transform 0.15s ease;
+    transition: transform var(--duration-fast) ease;
 }
 
 .thinkingBlockArrowOpen {
@@ -791,89 +1528,180 @@
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
-/* ── 文件输出卡片 ── */
+/* ── 文件输出卡片操作按钮 ── */
 
-.fileOutputCard {
+.fileOutputActions {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    gap: var(--space-md);
-    min-width: 300px;
-    max-width: 420px;
-    margin: var(--space-sm) 0;
-    padding: 0.7rem 0.9rem;
-    background: var(--bg-card, var(--bg));
+    margin-left: auto;
     border: 1px solid var(--border, rgba(0,0,0,0.1));
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-chat-card);
+    overflow: hidden;
+    background: var(--bg-card, var(--bg));
+}
+
+.fileOutputActionButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    color: var(--text-muted);
+    border: 0;
+    cursor: default;
+    transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.fileOutputActionButton:hover,
+.fileOutputActionButton[aria-expanded="true"] {
+    color: var(--text);
+    background: var(--overlay-light, rgba(0,0,0,0.04));
+}
+
+.fileOutputActionButton:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.fileOutputActionPrimary {
+    width: 31px;
+}
+
+.fileOutputActionMenuButton {
+    width: 22px;
+    border-left: 1px solid var(--border, rgba(0,0,0,0.1));
+}
+
+.fileOutputActionMenu {
+    padding: 5px 0;
+    background: var(--bg-card, var(--bg));
+    border: 1px solid var(--overlay-light);
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.07);
+    animation: hana-fade-up var(--duration-fast) var(--ease-out);
+}
+
+.fileOutputActionMenuItem {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 11px;
+    background: transparent;
+    color: var(--text);
+    border: 0;
+    font: inherit;
+    font-size: 0.72rem;
+    text-align: left;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: default;
+    transition: background var(--duration-instant) var(--ease-out);
+}
+
+.fileOutputActionMenuItem:hover,
+.fileOutputActionMenuItem:focus-visible {
+    background: var(--overlay-subtle);
+    outline: none;
+}
+
+/* ── 媒体生成占位卡片 ── */
+
+.mediaGenerationCard {
+    display: inline-flex;
+    width: clamp(220px, 50%, 360px);
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    margin: var(--space-sm) 0;
+    padding: 0.3rem;
+    background: var(--bg-card, var(--bg));
+    border: 0.5px solid var(--border, rgba(0,0,0,0.08));
+    border-radius: var(--radius-chat-card);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
     overflow: hidden;
-    transition: background 0.15s, border-color 0.15s;
+    animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
 }
 
-.fileOutputPreviewable:hover {
-    border-color: var(--text-muted, rgba(0,0,0,0.2));
-}
-
-.fileOutputExpired {
+.mediaGenerationCardFailed {
     border-style: dashed;
-    background: var(--overlay-subtle, rgba(0,0,0,0.03));
-    box-shadow: none;
-    opacity: 0.82;
 }
 
-.fileOutputIcon {
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    color: var(--text-muted);
+.mediaGenerationSurface {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--overlay-subtle, rgba(0,0,0,0.03));
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chat-card-inner);
+    background: linear-gradient(180deg, rgba(0,0,0,0.035), rgba(0,0,0,0.065)), var(--bg-card, var(--bg));
+    overflow: hidden;
 }
 
-.fileOutputInfo {
-    flex: 1;
+.mediaGenerationText {
+    position: relative;
+    z-index: 1;
+    width: min(52%, 220px);
     min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    text-align: center;
 }
 
-.fileOutputName {
-    font-size: 0.85rem;
-    font-weight: 500;
+.mediaGenerationTitle {
     color: var(--text);
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+.mediaGenerationDots {
+    display: inline-block;
+    min-width: 1.8em;
+    text-align: left;
+}
+
+.mediaGenerationDots::after {
+    content: '';
+    animation: hana-cycling-dots 1.4s steps(1, end) infinite;
+}
+
+.mediaGenerationPrompt {
+    margin-top: 0.22rem;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.fileOutputType {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-}
-
-.fileOutputOpen {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    margin-left: auto;
-    background: transparent;
-    color: var(--text-muted);
-    border: 1px solid var(--border, rgba(0,0,0,0.1));
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
-}
-
-.fileOutputOpen:hover {
+.mediaGenerationRetryButton {
+    margin-top: var(--space-sm);
+    padding: 0.28rem 0.55rem;
     color: var(--text);
-    border-color: var(--text-muted);
-    background: var(--overlay-light, rgba(0,0,0,0.04));
+    background: color-mix(in srgb, var(--bg-card, var(--bg)) 80%, var(--text) 8%);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    cursor: default;
+    transition:
+        background var(--duration-instant) var(--ease-out),
+        border-color var(--duration-instant) var(--ease-out);
+}
+
+.mediaGenerationRetryButton:hover:not(:disabled),
+.mediaGenerationRetryButton:focus-visible {
+    background: var(--overlay-subtle);
+    outline: none;
+}
+
+.mediaGenerationRetryButton:disabled {
+    color: var(--text-muted);
+    cursor: default;
 }
 
 /* ── 图片输出卡片 ── */
@@ -881,18 +1709,46 @@
 .imageOutputCard {
     display: inline-flex;
     flex-direction: column;
+    position: relative;
     max-width: 100%;
     margin: var(--space-sm) 0;
     padding: 0.3rem;
     background: var(--bg-card, var(--bg));
     border: 0.5px solid var(--border, rgba(0,0,0,0.08));
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-chat-card);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-fast);
 }
 
 .imageOutputCard:hover {
     border-color: var(--text-muted, rgba(0,0,0,0.2));
+}
+
+.imageOutputDownloadButton {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.55rem;
+    z-index: 1;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    background: var(--bg-card, var(--bg));
+    border: 1px solid var(--border, rgba(0,0,0,0.1));
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    opacity: 0.84;
+    transition: opacity var(--duration-fast), color var(--duration-fast), background var(--duration-fast);
+}
+
+.imageOutputDownloadButton:hover,
+.imageOutputDownloadButton:focus-visible {
+    opacity: 1;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
 }
 
 .imageOutputPreview {
@@ -900,7 +1756,7 @@
     max-width: 100%;
     max-height: 450px;
     object-fit: contain;
-    border-radius: calc(var(--radius-lg) - 0.35rem);
+    border-radius: var(--radius-chat-card-inner);
 }
 
 .imageOutputName {
@@ -923,10 +1779,11 @@
     padding: 0.55rem 0.85rem;
     background: var(--tool-bg);
     border: 1px solid var(--accent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-chat-card);
     max-width: 100%;
-    cursor: pointer;
-    transition: background 0.15s, box-shadow 0.15s;
+    cursor: default;
+    transition: background var(--duration-fast), box-shadow var(--duration-fast);
+    animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
 }
 
 .legacyArtifactCard:hover {
@@ -979,50 +1836,36 @@
 .browserScreenshot {
     margin: 8px 0;
     max-width: 600px;
+    animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
 }
 
 .browserScreenshot img {
     max-width: 100%;
-    border-radius: 8px;
+    border-radius: var(--radius-chat-card);
     border: 1px solid var(--border);
-    cursor: pointer;
-    transition: opacity 0.2s;
+    cursor: default;
+    transition: opacity var(--duration-fast);
 }
 
 .browserScreenshot img:hover {
     opacity: 0.9;
 }
 
-/* ── Skill 卡片（复用 legacy artifact 样式） ── */
-
-.skillCard {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-sm);
-    margin: var(--space-xs) 0;
-    padding: 0.55rem 0.85rem;
-    background: var(--tool-bg);
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-md);
-    max-width: 100%;
-    cursor: pointer;
-    transition: background 0.15s, box-shadow 0.15s;
-}
-
-.skillCard:hover {
-    background: var(--accent-light);
-    box-shadow: 0 2px 8px var(--shadow);
-}
-
 /* ── Session Panel ── */
 
-.sessionPanel {
-    --chat-scrollbar-bottom-inset: calc(var(--input-card-h, 0px) / 2);
+.sessionShell {
+    --chat-scrollbar-bottom-inset: var(--input-card-bottom-inset, calc(var(--input-card-h, 0px) / 2));
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    bottom: calc(var(--input-card-h, 0px) / 2 + var(--space-lg));
+    bottom: calc(var(--chat-scrollbar-bottom-inset) + var(--space-lg));
+    overflow: hidden;
+}
+
+.sessionPanel {
+    position: absolute;
+    inset: 0;
     overflow-y: auto;
     padding: 76px var(--space-lg) 0;
 }
@@ -1035,7 +1878,7 @@
 
 .sessionPanel::-webkit-scrollbar-thumb {
     background: transparent;
-    transition: background 0.25s ease-out;
+    transition: background var(--duration-slow) ease-out;
 }
 
 .sessionPanel:hover::-webkit-scrollbar-thumb,
@@ -1044,11 +1887,176 @@
 }
 
 .sessionMessages {
-    max-width: 640px;
+    max-width: var(--chat-column-width);
     margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
+}
+
+:global(.mobile-desktop-root) .sessionPanel {
+    padding-left: var(--space-md);
+    padding-right: var(--space-md);
+}
+
+:global(.mobile-desktop-root) .messageUser,
+:global(.mobile-desktop-root) .messageAssistant {
+    font-size: 1rem;
+}
+
+.timelineNav {
+    position: absolute;
+    top: 76px;
+    right: 0;
+    height: 50%;
+    width: 64px;
+    z-index: 4;
+    overflow: visible;
+    pointer-events: none;
+    --timeline-card-width: min(176px, calc(100vw - 96px));
+    --timeline-marker-right: 8px;
+    --timeline-row-height: 28px;
+    --timeline-card-pad-y: 0.375rem;
+    --timeline-marker-pad-left: 0.75rem;
+    --timeline-marker-pad-right: 0.375rem;
+    --timeline-marker-gap: 0.375rem;
+    --timeline-card-surface-outset-right: 0.25rem;
+}
+
+.timelineCard {
+    position: absolute;
+    top: 50%;
+    right: var(--timeline-marker-right);
+    width: var(--timeline-card-width);
+    height: calc(var(--timeline-visible-rows) * var(--timeline-row-height) + 2 * var(--timeline-card-pad-y));
+    max-height: calc(10 * var(--timeline-row-height) + 2 * var(--timeline-card-pad-y));
+    transform: translateY(-50%);
+    border-radius: var(--radius-chat-card);
+    pointer-events: none;
+    overflow: visible;
+}
+
+.timelineCard::before {
+    content: "";
+    position: absolute;
+    inset: 0 calc(-1 * var(--timeline-card-surface-outset-right)) 0 0;
+    border: 1px solid var(--border);
+    border-radius: inherit;
+    background: var(--bg-card, var(--bg));
+    box-shadow: 0 10px 28px var(--shadow);
+    opacity: 0;
+    transform: scale(0.985);
+    transform-origin: center;
+    transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+    pointer-events: none;
+}
+
+.timelineList {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    padding-block: var(--timeline-card-pad-y);
+    box-sizing: border-box;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+}
+
+.timelineList::-webkit-scrollbar {
+    display: none;
+}
+
+.timelineMarker {
+    position: relative;
+    width: 100%;
+    height: var(--timeline-row-height);
+    border: none;
+    background: transparent;
+    color: rgba(var(--accent-rgb), 0.52);
+    cursor: default;
+    padding: 0 var(--timeline-marker-pad-right) 0 var(--timeline-marker-pad-left);
+    opacity: 0;
+    pointer-events: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24px;
+    align-items: center;
+    gap: var(--timeline-marker-gap);
+    transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-instant) var(--ease-out);
+    --timeline-marker-width: 0.5em;
+}
+
+.timelineNavVisible .timelineMarker,
+.timelineNav:focus-within .timelineMarker {
+    opacity: 1;
+}
+
+.timelineNavExpanded .timelineLabel {
+    pointer-events: auto;
+}
+
+.timelineNavExpanded .timelineLabel {
+    opacity: 1;
+}
+
+.timelineNavExpanded .timelineCard::before {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.timelineLine {
+    position: relative;
+    justify-self: end;
+    width: var(--timeline-marker-width);
+    min-width: 0.5em;
+    max-width: 1em;
+    height: 4px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.74;
+    pointer-events: auto;
+    transition: opacity var(--duration-instant) var(--ease-out);
+}
+
+.timelineLine::before {
+    content: "";
+    position: absolute;
+    inset: -12px -4px;
+}
+
+.timelineMarker:hover .timelineLine,
+.timelineMarker:focus-visible .timelineLine,
+.timelineMarkerActive .timelineLine {
+    opacity: 1;
+}
+
+.timelineMarkerActive {
+    color: var(--accent);
+}
+
+.timelineMarker:focus-visible {
+    outline: none;
+}
+
+.timelineLabel {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    opacity: 0;
+    pointer-events: none;
+    color: var(--text-light);
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    line-height: 1.4;
+    transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.timelineMarkerActive .timelineLabel {
+    color: var(--accent);
 }
 
 .loadMoreHint {
@@ -1060,8 +2068,8 @@
 }
 
 .sessionFooter {
-    /* 和 sessionPanel 的切点对齐：遮挡发生在输入卡片中部，同时在滚到底时额外多留约三行呼吸空间。 */
-    height: calc(var(--input-card-h, 0px) / 2 + var(--space-lg) + 8rem);
+    /* 和 sessionPanel 的切点对齐：遮挡发生在输入卡片中部，同时在滚到底时额外留一行左右呼吸空间。 */
+    height: calc(var(--chat-scrollbar-bottom-inset) + var(--space-lg) + 5rem);
     flex-shrink: 0;
 }
 
@@ -1076,26 +2084,23 @@
     line-height: 0.6;
     letter-spacing: 0.08em;
     color: var(--accent);
-    animation: msgIn 0.3s var(--ease-out);
+    --slide-y: 8px;
+    animation: hana-fade-up var(--duration-slow) var(--ease-out);
 }
 
 .typingIndicator::after {
     content: '';
-    animation: typewriterDots 1.4s steps(1, end) infinite;
-}
-
-@keyframes typewriterDots {
-    0%, 100% { content: '\00a0'; }
-    25%  { content: '.'; }
-    50%  { content: '..'; }
-    75%  { content: '...'; }
+    animation: hana-typewriter-dots 1.4s steps(1, end) infinite;
 }
 
 /* ── Scroll to bottom FAB ── */
 
 .scrollToBottomFab {
     position: absolute;
-    bottom: 140px;
+    /* 跟随输入卡片实时高度浮在其上方，避免多行输入时被输入框覆盖（#1297）。
+       复用 InputArea 注入到 .main-content 的 --input-card-h（.sessionShell 同源消费）；
+       变量未注入时回退 124px(≈单行卡片高度)+space-md=原 140px，行为不变。 */
+    bottom: calc(var(--input-card-h, 124px) + var(--space-md));
     left: 50%;
     transform: translateX(-50%);
     z-index: 6;
@@ -1105,12 +2110,12 @@
     border: 1px solid var(--border-light, rgba(0,0,0,0.08));
     background: var(--bg-card, #fff);
     box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04);
-    cursor: pointer;
+    cursor: default;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--text-muted);
-    transition: opacity 0.2s, box-shadow 0.2s;
+    transition: opacity var(--duration-fast), box-shadow var(--duration-fast);
     opacity: 0.85;
 }
 
@@ -1123,85 +2128,33 @@
     display: block;
 }
 
-/* ── Subagent 实时卡片（对齐 cronConfirmCard 风格） ── */
+/* ── Subagent 资源卡片 ── */
 
-.subagentCard {
+.subagentResourceCard {
     --subagent-preview-height: 260px;
-    margin: var(--space-sm) 0;
-    background: var(--bg-card, #fff);
-    border-radius: var(--radius-md);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
-    width: 420px;
-    max-width: 90%;
-    font-size: 0.82rem;
-    overflow: hidden;
-}
-
-.subagentCardHeader {
-    display: flex;
-    align-items: stretch;
-    transition: background 0.15s ease;
-}
-
-.subagentCardHeader:hover {
-    background: rgba(0, 0, 0, 0.02);
-}
-
-.subagentCardButton {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    background: none;
-    border: none;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-    min-width: 0;
-}
-
-.subagentCardButton:focus-visible {
-    outline: 1px solid rgba(0, 0, 0, 0.18);
-    outline-offset: -1px;
 }
 
 .subagent-running .subagentAvatar {
-    animation: subagentPulse 2s ease-in-out infinite;
-}
-
-.subagentStatus {
-    font-weight: normal;
-    font-size: 0.75rem;
-    margin-left: 6px;
-    color: var(--text-muted);
-}
-
-.subagent-done .subagentStatus {
-    color: #7a9e7a;
-}
-
-.subagent-failed .subagentStatus {
-    color: #a67272;
+    --pulse-lo: 1;
+    --pulse-hi: 0.6;
+    animation: hana-pulse 2s ease-in-out infinite;
 }
 
 .subagentAbortBtn {
     align-self: center;
-    margin-right: 8px;
     background: transparent;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     font-size: 0.75rem;
     padding: 2px 6px;
     border-radius: 4px;
     flex-shrink: 0;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--duration-fast);
 }
 
-.subagentCardHeader:hover .subagentAbortBtn {
+.subagentResourceCard:hover .subagentAbortBtn {
     opacity: 1;
 }
 
@@ -1210,75 +2163,17 @@
     background: transparent;
 }
 
-.subagent-aborted .subagentStatus {
-    color: var(--text-muted);
-}
-
-@keyframes subagentPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
-}
-
 .subagentAvatar {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     flex-shrink: 0;
     object-fit: cover;
-}
-
-.subagentBody {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.subagentName {
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 2px;
-}
-
-.subagentDisplay {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--overlay-subtle, rgba(0,0,0,0.03));
     color: var(--text-muted);
-    font-size: 0.75rem;
-    line-height: 1.3;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-.subagentPreviewWrap {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 200ms cubic-bezier(0.33, 1, 0.68, 1);
-    border-top: 1px solid transparent;
-}
-
-.subagentPreviewWrapOpen {
-    max-height: calc(var(--subagent-preview-height) + 22px);
-    border-top-color: rgba(0, 0, 0, 0.06);
-}
-
-.subagentPreviewWrapClosing {
-    border-top-color: rgba(0, 0, 0, 0.06);
-}
-
-.subagentPreviewScroll {
-    height: var(--subagent-preview-height);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 0 12px 0;
-    opacity: 0;
-    transform: translateY(-6px);
-    transition: padding 200ms cubic-bezier(0.33, 1, 0.68, 1), opacity 140ms ease, transform 200ms cubic-bezier(0.33, 1, 0.68, 1);
-}
-
-.subagentPreviewWrapOpen .subagentPreviewScroll,
-.subagentPreviewWrapClosing .subagentPreviewScroll {
-    padding: 10px 12px 12px;
-    opacity: 1;
-    transform: translateY(0);
 }
 
 .subagentPreviewTranscript {
@@ -1324,4 +2219,45 @@
 
 .subagentIcon {
     margin-right: 4px;
+}
+
+/* ── 框选 / 选择模式（桌面端） ── */
+/* selectionBox 用 fixed + viewport 坐标渲染（与 getBoundingClientRect/clientX 同坐标系）。
+   依赖：无带 transform/filter/will-change 的祖先，否则 fixed 会相对该祖先定位而错位。 */
+.selectionBox {
+    position: fixed;
+    z-index: 60;
+    border: 1px solid var(--accent);
+    background: var(--accent-light);
+    opacity: 0.5;
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.selectionModeActive .messageGroup {
+    user-select: none;
+    cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .streamTailChunk,
+    .streamMarkdownBlockEnter,
+    .moodWrapper,
+    .interludeRow,
+    .toolGroup,
+    .thinkingBlock,
+    .cronConfirmCard,
+    .settingsConfirmCard,
+    .settingsUpdateCard,
+    .mediaGenerationCard,
+    .legacyArtifactCard,
+    .browserScreenshot {
+        animation: none;
+    }
+
+    .toolGroup::before {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
 }

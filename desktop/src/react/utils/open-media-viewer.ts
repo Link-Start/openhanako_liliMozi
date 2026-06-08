@@ -5,6 +5,7 @@ import { isMediaKind, buildFileRefId } from './file-kind';
 
 interface OpenInput {
   filePath: string;
+  fileId?: string;
   label: string;
   ext: string;
   kind: FileKind;
@@ -42,7 +43,8 @@ export function openMediaViewerFromContext(input: OpenInput): void {
       })
     : buildFileRefId({ source: 'desk', path: input.filePath });
 
-  const startRef = files.find(f => f.id === startId);
+  const startRef = files.find(f => f.id === startId)
+    ?? findMediaRefByStableIdentity(files, input);
   if (!startRef) {
     // 防御：序列里找不到（外部 ad-hoc / 新文件尚未加载）→ solo 序列
     const soloSource: FileSource = origin === 'desk'
@@ -56,6 +58,7 @@ export function openMediaViewerFromContext(input: OpenInput): void {
       source: soloSource,
       name: input.label,
       path: input.filePath,
+      fileId: input.fileId,
       ext: input.ext,
       sessionMessageId: input.messageId,
     };
@@ -64,6 +67,17 @@ export function openMediaViewerFromContext(input: OpenInput): void {
   }
 
   state.setMediaViewer({ files, currentId: startRef.id, origin });
+}
+
+function findMediaRefByStableIdentity(files: readonly FileRef[], input: OpenInput): FileRef | undefined {
+  if (input.fileId) {
+    const byFileId = files.find(f => f.fileId === input.fileId);
+    if (byFileId) return byFileId;
+  }
+  if (input.filePath) {
+    return files.find(f => f.path === input.filePath);
+  }
+  return undefined;
 }
 
 /**

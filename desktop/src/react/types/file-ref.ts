@@ -1,3 +1,5 @@
+import type { FileVersion } from '../types';
+
 export type FileKind =
   | 'image'
   | 'svg'
@@ -12,6 +14,7 @@ export type FileKind =
 export type FileSource =
   | 'desk'
   | 'session-attachment'
+  | 'session-registry'
   | 'session-block-file'
   | 'session-block-legacy-artifact'
   | 'session-block-screenshot';
@@ -28,8 +31,22 @@ export interface FileRef {
   mime?: string;
   status?: 'available' | 'expired' | string;
   missingAt?: number | null;
+  origin?: string;
+  operations?: string[];
+  presentation?: 'attachment' | 'voice-input' | string;
+  listed?: boolean;
+  createdAt?: number;
   timestamp?: number;
+  version?: FileVersion | null;
   sessionMessageId?: string;
   sessionBlockIdx?: number;
   inlineData?: { base64: string; mimeType: string };
+  resource?: {
+    resourceId: string;
+    studioId: string;
+    links: {
+      self: string;
+      content?: string;
+    };
+  };
 }

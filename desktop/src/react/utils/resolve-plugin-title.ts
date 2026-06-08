@@ -2,6 +2,8 @@
  * Resolve a plugin title to a display string based on current locale.
  * Priority: exact match -> language prefix -> 'en' -> first value -> fallback.
  */
+import { displayInitial } from './grapheme';
+
 export function resolvePluginTitle(
   title: string | Record<string, string>,
   locale: string,
@@ -30,5 +32,5 @@ export function resolvePluginIcon(
     return { type: 'svg', content: icon };
   }
   const resolved = resolvePluginTitle(title, locale);
-  return { type: 'text', content: resolved.charAt(0) || '?' };
+  return { type: 'text', content: displayInitial(resolved, '?') };
 }

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import type { SessionConfirmationBlock } from '../../stores/chat-types';
+import { Tooltip } from '../../ui';
 import styles from './InputArea.module.css';
 
 type ConfirmationAction = 'confirmed' | 'rejected';
@@ -43,6 +44,54 @@ function displaySubject(block: SessionConfirmationBlock) {
   };
 }
 
+function stringifyTooltipValue(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatParamsTooltip(params: unknown): string {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    return stringifyTooltipValue(params);
+  }
+  const readable = Object.entries(params as Record<string, unknown>)
+    .map(([key, value]) => {
+      const text = stringifyTooltipValue(value);
+      return text ? `${key}: ${text}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+  const json = stringifyTooltipValue(params);
+  if (!readable) return json;
+  return readable === json ? readable : `${readable}\n\n${json}`;
+}
+
+function buildTooltipText(
+  block: SessionConfirmationBlock,
+  title: string,
+  subject: { label: string; detail: string },
+) {
+  const lines: string[] = [];
+  if (title) lines.push(title);
+  const subjectLine = [subject.label, subject.detail].filter(Boolean).join(': ');
+  if (subjectLine) lines.push(subjectLine);
+
+  const params = block.payload?.params;
+  const paramsText = formatParamsTooltip(params);
+  if (paramsText) {
+    lines.push(paramsText);
+  } else if (block.body) {
+    lines.push(block.body);
+  }
+
+  return Array.from(new Set(lines.map((line) => line.trim()).filter(Boolean))).join('\n\n');
+}
+
 export function SessionConfirmationPrompt({ block, exiting = false }: SessionConfirmationPromptProps) {
   const [submission, setSubmission] = useState<{ confirmId: string; action: ConfirmationAction } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -57,6 +106,8 @@ export function SessionConfirmationPrompt({ block, exiting = false }: SessionCon
   const title = displayTitle(block);
   const subject = displaySubject(block);
   const hasSubject = !!(subject.label || subject.detail);
+  const tooltipText = useMemo(() => buildTooltipText(block, title, subject), [block, subject, title]);
+  const tooltipId = `session-confirmation-tooltip-${block.confirmId}`;
   const canDisableAskForConversation = block.kind === 'tool_action_approval';
   const busy = !!submitting || switchingMode;
 
@@ -196,15 +247,32 @@ export function SessionConfirmationPrompt({ block, exiting = false }: SessionCon
       data-status={block.status}
       data-severity={block.severity || 'normal'}
     >
-      <div className={styles['session-confirmation-body']}>
-        <div className={styles['session-confirmation-title']}>{title}</div>
-        {hasSubject && (
-          <div className={styles['session-confirmation-subject']}>
-            {subject.label && <span className={styles['session-confirmation-subject-label']}>{subject.label}</span>}
-            {subject.detail && <span className={styles['session-confirmation-subject-detail']}>{subject.detail}</span>}
+      <Tooltip
+        id={tooltipId}
+        content={tooltipText}
+        disabled={!tooltipText}
+        placement="top"
+        align="start"
+        variant="panel"
+      >
+        {({ ref, ...tooltipProps }) => (
+          <div
+            className={styles['session-confirmation-body']}
+            ref={(node) => ref(node)}
+            data-testid="session-confirmation-summary"
+            tabIndex={0}
+            {...tooltipProps}
+          >
+            <div className={styles['session-confirmation-title']}>{title}</div>
+            {hasSubject && (
+              <div className={styles['session-confirmation-subject']}>
+                {subject.label && <span className={styles['session-confirmation-subject-label']}>{subject.label}</span>}
+                {subject.detail && <span className={styles['session-confirmation-subject-detail']}>{subject.detail}</span>}
+              </div>
+            )}
           </div>
         )}
-      </div>
+      </Tooltip>
       {pending ? (
         <div className={styles['session-confirmation-actions']}>
           <button

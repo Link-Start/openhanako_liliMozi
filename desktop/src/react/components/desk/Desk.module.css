@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════
-   工作空间（Desk）CSS Module
+   工作台（Desk）CSS Module
    从 styles.css 迁移的 desk 专属样式
    ═══════════════════════════════════════ */
 
-/* ── 工作空间区：延伸到底 ── */
+/* ── 工作台区：延伸到底 ── */
 .section {
     align-self: stretch;
     flex: 1 1 0;
@@ -24,7 +24,7 @@
     padding-left: var(--space-md);
 }
 
-/* 工作空间未设置 overlay */
+/* 工作台未设置 overlay */
 .emptyOverlay {
     position: absolute;
     inset: 0;
@@ -64,15 +64,15 @@
     border: none;
     border-radius: var(--radius-md);
     padding: 0.4rem 1rem;
-    cursor: pointer;
-    transition: opacity 0.15s;
+    cursor: default;
+    transition: opacity var(--duration-fast);
 }
 
 .emptyBtn:hover {
     opacity: 0.8;
 }
 
-/* 工作空间标题行 */
+/* 工作台标题行 */
 .header {
     position: relative;
 }
@@ -100,8 +100,8 @@
     color: var(--text-muted);
     font-size: 0.7rem;
     font-family: inherit;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+    cursor: default;
+    transition: color var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast);
     flex-shrink: 0;
 }
 
@@ -151,8 +151,8 @@
     min-height: 0;
     overflow-y: auto;
     display: block;
-    padding: 4px 2px calc(var(--right-workspace-jian-reserved, 56px) + 8px);
-    scroll-padding-bottom: calc(var(--right-workspace-jian-reserved, 56px) + 8px);
+    padding: 4px 2px calc(var(--right-workspace-jian-reserved, 56px) + var(--panel-edge-gap));
+    scroll-padding-bottom: calc(var(--right-workspace-jian-reserved, 56px) + var(--panel-edge-gap));
 }
 
 .tree:empty {
@@ -241,7 +241,7 @@
     line-height: 1.4;
     cursor: default;
     user-select: none;
-    transition: background 0.12s var(--ease-out), color 0.12s var(--ease-out);
+    transition: background var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
 }
 
 .treeItem:hover {
@@ -289,7 +289,7 @@
     cursor: default;
     font-size: 0.72rem;
     line-height: 1.5;
-    transition: background 0.1s;
+    transition: background var(--duration-instant);
     border-radius: 3px;
     margin: 0 4px;
     min-width: 0;
@@ -368,8 +368,8 @@
     font-size: 0.65rem;
     font-family: inherit;
     line-height: 1;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    cursor: default;
+    transition: background var(--duration-fast), color var(--duration-fast);
     white-space: nowrap;
 }
 
@@ -474,7 +474,7 @@
     color: var(--text);
     font-family: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: default;
 }
 
 .searchResult:hover {
@@ -518,10 +518,10 @@
     color: var(--text-muted);
     font-size: 0.65rem;
     font-family: inherit;
-    cursor: pointer;
+    cursor: default;
     white-space: nowrap;
     flex-shrink: 0;
-    transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+    transition: color var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
 .cwdBtn:hover {
@@ -564,9 +564,9 @@
     min-height: 260px;
     max-height: 400px;
     overflow-y: auto;
-    animation: cwdPanelIn 0.18s ease-out;
+    animation: hana-slide-in-top var(--duration-fast) ease-out;
     transform-origin: top right;
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-fast);
 }
 
 .cwdPanel.dragOver {
@@ -606,7 +606,7 @@
     color: var(--text);
     background: none;
     border: none;
-    cursor: pointer;
+    cursor: default;
     text-align: left;
 }
 
@@ -629,18 +629,8 @@
     white-space: nowrap;
 }
 
-@keyframes cwdPanelIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
 .cwdPanelWrap.closing .cwdPanel {
-    animation: cwdPanelOut 0.08s ease-in forwards;
-}
-
-@keyframes cwdPanelOut {
-    from { opacity: 1; transform: translateY(0); }
-    to   { opacity: 0; transform: translateY(-6px); }
+    animation: hana-slide-out-top var(--duration-instant) ease-in forwards;
 }
 
 .cwdEmpty {
@@ -671,8 +661,8 @@
     flex-direction: column;
     padding: 0.2rem 0.3rem;
     border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background 0.12s;
+    cursor: default;
+    transition: background var(--duration-instant);
 }
 
 .cwdSkillItem:hover {
@@ -712,8 +702,8 @@
     color: var(--accent);
     font-size: 0.68rem;
     font-family: inherit;
-    cursor: pointer;
-    transition: background 0.15s;
+    cursor: default;
+    transition: background var(--duration-fast);
     max-width: 100%;
     overflow: hidden;
 }
@@ -815,7 +805,7 @@
     font-size: 0.58rem;
     color: var(--text-muted);
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity var(--duration-slow) ease;
 }
 
 .editorStatusVisible {
@@ -894,17 +884,27 @@
     content: "— ";
 }
 
+.execLogRaw {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: 0.66rem;
+    line-height: 1.45;
+    color: var(--text-light);
+}
+
 .execLogDelete {
     margin-left: auto;
     flex-shrink: 0;
     background: none;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     font-size: 0.72rem;
     padding: 0 0.2em;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--duration-fast);
 }
 
 .execLogItem:hover .execLogDelete {

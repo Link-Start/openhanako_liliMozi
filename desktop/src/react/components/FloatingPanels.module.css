@@ -4,17 +4,22 @@
    ======================================== */
 
 .floatingPanel {
-    position: absolute;
+    position: fixed;
     top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 80;
+    bottom: 0;
+    left: var(--sidebar-width);
+    right: 0;
+    z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: flex-start;
     padding: var(--space-xl) var(--space-lg);
     pointer-events: none;
+    transition: left var(--duration-slow) var(--ease-out);
+}
+
+:global(.sidebar.collapsed ~ .main-content) .floatingPanel {
+    left: 0;
 }
 
 .floatingPanelHidden {
@@ -34,21 +39,11 @@
     border-radius: var(--radius-lg, 12px);
     box-shadow: 0 8px 32px var(--shadow), 0 2px 8px rgba(0,0,0,0.04);
     overflow: hidden;
-    animation: floatSlideIn 0.25s var(--ease-out) both;
-}
-
-@keyframes floatSlideIn {
-    from { opacity: 0; transform: translateX(-20px) scale(0.97); }
-    to   { opacity: 1; transform: translateX(0) scale(1); }
+    animation: hana-slide-in-left var(--duration-slow) var(--ease-out) both;
 }
 
 .floatingPanelClosing .floatingPanelInner {
-    animation: floatSlideOut 0.08s ease-in forwards;
-}
-
-@keyframes floatSlideOut {
-    from { opacity: 1; transform: translateX(0) scale(1); }
-    to   { opacity: 0; transform: translateX(-12px) scale(0.97); }
+    animation: hana-slide-out-left var(--duration-instant) ease-in forwards;
 }
 
 .floatingPanelHeader {
@@ -71,10 +66,10 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     padding: 4px;
     border-radius: var(--radius-sm);
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--duration-fast), background var(--duration-fast);
     display: flex;
     align-items: center;
 }
@@ -112,11 +107,11 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     font-size: 0.75rem;
     padding: 3px 6px;
     border-radius: var(--radius-sm);
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--duration-fast), background var(--duration-fast);
 }
 
 .floatingPanelBack:hover {
@@ -226,10 +221,10 @@
     font-size: 0.72rem;
     padding: 3px 10px;
     border-radius: var(--radius-sm);
-    cursor: pointer;
+    cursor: default;
     margin-left: auto;
     margin-right: var(--space-sm);
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
     white-space: nowrap;
 }
 
@@ -271,7 +266,7 @@
     border: 1px solid var(--overlay-light);
     border-radius: var(--radius-md);
     background: var(--bg);
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-fast);
     font-family: inherit;
 }
 
@@ -344,6 +339,15 @@
     color: var(--text-muted);
 }
 
+.autoItemExecutorBadge {
+    font-size: 0.58rem;
+    line-height: 1;
+    color: var(--accent);
+    border: 1px solid rgba(var(--accent-rgb), 0.28);
+    border-radius: var(--radius-sm);
+    padding: 2px 4px;
+}
+
 .autoItemModelWrap::before {
     content: "\b7";
     margin-right: 8px;
@@ -367,12 +371,12 @@
     border: 1px solid transparent;
     border-radius: 4px;
     padding: 1px 5px;
-    cursor: pointer;
+    cursor: default;
     max-width: 130px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    transition: color var(--duration), border-color var(--duration);
+    transition: color var(--duration-slow), border-color var(--duration-slow);
 }
 
 .autoModelPill:hover,
@@ -383,7 +387,7 @@
 
 .autoModelArrow {
     font-size: 0.5rem;
-    transition: transform var(--duration);
+    transition: transform var(--duration-slow);
 }
 
 .autoModelOpen .autoModelArrow {
@@ -413,7 +417,7 @@
     background: none;
     color: var(--text-light);
     border-radius: 3px;
-    cursor: pointer;
+    cursor: default;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -435,7 +439,7 @@
     gap: 2px;
     flex-shrink: 0;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--duration-fast);
 }
 
 .autoItem:hover .autoItemActions {
@@ -446,12 +450,12 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     padding: 3px;
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--duration-fast), background var(--duration-fast);
 }
 
 .autoItemBtn:hover {
@@ -473,11 +477,83 @@
 
 /* ── Activity Card ── */
 
+.activitySessionItem {
+    min-width: 0;
+}
+
+.activitySessionCard {
+    --chat-resource-card-width: 100%;
+    margin: 0;
+}
+
+.activitySessionItem[data-open="true"] .activitySessionCard {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.activitySessionCardError {
+    border-color: rgba(var(--danger-rgb), 0.25);
+}
+
+.activitySessionAvatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.activitySessionAction {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: default;
+    transition: color var(--duration-fast), background var(--duration-fast), transform var(--duration-fast) var(--ease-out);
+}
+
+.activitySessionAction:hover:not(:disabled) {
+    color: var(--accent);
+    background: var(--overlay-light);
+}
+
+.activitySessionAction:disabled {
+    opacity: 0.36;
+}
+
+.activitySessionAction[data-active="true"] {
+    transform: rotate(180deg);
+}
+
+.activityInlineTranscript {
+    max-height: 18rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-md);
+    border: var(--panel-card-border);
+    border-top: 0;
+    border-bottom-right-radius: var(--radius-chat-card);
+    border-bottom-left-radius: var(--radius-chat-card);
+    background: var(--panel-card-bg);
+    box-shadow: var(--panel-card-shadow);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.6;
+}
+
+.activityInlineTranscript .activityDetailMsg:last-child {
+    margin-bottom: 0;
+}
+
 .actCard {
     border: 1px solid var(--overlay-light);
     border-radius: var(--radius-md);
     padding: var(--space-md);
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
     background: var(--bg-card, var(--bg));
 }
 
@@ -556,7 +632,7 @@
     color: var(--accent);
     font-size: 0.68rem;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--duration-fast);
 }
 
 .actCard:hover .actCardViewHint {
@@ -601,8 +677,8 @@
     color: var(--text-muted);
     font-size: 0.72rem;
     padding: 3px 10px;
-    cursor: pointer;
-    transition: all 0.15s;
+    cursor: default;
+    transition: all var(--duration-fast);
 }
 
 .readonlyBackBtn:hover {
@@ -614,7 +690,7 @@
 
 .bridgePanelWide .floatingPanelInner {
     width: 100%;
-    max-width: none;
+    max-width: 800px;
     min-width: 420px;
     height: 85%;
 }
@@ -635,10 +711,10 @@
     background: var(--overlay-light);
     border: none;
     border-radius: var(--radius-sm);
-    cursor: pointer;
+    cursor: default;
     font-size: 0.78rem;
     color: var(--text);
-    transition: background 0.15s;
+    transition: background var(--duration-fast);
 }
 
 .bridgeAgentBtn:hover {
@@ -690,11 +766,11 @@
     padding: 6px 10px;
     background: none;
     border: none;
-    cursor: pointer;
+    cursor: default;
     font-size: 0.78rem;
     color: var(--text);
     text-align: left;
-    transition: background 0.1s;
+    transition: background var(--duration-instant);
 }
 
 .bridgeAgentMenuItem:hover {
@@ -721,9 +797,9 @@
     color: var(--text-muted);
     background: none;
     border: none;
-    cursor: pointer;
+    cursor: default;
     border-radius: var(--radius-sm);
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--duration-fast), background var(--duration-fast);
 }
 
 .bridgeTab:hover {
@@ -774,8 +850,8 @@
     align-items: center;
     gap: var(--space-sm);
     padding: 8px 12px;
-    cursor: pointer;
-    transition: background 0.12s;
+    cursor: default;
+    transition: background var(--duration-instant);
 }
 
 .bridgeContactItem:hover {
@@ -854,7 +930,7 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     padding: 2px 6px;
     border-radius: 4px;
     display: flex;
@@ -988,8 +1064,8 @@
     background: color-mix(in srgb, var(--text-muted) 10%, transparent);
     color: var(--text-muted);
     font-size: 0.8rem;
-    cursor: pointer;
-    transition: background 0.15s;
+    cursor: default;
+    transition: background var(--duration-fast);
 }
 
 .bridgeOverlayBtn:hover {

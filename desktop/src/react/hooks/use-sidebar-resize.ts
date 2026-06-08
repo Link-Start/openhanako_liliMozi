@@ -6,23 +6,64 @@
  */
 
 import { useEffect } from 'react';
+import { useStore } from '../stores';
+import { CHAT_MIN_WIDTH } from '../layout-constants';
+
+type ResizeMax = number | (() => number);
 
 export function useSidebarResize(): void {
+  const currentTab = useStore(s => s.currentTab);
+  const currentChannel = useStore(s => s.currentChannel);
+  const previewOpen = useStore(s => s.previewOpen);
+
   useEffect(() => {
     const root = document.documentElement;
     const sidebarEl = document.getElementById('sidebar');
     const jianSidebarEl = document.getElementById('jianSidebar');
+    const channelInspectorEl = document.getElementById('channelInspector');
     const leftHandle = document.getElementById('sidebarResizeHandle');
     const rightHandle = document.getElementById('jianResizeHandle');
+    const channelInspectorHandle = document.getElementById('channelInspectorResizeHandle');
     const previewPanel = document.getElementById('previewPanel');
 
     const LEFT_MIN = 180, LEFT_MAX = 400;
     const RIGHT_MIN = 200, RIGHT_MAX = 600;
-    const PREVIEW_MIN = 320, PREVIEW_MAX = 800;
+    const CHANNEL_INSPECTOR_MIN = 220, CHANNEL_INSPECTOR_MAX = 620;
+    const PREVIEW_MIN = 320;
 
     const leftInner = sidebarEl?.querySelector('.sidebar-inner') as HTMLElement | null;
     const rightInner = jianSidebarEl?.querySelector('.jian-sidebar-inner') as HTMLElement | null;
-    const previewInner = previewPanel?.querySelector('.preview-panel-inner') as HTMLElement | null;
+    const previewInner = previewPanel?.querySelector('[data-preview-panel-inner]') as HTMLElement | null;
+
+    function cssWidth(name: string, fallback: number): number {
+      const parsed = parseInt(getComputedStyle(root).getPropertyValue(name), 10);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function visiblePanelWidth(el: HTMLElement | null, cssVar: string, fallback: number, visible: boolean): number {
+      if (!visible) return 0;
+      return el?.offsetWidth || cssWidth(cssVar, fallback);
+    }
+
+    function clampWidth(value: number, min: number, max: number): number {
+      const upper = Number.isFinite(max) ? Math.max(min, max) : min;
+      return Math.max(min, Math.min(upper, value));
+    }
+
+    function getPreviewMaxWidth(): number {
+      const state = useStore.getState();
+      const occupiedWidth =
+        visiblePanelWidth(sidebarEl, '--sidebar-width', 240, state.sidebarOpen) +
+        visiblePanelWidth(jianSidebarEl, '--jian-sidebar-width', 260, state.jianOpen) +
+        visiblePanelWidth(
+          channelInspectorEl,
+          '--channel-inspector-width',
+          280,
+          state.currentTab === 'channels' && !!state.currentChannel,
+        );
+
+      return Math.max(PREVIEW_MIN, window.innerWidth - occupiedWidth - CHAT_MIN_WIDTH);
+    }
 
     function applySidebarWidth(w: number): void {
       const px = w + 'px';
@@ -42,6 +83,15 @@ export function useSidebarResize(): void {
       updateJianColumns(w);
     }
 
+    function applyChannelInspectorWidth(w: number): void {
+      const px = w + 'px';
+      root.style.setProperty('--channel-inspector-width', px);
+      if (channelInspectorEl) {
+        channelInspectorEl.style.width = px;
+        channelInspectorEl.style.minWidth = px;
+      }
+    }
+
     function applyPreviewWidth(w: number): void {
       const px = w + 'px';
       root.style.setProperty('--preview-panel-width', px);
@@ -51,10 +101,17 @@ export function useSidebarResize(): void {
     // 恢复保存的宽度
     const savedLeft = localStorage.getItem('hana-sidebar-width');
     const savedRight = localStorage.getItem('hana-jian-width');
+    const savedChannelInspector = localStorage.getItem('hana-channel-inspector-width');
     const savedPreview = localStorage.getItem('hana-preview-width');
     if (savedLeft) applySidebarWidth(Number(savedLeft));
     if (savedRight) applyJianWidth(Number(savedRight));
-    if (savedPreview) applyPreviewWidth(Number(savedPreview));
+    if (savedChannelInspector) applyChannelInspectorWidth(Number(savedChannelInspector));
+    if (savedPreview) {
+      const savedPreviewWidth = Number(savedPreview);
+      if (Number.isFinite(savedPreviewWidth)) {
+        applyPreviewWidth(clampWidth(savedPreviewWidth, PREVIEW_MIN, getPreviewMaxWidth()));
+      }
+    }
 
     const cleanupFns: Array<() => void> = [];
 
@@ -64,7 +121,7 @@ export function useSidebarResize(): void {
       getWidth: () => number,
       setWidth: (w: number) => void,
       min: number,
-      max: number,
+      max: ResizeMax,
       storageKey: string,
       isRight: boolean,
     ): void {
@@ -90,12 +147,15 @@ export function useSidebarResize(): void {
 
         const startX = e.clientX;
         const startW = getWidth();
+        let liveWidth = startW;
         handle.classList.add('active');
         document.body.classList.add('resizing');
 
         function onMove(e: MouseEvent): void {
           const delta = isRight ? startX - e.clientX : e.clientX - startX;
-          const w = Math.max(min, Math.min(max, startW + delta));
+          const maxWidth = typeof max === 'function' ? max() : max;
+          const w = clampWidth(startW + delta, min, maxWidth);
+          liveWidth = w;
           setWidth(w);
           const rect = handle!.getBoundingClientRect();
           handle!.style.setProperty('--handle-y', (e.clientY - rect.top) + 'px');
@@ -105,7 +165,7 @@ export function useSidebarResize(): void {
           handle!.classList.remove('active');
           document.body.classList.remove('resizing');
           handle!.style.setProperty('--handle-y', '-999px');
-          const w = getWidth();
+          const w = liveWidth;
           localStorage.setItem(storageKey, String(w));
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup', onUp);
@@ -152,17 +212,25 @@ export function useSidebarResize(): void {
       RIGHT_MIN, RIGHT_MAX, 'hana-jian-width', true,
     );
 
+    setupHandle(
+      channelInspectorHandle,
+      () => channelInspectorEl,
+      () => channelInspectorEl?.offsetWidth || 280,
+      (w) => applyChannelInspectorWidth(w),
+      CHANNEL_INSPECTOR_MIN, CHANNEL_INSPECTOR_MAX, 'hana-channel-inspector-width', true,
+    );
+
     const previewHandle = document.getElementById('previewResizeHandle');
     setupHandle(
       previewHandle,
       () => previewPanel,
       () => previewPanel?.offsetWidth || 580,
       (w) => applyPreviewWidth(w),
-      PREVIEW_MIN, PREVIEW_MAX, 'hana-preview-width', true,
+      PREVIEW_MIN, getPreviewMaxWidth, 'hana-preview-width', true,
     );
 
     return () => {
       for (const cleanup of cleanupFns) cleanup();
     };
-  }, []);
+  }, [currentTab, currentChannel, previewOpen]);
 }

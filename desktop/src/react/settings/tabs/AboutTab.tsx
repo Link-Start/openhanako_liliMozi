@@ -3,6 +3,7 @@ import { useSettingsStore } from '../store';
 import { autoSaveConfig, t } from '../helpers';
 import { Toggle } from '../widgets/Toggle';
 import { loadSettingsConfig } from '../actions';
+import { readConfigBoolean } from '../resource-state';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { ExpandableRow } from '../components/ExpandableRow';
@@ -11,19 +12,18 @@ import { useAutoUpdateState } from '../../hooks/use-auto-update-state';
 import appIconUrl from '../../../icon.png';
 import styles from '../Settings.module.css';
 
-const hana = window.hana;
-
 export function AboutTab() {
-  const { settingsConfig } = useSettingsStore();
+  const hana = window.hana;
+  const settingsConfig = useSettingsStore(s => s.settingsConfig);
   const [version, setVersion] = useState('');
   const autoUpdate = useAutoUpdateState();
-  const isBeta = settingsConfig?.update_channel === 'beta';
+  const isBeta = readConfigBoolean(settingsConfig, cfg => cfg.update_channel === 'beta', false);
   // 默认 true：老用户（preferences 里没写这个字段）保持原有"自动检查"行为
-  const autoCheck = settingsConfig?.auto_check_updates !== false;
+  const autoCheck = readConfigBoolean(settingsConfig, cfg => cfg.auto_check_updates, true);
 
   useEffect(() => {
     hana?.getAppVersion?.().then((v: string) => setVersion(v || ''));
-  }, []);
+  }, [hana]);
 
   const handleCheck = useCallback(() => {
     hana?.autoUpdateCheck?.();
@@ -50,8 +50,8 @@ export function AboutTab() {
     <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="about">
       {/* Hero：保留原 about-hero 独立视觉组件（icon + name + tagline + version + update + check 按钮） */}
       <div className={styles['about-hero']}>
-        <img className={styles['about-icon']} src={appIconUrl} alt="Hanako" />
-        <div className={styles['about-name']}>Hanako</div>
+        <img className={styles['about-icon']} src={appIconUrl} alt="HanaAgent" />
+        <div className={styles['about-name']}>HanaAgent</div>
         <div className={styles['about-tagline']}>{t('settings.about.tagline')}</div>
         {version && <div className={styles['about-version']}>v{version}</div>}
         <AutoUpdateStatus

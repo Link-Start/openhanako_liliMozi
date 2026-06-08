@@ -6,14 +6,14 @@
  */
 
 import { QUOTE_ORIGINAL_END, QUOTE_ORIGINAL_START } from './quoted-selection';
+import { moodLabelForYuan } from '../../../../shared/yuan-visuals.ts';
 
 // ── Mood 解析 ──
 
 const TAG_TO_YUAN: Record<string, string> = { mood: 'hanako', pulse: 'butter', reflect: 'ming' };
-const YUAN_LABELS: Record<string, string> = { hanako: '✿ MOOD', butter: '❊ PULSE', ming: '◈ REFLECT' };
 
 export function moodLabel(yuan: string): string {
-  return YUAN_LABELS[yuan] || YUAN_LABELS.hanako;
+  return moodLabelForYuan(yuan);
 }
 
 export function cleanMoodText(raw: string): string {
@@ -41,6 +41,8 @@ export interface ParsedAttachments {
   text: string;
   files: Array<{ path: string; name: string; isDirectory: boolean }>;
   attachedImages: Array<{ path: string; name: string }>;
+  attachedVideos: Array<{ path: string; name: string }>;
+  attachedAudios: Array<{ path: string; name: string }>;
   deskContext: { dir: string; fileCount: number } | null;
   quotedText: string | null;
 }
@@ -51,13 +53,17 @@ function baseName(p: string): string {
 }
 
 export function parseUserAttachments(content: string): ParsedAttachments {
-  if (!content) return { text: '', files: [], attachedImages: [], deskContext: null, quotedText: null };
+  if (!content) return { text: '', files: [], attachedImages: [], attachedVideos: [], attachedAudios: [], deskContext: null, quotedText: null };
   const lines = content.split('\n');
   const textLines: string[] = [];
   const files: Array<{ path: string; name: string; isDirectory: boolean }> = [];
   const attachedImages: Array<{ path: string; name: string }> = [];
+  const attachedVideos: Array<{ path: string; name: string }> = [];
+  const attachedAudios: Array<{ path: string; name: string }> = [];
   const attachRe = /^\[(附件|目录|参考文档)\]\s+(.+)$/;
   const attachedImageRe = /^\[attached_image:\s*(.+?)\]\s*$/;
+  const attachedVideoRe = /^\[attached_video:\s*(.+?)\]\s*$/;
+  const attachedAudioRe = /^\[attached_audio:\s*(.+?)\]\s*$/;
   let deskContext: { dir: string; fileCount: number } | null = null;
   let quotedText: string | null = null;
   let inDeskBlock = false;
@@ -116,6 +122,22 @@ export function parseUserAttachments(content: string): ParsedAttachments {
       continue;
     }
 
+    const attachedVideoMatch = line.match(attachedVideoRe);
+    if (attachedVideoMatch) {
+      pendingQuoteOriginal = false;
+      const p = attachedVideoMatch[1].trim();
+      attachedVideos.push({ path: p, name: baseName(p) });
+      continue;
+    }
+
+    const attachedAudioMatch = line.match(attachedAudioRe);
+    if (attachedAudioMatch) {
+      pendingQuoteOriginal = false;
+      const p = attachedAudioMatch[1].trim();
+      attachedAudios.push({ path: p, name: baseName(p) });
+      continue;
+    }
+
     const m = line.match(attachRe);
     if (m) {
       const isDir = m[1] === '目录';
@@ -129,7 +151,7 @@ export function parseUserAttachments(content: string): ParsedAttachments {
     }
   }
   const text = textLines.join('\n').replace(/\n+$/, '').trim();
-  return { text, files, attachedImages, deskContext, quotedText };
+  return { text, files, attachedImages, attachedVideos, attachedAudios, deskContext, quotedText };
 }
 
 // ── 工具详情提取 ──
@@ -197,8 +219,6 @@ export function extractToolDetail(name: string, args: Record<string, unknown> | 
       return { text: truncateHead((args.query || '') as string, 40) };
     case 'subagent':
       return { text: truncateHead((args.task || '') as string, 30) };
-    case 'wait':
-      return { text: `${args.seconds || '?'}s` };
     case 'dm':
       return { text: (args.to || '') as string };
     case 'channel':

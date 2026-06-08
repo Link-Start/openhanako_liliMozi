@@ -3,25 +3,31 @@
  * 从 settings store 读 port/token，独立于主窗口
  */
 import { useSettingsStore } from './store';
+import {
+  appendConnectionAuth,
+  buildConnectionUrl,
+  requireServerConnection,
+} from '../services/server-connection';
 
 const DEFAULT_TIMEOUT = 30_000;
 
 export function hanaUrl(path: string): string {
-  const { serverPort, serverToken } = useSettingsStore.getState();
-  const sep = path.includes('?') ? '&' : '?';
-  const tokenParam = serverToken ? `${sep}token=${serverToken}` : '';
-  return `http://127.0.0.1:${serverPort}${path}${tokenParam}`;
+  const connection = requireServerConnection(
+    useSettingsStore.getState(),
+    `settings hanaUrl ${path}: server connection not ready`,
+  );
+  return buildConnectionUrl(connection, path, { includeTokenQuery: true });
 }
 
 export async function hanaFetch(
   path: string,
   opts: RequestInit & { timeout?: number } = {},
 ): Promise<Response> {
-  const { serverPort, serverToken } = useSettingsStore.getState();
-  const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
-  if (serverToken) {
-    headers['Authorization'] = `Bearer ${serverToken}`;
-  }
+  const connection = requireServerConnection(
+    useSettingsStore.getState(),
+    `settings hanaFetch ${path}: server connection not ready`,
+  );
+  const headers = appendConnectionAuth(connection, opts.headers);
 
   const { timeout = DEFAULT_TIMEOUT, signal: callerSignal, ...fetchOpts } = opts;
   const controller = new AbortController();
@@ -34,7 +40,7 @@ export async function hanaFetch(
   }
 
   try {
-    const res = await fetch(`http://127.0.0.1:${serverPort}${path}`, {
+    const res = await fetch(buildConnectionUrl(connection, path), {
       ...fetchOpts,
       headers,
       signal: controller.signal,

@@ -13,14 +13,11 @@
  * 产出结构：
  *   dist-server/{platform}-{arch}/
  *     hana-server             ← shell wrapper（设置 HANA_ROOT 并启动）
+ *     hana                    ← shell wrapper（server-first CLI）
  *     node                    ← Node.js runtime
  *     bundle/                 ← Vite bundle 产出
  *       index.js              ← 入口（~750KB）
- *       chunks/               ← 按模块拆分的 chunk
- *         shared-XXXX.js
- *         core-XXXX.js
- *         lib-XXXX.js
- *         hub-XXXX.js
+ *       cli.js                ← server-first CLI 入口
  *     lib/                    ← 数据文件（非源码，运行时 fromRoot() 读取）
  *       known-models.json
  *       known-model-fallbacks.json
@@ -33,7 +30,9 @@
  *       ishiki-templates/
  *       public-ishiki-templates/
  *       yuan/
+ *     desktop/src/assets/     ← server 运行时读取的默认头像、角色卡背、Yuan 图标
  *     desktop/src/locales/    ← i18n 资源
+ *     desktop/dist-renderer/  ← PWA 静态入口和 hashed assets（/mobile/* 由 server 读取）
  *     skills2set/             ← 技能包
  *     package.json            ← external deps + version（node_modules 解析 + 运行时版本读取）
  *     package-lock.json       ← npm install 生成，记录 external 安装结果
@@ -41,13 +40,22 @@
  */
 import fs from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { builtinModules } from "module";
 import {
+  buildBetterSqliteRuntimeSmokeScript,
+  buildJiebaRuntimeSmokeScript,
   buildExternalPackage,
+  collectInstalledOptionalDependencyDirs,
   verifyExternalEntrypoints,
 } from "./build-server-deps.mjs";
+import {
+  collectBundledPluginPackageDependencies,
+  copyBundledPluginRuntimeDependencies,
+} from "./build-server-plugin-runtime-deps.mjs";
+import { copyServerRuntimeAssets } from "./build-server-runtime-assets.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -65,7 +73,14 @@ fs.mkdirSync(outDir, { recursive: true });
 
 // ── 1. 下载 / 缓存 Node.js runtime ──
 // 先拿到目标 Node，后续 npm install 全用它跑，保证 ABI 一致
-const NODE_VERSION = "v22.16.0";
+const NODE_VERSION = "v24.15.0";
+const NODE_RUNTIME_SHA256 = {
+  [`node-${NODE_VERSION}-darwin-arm64.tar.gz`]: "372331b969779ab5d15b949884fc6eaf88d5afe87bde8ba881d6400b9100ffc4",
+  [`node-${NODE_VERSION}-darwin-x64.tar.gz`]: "ffd5ee293467927f3ee731a553eb88fd1f48cf74eebc2d74a6babe4af228673b",
+  [`node-${NODE_VERSION}-linux-arm64.tar.gz`]: "73afc234d558c24919875f51c2d1ea002a2ada4ea6f83601a383869fefa64eed",
+  [`node-${NODE_VERSION}-linux-x64.tar.gz`]: "44836872d9aec49f1e6b52a9a922872db9a2b02d235a616a5681b6a85fec8d89",
+  [`node-${NODE_VERSION}-win-x64.zip`]: "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62",
+};
 const cacheDir = path.join(ROOT, ".cache", "node-runtime");
 fs.mkdirSync(cacheDir, { recursive: true });
 
@@ -94,10 +109,28 @@ const cachedNpmCli = isWin
   ? path.join(cacheDir, nodeDirName, "node_modules", "npm", "bin", "npm-cli.js")
   : path.join(cacheDir, nodeDirName, "lib", "node_modules", "npm", "bin", "npm-cli.js");
 
+function verifyNodeRuntimeArchive(archivePath, archiveName) {
+  const expected = NODE_RUNTIME_SHA256[archiveName];
+  if (!expected) {
+    throw new Error(`[build-server] missing pinned Node runtime checksum for ${archiveName}`);
+  }
+  const actual = createHash("sha256").update(fs.readFileSync(archivePath)).digest("hex");
+  if (actual !== expected) {
+    try { fs.rmSync(archivePath, { force: true }); } catch {
+      // Best-effort cleanup; the checksum error below is the actionable failure.
+    }
+    throw new Error(
+      `[build-server] node runtime archive checksum mismatch for ${archiveName}: expected ${expected}, got ${actual}`,
+    );
+  }
+  console.log(`[build-server] Node.js runtime checksum verified: ${archiveName}`);
+}
+
 if (!fs.existsSync(cachedNodeBin)) {
   const url = `https://nodejs.org/dist/${NODE_VERSION}/${filename}`;
   console.log(`[build-server] downloading Node.js ${NODE_VERSION} for ${platform}-${arch}...`);
-  execSync(`curl -L -o "${cachedArchive}" "${url}"`, { stdio: "inherit" });
+  execSync(`curl --fail --location --show-error -o "${cachedArchive}" "${url}"`, { stdio: "inherit" });
+  verifyNodeRuntimeArchive(cachedArchive, filename);
 
   if (isWin) {
     execSync(`powershell -command "Expand-Archive -Path '${cachedArchive}' -DestinationPath '${cacheDir}' -Force"`, { stdio: "inherit" });
@@ -105,7 +138,9 @@ if (!fs.existsSync(cachedNodeBin)) {
     execSync(`tar xzf "${cachedArchive}" -C "${cacheDir}"`, { stdio: "inherit" });
   }
 
-  try { fs.unlinkSync(cachedArchive); } catch {}
+  try { fs.unlinkSync(cachedArchive); } catch {
+    // Best-effort cache cleanup after a verified extraction.
+  }
   console.log("[build-server] Node.js runtime cached");
 } else {
   console.log(`[build-server] using cached Node.js ${NODE_VERSION}`);
@@ -137,6 +172,45 @@ function runWithTargetNode(cmd, opts = {}) {
   });
 }
 
+function ensureNodePtySpawnHelperExecutable(baseDir) {
+  if (isWin) return;
+  const nodePtyRoot = path.join(baseDir, "node_modules", "node-pty");
+  if (!fs.existsSync(nodePtyRoot)) return;
+  for (const helperPath of [
+    path.join(nodePtyRoot, "build", "Release", "spawn-helper"),
+    path.join(nodePtyRoot, "prebuilds", `${platform}-${arch}`, "spawn-helper"),
+  ]) {
+    if (!fs.existsSync(helperPath)) continue;
+    const mode = fs.statSync(helperPath).mode;
+    if ((mode & 0o111) === 0) {
+      fs.chmodSync(helperPath, mode | 0o755);
+      console.log(`[build-server] node-pty executable bit fixed: ${path.relative(baseDir, helperPath)}`);
+    }
+  }
+}
+
+function runJiebaRuntimeSmokeIfNeeded() {
+  if (!externalPkg.dependencies["@node-rs/jieba"]) return;
+  const smokeScript = path.join(outDir, ".jieba-smoke.mjs");
+  fs.writeFileSync(smokeScript, buildJiebaRuntimeSmokeScript());
+  try {
+    runWithTargetNode(path.basename(smokeScript));
+  } finally {
+    fs.rmSync(smokeScript, { force: true });
+  }
+}
+
+function runBetterSqliteRuntimeSmokeIfNeeded() {
+  if (!externalPkg.dependencies["better-sqlite3"]) return;
+  const smokeScript = path.join(outDir, ".better-sqlite3-smoke.mjs");
+  fs.writeFileSync(smokeScript, buildBetterSqliteRuntimeSmokeScript());
+  try {
+    runWithTargetNode(path.basename(smokeScript));
+  } finally {
+    fs.rmSync(smokeScript, { force: true });
+  }
+}
+
 // ── 2. Vite bundle ──
 // 用系统 Node 跑 Vite（构建时工具，不涉及 native addon ABI）
 // 产出到 dist-server-bundle/，然后复制到 outDir/bundle/
@@ -152,7 +226,17 @@ const bundleOutDir = path.join(outDir, "bundle");
 fs.cpSync(viteBundleDir, bundleOutDir, { recursive: true });
 console.log("[build-server] Vite bundle copied to bundle/");
 
-fs.copyFileSync(path.join(ROOT, "server", "bootstrap.js"), path.join(outDir, "bootstrap.js"));
+console.log("[build-server] running CLI bundle...");
+execSync(
+  `npx esbuild "${path.join(ROOT, "cli", "entry.ts")}" --bundle --platform=node --format=esm --target=node24 --external:ws --outfile="${path.join(bundleOutDir, "cli.js")}"`,
+  {
+    cwd: ROOT,
+    stdio: "inherit",
+  },
+);
+console.log("[build-server] CLI bundle copied to bundle/cli.js");
+
+fs.copyFileSync(path.join(ROOT, "server", "bootstrap.ts"), path.join(outDir, "bootstrap.js"));
 console.log("[build-server] bootstrap copied");
 
 // ── 3. 复制运行时数据文件 ──
@@ -204,7 +288,7 @@ if (fs.existsSync(skillsSrc)) {
   console.log("[build-server]   skills2set/");
 }
 
-// i18n locales（server/i18n.js 通过 fromRoot("desktop","src","locales") 引用）
+// i18n locales（lib/i18n.js 通过 fromRoot("desktop","src","locales") 引用）
 const localesSrc = path.join(ROOT, "desktop", "src", "locales");
 fs.mkdirSync(path.join(outDir, "desktop", "src", "locales"), { recursive: true });
 fs.cpSync(localesSrc, path.join(outDir, "desktop", "src", "locales"), { recursive: true });
@@ -218,11 +302,24 @@ if (fs.existsSync(themesSrc)) {
   console.log("[build-server]   desktop/src/themes/");
 }
 
+// 角色卡导入/导出预览由 server 读取默认头像、卡背和 Yuan 图标。
+// PWA /mobile/* 静态文件也由独立 server 进程读取。
+// 打包模式下 HANA_ROOT 指向 resources/server，不能依赖 renderer asar 里的 assets。
+for (const copiedAsset of copyServerRuntimeAssets({ rootDir: ROOT, outDir })) {
+  console.log(`[build-server]   ${copiedAsset}`);
+}
+
 // 系统插件（内嵌到 app，运行时 fromRoot("plugins") 读取）
 const pluginsSrc = path.join(ROOT, "plugins");
 if (fs.existsSync(pluginsSrc)) {
   fs.cpSync(pluginsSrc, path.join(outDir, "plugins"), { recursive: true });
   console.log("[build-server]   plugins/");
+}
+
+// 内置插件以源码形式动态 import。插件跨出 plugins/ 引用宿主侧共享运行期模块时，
+// 这些模块必须按原相对路径落到 packaged server root，否则开发环境和安装包会分裂。
+for (const copiedDependency of await copyBundledPluginRuntimeDependencies({ rootDir: ROOT, outDir })) {
+  console.log(`[build-server]   ${copiedDependency}`);
 }
 
 console.log("[build-server] resource files copied");
@@ -256,6 +353,20 @@ for (const ext of viteExternals) {
   }
 }
 
+const pluginPackageDeps = await collectBundledPluginPackageDependencies({ rootDir: ROOT });
+for (const packageName of pluginPackageDeps) {
+  if (deps[packageName]) {
+    externalDeps[packageName] = deps[packageName];
+  }
+}
+const undeclaredPluginDeps = pluginPackageDeps.filter((packageName) => !deps[packageName]);
+if (undeclaredPluginDeps.length > 0) {
+  throw new Error(
+    "[build-server] bundled plugin imports npm packages missing from root dependencies: "
+      + undeclaredPluginDeps.join(", "),
+  );
+}
+
 console.log(`[build-server] derived external deps: ${Object.keys(externalDeps).join(", ")}`);
 
 const rootLock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf-8"));
@@ -283,7 +394,8 @@ fs.writeFileSync(
 // package.json 中的 server external 依赖来自根 lockfile 的精确版本，避免
 // CI fresh install 把直接 external 依赖解析到尚未验证的新版本。
 console.log("[build-server] installing external dependencies...");
-runWithTargetNode(`"${cachedNpmCli}" install --omit=dev --no-audit --no-fund`);
+runWithTargetNode(`"${cachedNpmCli}" install --omit=dev --no-audit --no-fund --ignore-scripts=false`);
+ensureNodePtySpawnHelperExecutable(outDir);
 
 // ── 5b. 验证所有 Vite external 在 node_modules 中可达 ──
 // 遍历 string 类型的 external，检查 node_modules 中是否存在。
@@ -379,6 +491,9 @@ for (const packageName of Object.keys(externalPkg.dependencies)) {
     protectedDirs.add(pkgDir);
   }
 }
+for (const pkgDir of collectInstalledOptionalDependencyDirs(nmDir, Object.keys(externalPkg.dependencies))) {
+  protectedDirs.add(pkgDir);
+}
 
 if (protectedDirs.size > 0) {
   const names = [...protectedDirs].map(d => path.relative(nmDir, d));
@@ -427,6 +542,8 @@ try {
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
+runBetterSqliteRuntimeSmokeIfNeeded();
+runJiebaRuntimeSmokeIfNeeded();
 
 // ── 8b. 删除 koffi 多余平台二进制 ──
 // koffi 带了 18 个平台的 .node 文件，nft 全部追踪到了（因为 require 路径指向包根）。
@@ -463,6 +580,10 @@ if (isWin) {
     path.join(outDir, "hana-server.cmd"),
     '@echo off\r\nset "HANA_ROOT=%~dp0"\r\nset "HANA_SERVER_ENTRY=%~dp0bundle\\index.js"\r\n"%~dp0hana-server.exe" "%~dp0bootstrap.js" %*\r\n',
   );
+  fs.writeFileSync(
+    path.join(outDir, "hana.cmd"),
+    '@echo off\r\nset "HANA_ROOT=%~dp0"\r\nset "HANA_SERVER_ENTRY=%~dp0bundle\\index.js"\r\n"%~dp0hana-server.exe" "%~dp0bundle\\cli.js" %*\r\n',
+  );
 } else {
   const wrapper = path.join(outDir, "hana-server");
   fs.writeFileSync(wrapper, [
@@ -470,10 +591,26 @@ if (isWin) {
     'DIR="$(cd "$(dirname "$0")" && pwd)"',
     'export HANA_ROOT="$DIR"',
     'export HANA_SERVER_ENTRY="$DIR/bundle/index.js"',
+    "# Raise file descriptor limit. Server got split out of Electron in v0.67",
+    "# (see #765 / #787 root-cause); standalone Node loses Electron's implicit",
+    "# fd raise (macOS default 256 → not enough for chokidar + DB + WS + plugins).",
+    "# Best-effort: silently fall back if hard limit is lower.",
+    "ulimit -n 65536 2>/dev/null || ulimit -n 8192 2>/dev/null || true",
     'exec "$DIR/node" "$DIR/bootstrap.js" "$@"',
     "",
   ].join("\n"));
   fs.chmodSync(wrapper, 0o755);
+
+  const cliWrapper = path.join(outDir, "hana");
+  fs.writeFileSync(cliWrapper, [
+    "#!/bin/sh",
+    'DIR="$(cd "$(dirname "$0")" && pwd)"',
+    'export HANA_ROOT="$DIR"',
+    'export HANA_SERVER_ENTRY="$DIR/bundle/index.js"',
+    'exec "$DIR/node" "$DIR/bundle/cli.js" "$@"',
+    "",
+  ].join("\n"));
+  fs.chmodSync(cliWrapper, 0o755);
 }
 console.log("[build-server] wrapper created");
 

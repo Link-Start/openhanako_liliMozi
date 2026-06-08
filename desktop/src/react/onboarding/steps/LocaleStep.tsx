@@ -15,20 +15,24 @@ interface LocaleStepProps {
   initialLocale: string;
   goToStep: (index: number) => void;
   showError: (msg: string) => void;
-  onLocaleChange: (locale: string) => void;
+  onLocaleChange: (locale: string) => Promise<void>;
+  onConnectLanServer: (baseUrl: string, credential: string) => Promise<void>;
 }
 
 export function LocaleStep({
   preview, hanaFetch, avatarSrc, initialLocale,
-  goToStep, showError, onLocaleChange,
+  goToStep, showError, onLocaleChange, onConnectLanServer,
 }: LocaleStepProps) {
   const [locale, setLocale] = useState(initialLocale);
+  const [showLanConnect, setShowLanConnect] = useState(false);
+  const [serverUrl, setServerUrl] = useState('');
+  const [serverKey, setServerKey] = useState('');
+  const [connecting, setConnecting] = useState(false);
 
   const changeLocale = useCallback(async (loc: string) => {
     if (locale === loc) return;
     setLocale(loc);
-    onLocaleChange(loc);
-    await i18n.load(loc);
+    await onLocaleChange(loc);
   }, [locale, onLocaleChange]);
 
   const onNext = useCallback(async () => {
@@ -41,6 +45,18 @@ export function LocaleStep({
     }
     goToStep(1);
   }, [preview, hanaFetch, locale, goToStep]);
+
+  const connectExistingServer = useCallback(async () => {
+    if (!serverUrl.trim() || !serverKey.trim() || connecting) return;
+    setConnecting(true);
+    try {
+      await onConnectLanServer(serverUrl, serverKey);
+    } catch (err: any) {
+      showError(`${t('onboarding.remote.failed')}: ${err.message}`);
+    } finally {
+      setConnecting(false);
+    }
+  }, [connecting, onConnectLanServer, serverKey, serverUrl, showError]);
 
   return (
     <StepContainer>
@@ -62,6 +78,44 @@ export function LocaleStep({
         <button className="ob-btn ob-btn-primary" onClick={onNext}>
           {t('onboarding.welcome.next')}
         </button>
+      </div>
+      <div className="ob-remote-connect">
+        {!showLanConnect ? (
+          <button type="button" className="ob-remote-connect-link" onClick={() => setShowLanConnect(true)}>
+            {t('onboarding.remote.link')}
+          </button>
+        ) : (
+          <div className="ob-remote-connect-panel">
+            <input
+              className="ob-input"
+              aria-label={t('onboarding.remote.url')}
+              value={serverUrl}
+              placeholder="http://192.168.31.75:14500"
+              onChange={event => setServerUrl(event.target.value)}
+            />
+            <input
+              className="ob-input"
+              aria-label={t('onboarding.remote.key')}
+              value={serverKey}
+              type="password"
+              placeholder="hana_dev_..."
+              onChange={event => setServerKey(event.target.value)}
+            />
+            <div className="ob-remote-connect-actions">
+              <button type="button" className="ob-btn ob-btn-secondary" onClick={() => setShowLanConnect(false)}>
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="ob-btn ob-btn-primary"
+                onClick={connectExistingServer}
+                disabled={connecting || !serverUrl.trim() || !serverKey.trim()}
+              >
+                {connecting ? t('onboarding.remote.connecting') : t('onboarding.remote.connect')}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </StepContainer>
   );

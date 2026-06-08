@@ -9,6 +9,7 @@ import {
   loadPaperTexturePreference,
   setPaperTexturePreference,
 } from '../../../shared/appearance-preferences';
+import registry from '../../../shared/theme-registry.cjs';
 
 function createStorage() {
   const values = new Map<string, string>();
@@ -61,5 +62,23 @@ describe('paper texture preferences', () => {
 
     expect(document.body.classList.contains(PAPER_TEXTURE_CLASS)).toBe(true);
     expect(document.body.classList.contains(LEGACY_NO_PAPER_TEXTURE_CLASS)).toBe(false);
+  });
+
+  it('keeps the stored preference but suppresses texture in dark themes', () => {
+    setPaperTexturePreference(true, storage, document.body, registry.AUTO_DARK_DEFAULT);
+
+    expect(storage.getItem(PAPER_TEXTURE_STORAGE_KEY)).toBe('1');
+    expect(isPaperTextureEnabled(storage)).toBe(true);
+    expect(document.body.classList.contains(PAPER_TEXTURE_CLASS)).toBe(false);
+  });
+
+  it('restores texture automatically when a stored preference returns to a supported theme', () => {
+    storage.setItem(PAPER_TEXTURE_STORAGE_KEY, '1');
+
+    expect(loadPaperTexturePreference(storage, document.body, registry.PAPER_TEXTURE_BLOCKED_THEME_IDS[1])).toBe(true);
+    expect(document.body.classList.contains(PAPER_TEXTURE_CLASS)).toBe(false);
+
+    expect(loadPaperTexturePreference(storage, document.body, registry.AUTO_LIGHT_DEFAULT)).toBe(true);
+    expect(document.body.classList.contains(PAPER_TEXTURE_CLASS)).toBe(true);
   });
 });

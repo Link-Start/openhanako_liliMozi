@@ -3,7 +3,7 @@
  */
 import { useSettingsStore } from './store';
 import { hanaFetch } from './api';
-import registry from '../../shared/theme-registry.cjs';
+import registry from '../../shared/theme-registry';
 import { lookupReferenceModelMeta } from '../utils/model-metadata';
 import { API_PROVIDER_PRESETS, getProviderPresetLabel } from '../utils/provider-presets';
 
@@ -12,7 +12,6 @@ export function t(key: string, params?: Record<string, any>): any {
 }
 
 export function escapeHtml(str: string): string {
-  // eslint-disable-next-line no-restricted-syntax -- escapeHtml utility, not React rendering
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
@@ -153,6 +152,7 @@ export const PROVIDER_PRESETS = API_PROVIDER_PRESETS.map(preset => ({
 
 export const API_FORMAT_OPTIONS = [
   { value: 'openai-completions', label: 'OpenAI Compatible' },
+  { value: 'google-generative-ai', label: 'Google Gemini' },
   { value: 'anthropic-messages', label: 'Anthropic Messages' },
   { value: 'openai-responses', label: 'OpenAI Responses' },
   { value: 'openai-codex-responses', label: 'ChatGPT Codex (Plus/Pro)' },

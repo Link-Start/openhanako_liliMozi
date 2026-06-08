@@ -20,7 +20,7 @@
  */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 // ─── Mocks (hoisted) ──────────────────────────────────────────────────────────
 
@@ -70,14 +70,33 @@ vi.mock('../bridge/AgentSelect', () => ({
 vi.mock('../skills/SkillRow', () => ({
   SkillRow: ({
     skill,
+    draggable,
+    extraActions,
     onToggle,
     onDelete,
+    onDragStart,
+    onDragOver,
+    onDrop,
   }: {
     skill: { name: string; enabled: boolean };
+    draggable?: boolean;
+    extraActions?: React.ReactNode;
     onToggle?: (name: string, enabled: boolean) => void;
     onDelete?: (name: string) => void;
+    onDragStart?: (event: React.DragEvent<HTMLDivElement>, name: string) => void;
+    onDragOver?: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDrop?: (event: React.DragEvent<HTMLDivElement>) => void;
   }) => (
-    <div data-skill-name={skill.name} data-enabled={String(skill.enabled)}>
+    <div
+      data-testid={`skill-row-${skill.name}`}
+      data-skill-name={skill.name}
+      data-enabled={String(skill.enabled)}
+      draggable={draggable}
+      onDragStart={(event) => onDragStart?.(event, skill.name)}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {extraActions}
       {onToggle && (
         <button
           data-testid={`skill-toggle-${skill.name}`}
@@ -106,16 +125,6 @@ vi.mock('../skills/SkillCapabilities', () => ({
 vi.mock('../skills/CompatPathDrawer', () => ({
   CompatPathDrawer: () => <div data-testid="compat-path-drawer" />,
 }));
-vi.mock('../skills/LearnedSkillsBlock', () => ({
-  LearnedSkillsBlock: ({
-    learnedSkills,
-  }: {
-    learnedSkills: Array<{ name: string }>;
-  }) => (
-    <div data-testid="learned-skills-block" data-count={learnedSkills.length} />
-  ),
-}));
-
 // ─── Real imports (after mocks so the mocked modules win) ─────────────────────
 
 import { SkillsTab } from '../SkillsTab';
@@ -176,11 +185,23 @@ async function flushMicrotasks(ticks = 3) {
   });
 }
 
+function createDragData() {
+  const data = new Map<string, string>();
+  return {
+    effectAllowed: '',
+    setData: (type: string, value: string) => { data.set(type, value); },
+    getData: (type: string) => data.get(type) || '',
+  } as unknown as DataTransfer;
+}
+
 /** Default fetch routing for tests that don't need agent-specific responses. */
 function defaultFetchMock() {
   fetchMock.mockImplementation((url: string) => {
     if (url.includes('/api/skills/external-paths')) {
       return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+    }
+    if (url.includes('/api/skills/bundles')) {
+      return Promise.resolve(jsonResponse({ bundles: [] }));
     }
     if (url.includes('/api/skills')) {
       return Promise.resolve(jsonResponse({ skills: [] }));
@@ -201,6 +222,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   delete (window as unknown as { i18n?: unknown }).i18n;
+  delete (window as unknown as { platform?: unknown }).platform;
 });
 
 describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () => {
@@ -224,6 +246,53 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     );
     expect(skillsCalls.length).toBeGreaterThanOrEqual(1);
     expect(skillsCalls[0][0]).toContain('agentId=agent-a');
+  });
+
+  it('uploads a selected skill package when no local path picker is available', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes('/api/skills/install')) {
+        expect(opts).toMatchObject({ method: 'POST' });
+        return Promise.resolve(jsonResponse({ ok: true, skill: { name: 'uploaded-skill' } }));
+      }
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({ skills: [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const { container } = render(<SkillsTab />);
+    await flushMicrotasks();
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    const file = new File(['fake zip'], 'uploaded-skill.zip', { type: 'application/zip' });
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) =>
+        typeof call[0] === 'string' && call[0].includes('/api/skills/install'))).toBe(true);
+    });
+    await flushMicrotasks(6);
+
+    const installCall = fetchMock.mock.calls.find((call) =>
+      typeof call[0] === 'string' && call[0].includes('/api/skills/install'));
+    expect(installCall).toBeTruthy();
+    const body = JSON.parse(String((installCall?.[1] as RequestInit).body || '{}'));
+    expect(body).toMatchObject({
+      file: {
+        filename: 'uploaded-skill.zip',
+      },
+    });
+    expect(typeof body.file.contentBase64).toBe('string');
+    expect(body.file.contentBase64.length).toBeGreaterThan(0);
+    expect(body.path).toBeUndefined();
   });
 
   // ── Test 2: sticky — external currentAgentId change does NOT resync ─────────
@@ -308,6 +377,9 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
       if (url.includes('/api/skills/external-paths')) {
         return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
       }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
       if (url.includes('/api/skills?agentId=agent-a')) {
         return Promise.resolve(jsonResponse({
           skills: [
@@ -334,14 +406,57 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     });
   });
 
-  // ── Test 4: toggleSkill race guard — stale GET must not trigger PUT ─────────
-  it('toggleSkill race guard: switching selector mid-flight skips the PUT', async () => {
+  it('does not render a separate learned-skills section and refreshes from the shared skills-changed event', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+    let skillName = 'writer';
+
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({
+          skills: [{ name: skillName, enabled: true, source: 'user' }],
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<SkillsTab />);
+    await flushMicrotasks(6);
+
+    expect(screen.queryByTestId('learned-skills-block')).toBeNull();
+    expect(document.querySelector('[data-skill-name="writer"]')).toBeTruthy();
+    fetchMock.mockClear();
+
+    skillName = 'reflected-workflow';
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('hana-skills-changed', {
+        detail: { agentId: 'agent-a' },
+      }));
+    });
+    await flushMicrotasks(6);
+
+    expect(document.querySelector('[data-skill-name="reflected-workflow"]')).toBeTruthy();
+    expect(fetchMock.mock.calls.some(
+      (c) => typeof c[0] === 'string' && c[0].includes('/api/skills?agentId=agent-a'),
+    )).toBe(true);
+  });
+
+  // ── Test 4: toggleSkill race guard — stale write result must not refresh UI ─
+  it('toggleSkill race guard: switching selector mid-flight ignores the stale PATCH result', async () => {
     seedStore({ currentAgentId: 'agent-a' });
 
     // Initial load: agent-a has one skill; external-paths empty.
     fetchMock.mockImplementation((url: string) => {
       if (url.includes('/api/skills/external-paths')) {
         return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
       }
       if (url.includes('/api/skills?agentId=agent-a')) {
         return Promise.resolve(
@@ -367,27 +482,29 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     ).toBeTruthy();
 
     // ── Arm the race ──────────────────────────────────────────────────────────
-    // From here on, the first GET to /api/skills?agentId=agent-a (the "fresh
-    // read" inside toggleSkill) is DEFERRED — we control when it resolves.
-    const pendingFreshGet = defer<Response>();
-    let freshGetConsumed = false;
+    // From here on, the skill delta PATCH is DEFERRED — we control when it
+    // resolves, then switch the selector before the stale write completes.
+    const pendingPatch = defer<Response>();
+    let patchConsumed = false;
 
     fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
       if (url.includes('/api/skills/external-paths')) {
         return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
       }
-      // The PUT that the race guard should prevent.
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
       if (
-        url.includes('/api/agents/agent-a/skills') &&
-        opts?.method === 'PUT'
+        url.includes('/api/agents/agent-a/skills/test-skill') &&
+        opts?.method === 'PATCH'
       ) {
+        if (!patchConsumed) {
+          patchConsumed = true;
+          return pendingPatch.promise;
+        }
         return Promise.resolve(jsonResponse({ ok: true }));
       }
       if (url.includes('/api/skills?agentId=agent-a')) {
-        if (!freshGetConsumed) {
-          freshGetConsumed = true;
-          return pendingFreshGet.promise;
-        }
         return Promise.resolve(
           jsonResponse({
             skills: [{ name: 'test-skill', enabled: false, source: 'user' }],
@@ -400,8 +517,10 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
       return Promise.resolve(jsonResponse({}));
     });
 
+    fetchMock.mockClear();
+
     // Click the toggle — starts toggleSkill('test-skill', true).
-    // This kicks off the deferred GET; the function is now parked awaiting it.
+    // This kicks off the deferred PATCH; the function is now parked awaiting it.
     await act(async () => {
       fireEvent.click(screen.getByTestId('skill-toggle-test-skill'));
     });
@@ -418,28 +537,31 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     });
     await flushMicrotasks();
 
-    // Now resolve the stale GET from agent-a.
+    const agentBLoadsBeforePatchSettles = fetchMock.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && c[0].includes('/api/skills?agentId=agent-b'),
+    ).length;
+    expect(agentBLoadsBeforePatchSettles).toBeGreaterThanOrEqual(1);
+
+    // Now resolve the stale PATCH from agent-a.
     await act(async () => {
-      pendingFreshGet.resolve(
-        jsonResponse({
-          skills: [{ name: 'test-skill', enabled: false, source: 'user' }],
-        }),
-      );
+      pendingPatch.resolve(jsonResponse({ ok: true, enabled: ['test-skill'], changed: ['test-skill'] }));
     });
-    // toggleSkill's await chain is 3 deep (await hanaFetch → await res.json →
-    // race-guard check → potential PUT → await res.json). Flush 6 ticks so the
-    // entire chain settles before we assert the PUT never fired.
     await flushMicrotasks(6);
 
     // ── Assertion ────────────────────────────────────────────────────────────
-    // The race guard must have prevented the PUT to /api/agents/agent-a/skills.
-    const putCallsToAgentA = fetchMock.mock.calls.filter(
+    // The delta write is allowed because it belongs to the original click, but
+    // the stale result must not toast or refresh the newly selected agent.
+    const patchCallsToAgentA = fetchMock.mock.calls.filter(
       (c) =>
         typeof c[0] === 'string' &&
-        c[0].includes('/api/agents/agent-a/skills') &&
-        (c[1] as RequestInit | undefined)?.method === 'PUT',
+        c[0].includes('/api/agents/agent-a/skills/test-skill') &&
+        (c[1] as RequestInit | undefined)?.method === 'PATCH',
     );
-    expect(putCallsToAgentA.length).toBe(0);
+    expect(patchCallsToAgentA.length).toBe(1);
+    const agentBLoadsAfterPatchSettles = fetchMock.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && c[0].includes('/api/skills?agentId=agent-b'),
+    ).length;
+    expect(agentBLoadsAfterPatchSettles).toBe(agentBLoadsBeforePatchSettles);
 
     // Sanity: toast state remained at the seed baseline, proving the guard
     // skipped past the showToast branch.
@@ -481,5 +603,336 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
       (c) => typeof c[0] === 'string' && c[0].includes('agentId=agent-a'),
     );
     expect(agentCallsAfter.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders skill bundles and toggles all bundled skills through the selected agent delta endpoint', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({
+          bundles: [
+            {
+              id: 'writing-bundle',
+              name: 'Writing Bundle',
+              skillNames: ['writer', 'reader'],
+              source: 'user',
+              agentId: null,
+              sourcePackage: null,
+              skills: [
+                { name: 'writer', enabled: false, source: 'user', missing: false },
+                { name: 'reader', enabled: true, source: 'user', missing: false },
+              ],
+            },
+          ],
+        }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({
+          skills: [
+            { name: 'writer', enabled: false, source: 'user' },
+            { name: 'reader', enabled: true, source: 'user' },
+            { name: 'loose-skill', enabled: false, source: 'user' },
+          ],
+        }));
+      }
+      if (url.includes('/api/agents/agent-a/skill-bundles/writing-bundle') && opts?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<SkillsTab />);
+    await flushMicrotasks(6);
+
+    expect(screen.getAllByText('Writing Bundle').length).toBeGreaterThanOrEqual(1);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('skill-bundle-toggle-writing-bundle'));
+    });
+    await flushMicrotasks(6);
+
+    const deltaCall = fetchMock.mock.calls.find(
+      (c) =>
+        typeof c[0] === 'string' &&
+        c[0].includes('/api/agents/agent-a/skill-bundles/writing-bundle') &&
+        (c[1] as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(deltaCall).toBeTruthy();
+    expect(JSON.parse(String((deltaCall?.[1] as RequestInit)?.body))).toEqual({
+      enabled: true,
+    });
+    expect(fetchMock.mock.calls.some(
+      (c) =>
+        typeof c[0] === 'string' &&
+        c[0].includes('/api/agents/agent-a/skills') &&
+        (c[1] as RequestInit | undefined)?.method === 'PUT',
+    )).toBe(false);
+  });
+
+  it('toggleSkill writes one backend delta without fetching a stale full list', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({
+          skills: [
+            { name: 'writer', enabled: false, source: 'user' },
+            { name: 'reader', enabled: false, source: 'user' },
+          ],
+        }));
+      }
+      if (url.includes('/api/agents/agent-a/skills/writer') && opts?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ ok: true, enabled: ['writer'], changed: ['writer'] }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    render(<SkillsTab />);
+    await flushMicrotasks(6);
+    fetchMock.mockClear();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('skill-toggle-writer'));
+    });
+    await flushMicrotasks(6);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/agents/agent-a/skills/writer'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: true }),
+      }),
+    );
+    const firstCall = fetchMock.mock.calls[0];
+    expect(firstCall[0]).toEqual(expect.stringContaining('/api/agents/agent-a/skills/writer'));
+    expect((firstCall[1] as RequestInit | undefined)?.method).toBe('PATCH');
+    expect(fetchMock.mock.calls.some(
+      (c) =>
+        typeof c[0] === 'string' &&
+        c[0].includes('/api/agents/agent-a/skills') &&
+        (c[1] as RequestInit | undefined)?.method === 'PUT',
+    )).toBe(false);
+  });
+
+  it('manages bundles through in-panel dialogs instead of browser prompts', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+    const promptSpy = vi.spyOn(window, 'prompt');
+    const confirmSpy = vi.spyOn(window, 'confirm');
+
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({
+          bundles: [
+            {
+              id: 'writing-bundle',
+              name: 'Writing Bundle',
+              skillNames: ['writer'],
+              source: 'user',
+              agentId: null,
+              sourcePackage: null,
+              skills: [{ name: 'writer', enabled: false, source: 'user', missing: false }],
+            },
+          ],
+        }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({
+          skills: [{ name: 'writer', enabled: false, source: 'user' }],
+        }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    render(<SkillsTab />);
+    await flushMicrotasks(6);
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.createBundleAriaLabel' }));
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'settings.skills.bundleDialog.createTitle' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('settings.skills.bundleDialog.bundleNameLabel'), { target: { value: 'Research Bundle' } });
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.bundleDialog.createBtn' }));
+    await flushMicrotasks(6);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/skills/bundles?agentId=agent-a'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'Research Bundle', skillNames: [] }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.renameBundleAriaLabel' }));
+    expect(screen.getByRole('dialog', { name: 'settings.skills.bundleDialog.renameTitle' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('settings.skills.bundleDialog.bundleNameLabel'), { target: { value: 'Writing Pack' } });
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.bundleDialog.saveBtn' }));
+    await flushMicrotasks(6);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/skills/bundles/writing-bundle?agentId=agent-a'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Writing Pack' }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.dissolveBundleAriaLabel' }));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'settings.skills.bundleDialog.dissolveTitle' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.bundleDialog.dissolveBtn' }));
+    await flushMicrotasks(6);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/skills/bundles/writing-bundle'),
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+
+    promptSpy.mockRestore();
+    confirmSpy.mockRestore();
+  });
+
+  it('exports a skill bundle from the manage tree', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+    const showInFinder = vi.fn();
+    (window as unknown as { platform: unknown }).platform = { showInFinder };
+
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles/writing-bundle/export')) {
+        expect(opts).toMatchObject({ method: 'POST' });
+        return Promise.resolve(jsonResponse({
+          ok: true,
+          filePath: '/tmp/Writing Bundle-skillbundle.zip',
+          fileName: 'Writing Bundle-skillbundle.zip',
+          warnings: [],
+        }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({
+          bundles: [
+            {
+              id: 'writing-bundle',
+              name: 'Writing Bundle',
+              skillNames: ['writer'],
+              source: 'user',
+              agentId: null,
+              sourcePackage: null,
+              skills: [{ name: 'writer', enabled: false, source: 'user', missing: false }],
+            },
+          ],
+        }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({
+          skills: [{ name: 'writer', enabled: false, source: 'user' }],
+        }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    render(<SkillsTab />);
+    await flushMicrotasks(6);
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.exportBundleAriaLabel' }));
+    await flushMicrotasks(6);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/skills/bundles/writing-bundle/export'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(showInFinder).toHaveBeenCalledWith('/tmp/Writing Bundle-skillbundle.zip');
+    expect(useSettingsStore.getState().toastMessage).toBe('settings.skills.exported');
+  });
+
+  it('persists bundle and bundled-skill order after drag and drop', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({
+          bundles: [
+            {
+              id: 'first-bundle',
+              name: 'First Bundle',
+              skillNames: ['writer', 'reader'],
+              source: 'user',
+              agentId: null,
+              sourcePackage: null,
+              skills: [
+                { name: 'writer', enabled: false, source: 'user', missing: false },
+                { name: 'reader', enabled: false, source: 'user', missing: false },
+              ],
+            },
+            {
+              id: 'second-bundle',
+              name: 'Second Bundle',
+              skillNames: ['debugger'],
+              source: 'user',
+              agentId: null,
+              sourcePackage: null,
+              skills: [{ name: 'debugger', enabled: false, source: 'user', missing: false }],
+            },
+          ],
+        }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({
+          skills: [
+            { name: 'writer', enabled: false, source: 'user' },
+            { name: 'reader', enabled: false, source: 'user' },
+            { name: 'debugger', enabled: false, source: 'user' },
+          ],
+        }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    render(<SkillsTab />);
+    await flushMicrotasks(6);
+
+    const bundleDrag = createDragData();
+    fireEvent.dragStart(screen.getAllByTestId('skill-bundle-header-second-bundle')[0], {
+      dataTransfer: bundleDrag,
+    });
+    fireEvent.drop(screen.getAllByTestId('skill-bundle-header-first-bundle')[0], {
+      dataTransfer: bundleDrag,
+    });
+    await flushMicrotasks(6);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/skills/bundles/order?agentId=agent-a'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ bundleIds: ['second-bundle', 'first-bundle'] }),
+      }),
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'settings.skills.expandBundleAriaLabel' })[0]);
+
+    const skillDrag = createDragData();
+    fireEvent.dragStart(screen.getAllByTestId('skill-row-reader')[0], { dataTransfer: skillDrag });
+    fireEvent.drop(screen.getAllByTestId('skill-row-writer')[0], { dataTransfer: skillDrag });
+    await flushMicrotasks(6);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/skills/bundles/first-bundle?agentId=agent-a'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ skillNames: ['reader', 'writer'] }),
+      }),
+    );
   });
 });

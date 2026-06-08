@@ -1,19 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store';
 import { hanaFetch } from '../api';
 import { t } from '../helpers';
 import { switchToAgent, loadSettingsConfig, loadAgents } from '../actions';
+import { Overlay } from '../../ui';
 import styles from '../Settings.module.css';
 
 export function AgentDeleteOverlay() {
-  const { agents, currentAgentId, showToast } = useSettingsStore();
+  const { agents, currentAgentId, settingsAgentId } = useSettingsStore(
+    useShallow(s => ({ agents: s.agents, currentAgentId: s.currentAgentId, settingsAgentId: s.settingsAgentId }))
+  );
+  const showToast = useSettingsStore(s => s.showToast);
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [nameInput, setNameInput] = useState('');
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const settingsAgentId = useSettingsStore(s => s.settingsAgentId);
   const targetId = deleteTargetId || settingsAgentId || currentAgentId;
   const target = agents.find(a => a.id === targetId);
 
@@ -35,10 +38,10 @@ export function AgentDeleteOverlay() {
     if (step === 2) requestAnimationFrame(() => inputRef.current?.focus());
   }, [step]);
 
-  const close = () => {
+  const close = useCallback(() => {
     setVisible(false);
     setDeleteTargetId(null);
-  };
+  }, []);
 
   const confirmDelete = async () => {
     if (!target || nameInput.trim() !== target.name) return;
@@ -61,11 +64,17 @@ export function AgentDeleteOverlay() {
     }
   };
 
-  if (!visible || !target) return null;
+  if (!target) return null;
 
   return (
-    <div className={`${styles['agent-delete-overlay']} ${styles['visible']}`} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className={styles['agent-delete-card']}>
+    <Overlay
+      open={visible}
+      onClose={close}
+      backdrop="blur"
+      zIndex={110}
+      className={styles['agent-delete-card']}
+      disableContainerAnimation
+    >
         {step === 1 ? (
           <div className={styles['agent-delete-step']}>
             <h3 className={styles['agent-delete-title']}>{t('settings.agent.deleteTitle1', { name: target.name })}</h3>
@@ -89,7 +98,6 @@ export function AgentDeleteOverlay() {
                 onChange={(e) => setNameInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') { e.preventDefault(); confirmDelete(); }
-                  if (e.key === 'Escape') close();
                 }}
               />
             </div>
@@ -105,7 +113,6 @@ export function AgentDeleteOverlay() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Overlay>
   );
 }

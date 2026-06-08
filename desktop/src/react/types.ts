@@ -15,7 +15,30 @@ export interface AutoUpdateState {
   error: string | null;
 }
 
+export interface AutoLaunchStatus {
+  supported: boolean;
+  openAtLogin: boolean;
+  openedAtLogin: boolean;
+  status: string | null;
+  executableWillLaunchAtLogin?: boolean | null;
+}
+
+export interface KeepAwakeStatus {
+  enabled: boolean;
+  active: boolean;
+  blockerId: number | null;
+  type: 'prevent-app-suspension';
+}
+
+export type DesktopNotificationFocusPolicy = 'always' | 'when_unfocused';
+
+export interface DesktopNotificationOptions {
+  desktopFocusPolicy?: DesktopNotificationFocusPolicy;
+}
+
 // ── 核心数据结构 ──
+
+export type SessionPermissionMode = 'auto' | 'operate' | 'ask' | 'read_only';
 
 export interface Session {
   path: string;
@@ -26,7 +49,16 @@ export interface Session {
   agentId: string | null;
   agentName: string | null;
   cwd: string | null;
+  workspaceMountId?: string | null;
+  workspaceLabel?: string | null;
+  projectId?: string | null;
+  permissionMode?: SessionPermissionMode | null;
   pinnedAt?: string | null;
+  hasSummary?: boolean;
+  agentDeleted?: boolean;
+  readOnlyReason?: 'agent_deleted' | string | null;
+  continuationAvailable?: boolean;
+  deletedAt?: string | null;
   rcAttachment?: {
     sessionKey: string;
     platform: string;
@@ -41,6 +73,8 @@ export interface Agent {
   yuan: string;
   isPrimary: boolean;
   hasAvatar?: boolean;
+  chatModel?: { id: string; provider?: string | null } | null;
+  homeFolder?: string | null;
   memoryMasterEnabled?: boolean;
 }
 
@@ -56,8 +90,11 @@ export interface Model {
   isCurrent?: boolean;
   reasoning?: boolean;
   xhigh?: boolean;
-  /** 输入模态数组（Pi SDK 标准字段）。包含 "image" 表示模型支持图像输入。 */
-  input?: ("text" | "image")[];
+  audio?: boolean;
+  audioTransport?: string | null;
+  audioTransportSupported?: boolean;
+  /** 输入模态数组（Pi SDK 标准字段）。包含 "image" / "video" 表示模型支持对应媒体输入；音频走 Hana 兼容能力字段。 */
+  input?: ("text" | "image" | "video")[];
 }
 
 export interface Channel {
@@ -68,8 +105,10 @@ export interface Channel {
   lastMessage: string;
   lastSender: string;
   lastTimestamp: string;
+  messageCount?: number;
   newMessageCount: number;
   isDM?: boolean;
+  dmOwnerId?: string;
   peerId?: string;
   peerName?: string;
 }
@@ -78,6 +117,53 @@ export interface ChannelMessage {
   sender: string;
   timestamp: string;
   body: string;
+}
+
+export interface AgentPhoneActivity {
+  conversationId: string;
+  conversationType: 'channel' | 'dm';
+  agentId: string;
+  state: 'idle' | 'viewed' | 'triaging' | 'no_reply' | 'replying' | 'using_tool' | 'waiting_permission' | 'compacting' | 'error' | string;
+  summary: string;
+  timestamp: string;
+  details?: Record<string, unknown> | null;
+}
+
+export type ChannelAgentActivities = Record<string, Record<string, AgentPhoneActivity[]>>;
+
+export interface ChannelTickerStatus {
+  active?: {
+    channelName?: string;
+    agentId?: string;
+    activeAgentId?: string;
+    delivered?: number;
+    agentCount?: number;
+    checks?: number;
+    maxChecks?: number;
+    mode?: string;
+  } | null;
+  nextReminder?: {
+    channelName?: string;
+    dueAt?: string;
+    dueAtMs?: number;
+    intervalMs?: number;
+  } | null;
+  running?: boolean;
+  queued?: boolean;
+}
+
+export type ChannelTickerStatusMap = Record<string, ChannelTickerStatus | null>;
+export type AgentPhoneToolMode = 'read_only' | 'write';
+
+export interface AgentPhoneSettings {
+  mode: AgentPhoneToolMode;
+  replyMinChars: number | null;
+  replyMaxChars: number | null;
+  proactiveEnabled: boolean;
+  reminderIntervalMinutes: number;
+  guardLimit: number;
+  modelOverrideEnabled: boolean;
+  modelOverrideModel: { id: string; provider: string } | null;
 }
 
 export interface Activity {
@@ -106,6 +192,7 @@ export interface PreviewItem {
   status?: 'available' | 'expired' | string;
   missingAt?: number | null;
   fileVersion?: FileVersion | null;
+  remoteContentRef?: RemoteContentRef | null;
 }
 
 export interface DeskFile {
@@ -113,6 +200,24 @@ export interface DeskFile {
   isDir: boolean;
   size?: number;
   mtime?: string;
+}
+
+export interface StudioWorkspace {
+  workspaceId: string;
+  mountId: string;
+  label: string;
+  sourceKind?: string | null;
+  provider?: string | null;
+  presentation?: string | null;
+  capabilities?: string[];
+  isDefault?: boolean;
+}
+
+export interface WorkspaceChangePayload {
+  rootPath: string;
+  changedPath: string;
+  affectedDir: string;
+  eventType: string;
 }
 
 export interface DeskSearchResult {
@@ -154,6 +259,18 @@ export interface VersionedWriteResult {
   version?: FileVersion | null;
 }
 
+export interface RemoteWorkbenchContentRef {
+  kind: 'workbench-file' | 'mobile-workbench';
+  mountId?: string;
+  rootId?: string;
+  subdir: string;
+  name: string;
+  contentPath: string;
+  version?: FileVersion | null;
+}
+
+export type RemoteContentRef = RemoteWorkbenchContentRef;
+
 // ── Plugin Card Protocol ──
 
 export interface PluginCardDetails {
@@ -172,6 +289,7 @@ export interface PluginPageInfo {
   title: string | Record<string, string>;
   icon: string | null;
   routeUrl: string;
+  hostCapabilities: string[];
 }
 
 export interface PluginWidgetInfo {
@@ -179,6 +297,47 @@ export interface PluginWidgetInfo {
   title: string | Record<string, string>;
   icon: string | null;
   routeUrl: string;
+  hostCapabilities: string[];
+}
+
+export interface PluginUiHostCapabilityGrant {
+  pluginId: string;
+  hostCapabilities: string[];
+}
+
+export interface BrowserViewerTab {
+  tabId: string;
+  title?: string;
+  url?: string | null;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface BrowserViewerUpdate {
+  title?: string;
+  url?: string | null;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  running?: boolean;
+  reason?: string | null;
+  sessionPath?: string | null;
+  activeTabId?: string | null;
+  tabs?: BrowserViewerTab[];
+}
+
+export interface HtmlPreviewBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface HtmlPreviewShowPayload {
+  previewId: string;
+  previewUrl: string;
+  bounds: HtmlPreviewBounds;
 }
 
 // ── Platform API 类型声明 ──
@@ -194,16 +353,24 @@ export interface PlatformApi {
   selectPlugin?(): Promise<string | null>;
   readFile(path: string): Promise<string | null>;
   writeFile(filePath: string, content: string): Promise<boolean>;
+  writeFileBinary?(filePath: string, base64Data: string): Promise<boolean>;
+  copyFile?(sourcePath: string, destinationPath: string): Promise<boolean>;
   readFileSnapshot?(path: string): Promise<TextFileSnapshot | null>;
   writeFileIfUnchanged?(filePath: string, content: string, expectedVersion?: FileVersion | null): Promise<VersionedWriteResult>;
   watchFile(filePath: string): Promise<boolean>;
   unwatchFile(filePath: string): Promise<boolean>;
   onFileChanged(callback: (filePath: string) => void): void;
+  watchWorkspace?(rootPath: string): Promise<boolean>;
+  unwatchWorkspace?(rootPath: string): Promise<boolean>;
+  onWorkspaceChanged?(callback: (payload: WorkspaceChangePayload) => void): void;
   readFileBase64(path: string): Promise<string | null>;
   /** 把本地路径转成 <img>/<video> 可用的 file:// URL（同步，纯路径转换）。Web fallback 无此方法，消费侧需运行时判空。 */
   getFileUrl?(path: string): string;
   readDocxHtml(path: string): Promise<string | null>;
   readXlsxHtml(path: string): Promise<string | null>;
+  showHtmlPreview?(payload: HtmlPreviewShowPayload): Promise<boolean>;
+  updateHtmlPreviewBounds?(previewId: string, bounds: HtmlPreviewBounds): Promise<boolean>;
+  closeHtmlPreview?(previewId: string): Promise<boolean>;
   /** 派生一个只读 Viewer 窗口展示指定文件。返回 windowId（主进程 BrowserWindow.id）。 */
   spawnViewer(data: { filePath: string; title: string; type: string; language?: string | null }): Promise<number | null>;
   /** Viewer 窗口接收文件元信息（viewer-window-entry 调用）。 */
@@ -220,10 +387,11 @@ export interface PlatformApi {
   browserEmergencyStop?(): void;
   openSkillViewer?(opts: { skillPath?: string; name?: string; baseDir?: string; filePath?: string; installed?: boolean }): void;
   settingsChanged(event: string, payload?: unknown): void;
+  syncWindowTheme?(theme: string): void;
   onSettingsChanged(callback: (event: string, payload: unknown) => void): void | (() => void);
   onOpenSettingsModal?(callback: (tab?: string) => void): void | (() => void);
   onSwitchTab?(callback: (tab: string) => void): void | (() => void);
-  onServerRestarted?(callback: (data: { port: number }) => void): void | (() => void);
+  onServerRestarted?(callback: (data: { port: number; token?: string | null }) => void): void | (() => void);
   getFilePath?(file: File): string | null;
   startDrag?(filePaths: string | string[]): void;
   appReady(): void;
@@ -237,13 +405,23 @@ export interface PlatformApi {
   onMaximizeChange?(callback: (maximized: boolean) => void): void;
 
   // ── Browser viewer ──
-  updateBrowserViewer?(data: { running?: boolean; url?: string | null; thumbnail?: string | null }): void;
-  onBrowserUpdate?(callback: (data: { title?: string; canGoBack?: boolean; canGoForward?: boolean; running?: boolean }) => void): void;
+  updateBrowserViewer?(data: {
+    running?: boolean;
+    url?: string | null;
+    thumbnail?: string | null;
+    thumbnailCapturedAt?: number | null;
+    thumbnailUrl?: string | null;
+    thumbnailFresh?: boolean;
+  }): void;
+  onBrowserUpdate?(callback: (data: BrowserViewerUpdate) => void): void | (() => void);
   closeBrowserViewer?(): void;
   closeBrowser?(): void;
   browserGoBack?(): void;
   browserGoForward?(): void;
   browserReload?(): void;
+  browserNewTab?(): void;
+  browserSwitchTab?(tabId: string): void;
+  browserCloseTab?(tabId: string): void;
 
   // ── Skill viewer (preload) ──
   listSkillFiles?(baseDir: string): Promise<unknown[]>;
@@ -252,10 +430,11 @@ export interface PlatformApi {
   // ── Splash / Onboarding ──
   getAvatarPath?(role: string): Promise<string | null>;
   getSplashInfo?(): Promise<{ agentName?: string; locale?: string; yuan?: string } | null>;
+  reloadMainWindow?(): Promise<void>;
   onboardingComplete?(): Promise<void>;
 
   // ── Notification ──
-  showNotification?(title: string, body: string): void;
+  showNotification?(title: string, body: string, agentId?: string | null, options?: DesktopNotificationOptions): void;
 
   // ── App info ──
   getAppVersion?(): Promise<string>;
@@ -268,6 +447,18 @@ export interface PlatformApi {
   autoUpdateState?(): Promise<AutoUpdateState>;
   autoUpdateSetChannel?(channel: 'stable' | 'beta'): Promise<void>;
   onAutoUpdateState?(callback: (state: AutoUpdateState) => void): (() => void) | void;
+  getAutoLaunchStatus?(): Promise<AutoLaunchStatus>;
+  setAutoLaunchEnabled?(enabled: boolean): Promise<AutoLaunchStatus>;
+  getKeepAwakeStatus?(): Promise<KeepAwakeStatus>;
+  setKeepAwakeEnabled?(enabled: boolean): Promise<KeepAwakeStatus>;
+  quickChatReloadShortcut?(): Promise<{ ok: boolean; shortcut: string; error?: string }>;
+  quickChatShortcutStatus?(): Promise<{ shortcut: string; registered: boolean }>;
+  quickChatShow?(): void;
+  quickChatHide?(): void;
+  quickChatResize?(request: 'compact' | 'chat' | { mode: 'compact' | 'chat'; height?: number }): void;
+  quickChatOpenSession?(sessionPath: string): void;
+  onQuickChatOpenSession?(callback: (payload: { sessionPath?: string }) => void): (() => void) | void;
+  onQuickChatShown?(callback: () => void): (() => void) | void;
 
   // ── Skill viewer overlay ──
   onShowSkillViewer?(callback: (data: unknown) => void): void;

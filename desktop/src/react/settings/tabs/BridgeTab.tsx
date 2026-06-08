@@ -1,43 +1,38 @@
 import React from 'react';
 import { t } from '../helpers';
-import { Toggle } from '../widgets/Toggle';
 import { PlatformSection } from './bridge/PlatformSection';
 import { WechatSection } from './bridge/WechatSection';
 import { useBridgeState } from './bridge/useBridgeState';
 import { BridgeAgentRow } from './bridge/BridgeAgentRow';
+import { BridgePermissionModeSelect, type BridgePermissionMode } from './bridge/BridgeWidgets';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
+import { useSettingsStore } from '../store';
 import styles from '../Settings.module.css';
 
 export function BridgeTab() {
   const b = useBridgeState();
-  const tgInfo = b.status?.telegram || {};
-  const fsInfo = b.status?.feishu || {};
-  const qqInfo = b.status?.qq || {};
-  const wxInfo = b.status?.wechat || {};
-  const readOnly = !!b.status?.readOnly;
-  const receiptEnabled = b.status?.receiptEnabled !== false;
+  const snapshotBridge = useSettingsStore(s => s.settingsSnapshot.data?.preferences?.bridge);
+  // 注意：不能用 `|| {}` 兜底——空对象会让 Toggle 的 `!!status?.enabled` 显示成"假关"。
+  // 传 undefined 让 Toggle 走加载态。
+  const tgInfo = b.status?.telegram;
+  const fsInfo = b.status?.feishu;
+  const qqInfo = b.status?.qq;
+  const wxInfo = b.status?.wechat;
+  const permissionMode = (b.status?.permissionMode || snapshotBridge?.permissionMode) as BridgePermissionMode | undefined;
+  const globalSettingsPending = !permissionMode || b.globalSettingsSaving;
 
   return (
     <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="bridge">
       <SettingsSection title={t('settings.bridge.globalSettings')}>
         <SettingsRow
-          label={t('settings.bridge.receiptEnabled')}
-          hint={t('settings.bridge.receiptEnabledDesc')}
+          label={t('settings.bridge.permissionMode')}
+          hint={t('settings.bridge.permissionModeDesc')}
           control={
-            <Toggle
-              on={receiptEnabled}
-              onChange={(on) => b.saveGlobalSettings({ receiptEnabled: on })}
-            />
-          }
-        />
-        <SettingsRow
-          label={t('settings.bridge.readOnly')}
-          hint={t('settings.bridge.readOnlyDesc')}
-          control={
-            <Toggle
-              on={readOnly}
-              onChange={(on) => b.saveGlobalSettings({ readOnly: on })}
+            <BridgePermissionModeSelect
+              value={permissionMode}
+              onChange={(mode) => b.saveGlobalSettings({ permissionMode: mode })}
+              disabled={globalSettingsPending}
             />
           }
         />

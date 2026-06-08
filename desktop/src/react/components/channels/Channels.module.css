@@ -22,8 +22,8 @@
     border-radius: var(--radius-sm);
     background: var(--tab-slider-bg, var(--bg-card));
     box-shadow: var(--tab-slider-shadow, 0 1px 3px var(--shadow));
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-                width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform var(--duration-slow) cubic-bezier(0.4, 0, 0.2, 1),
+                width var(--duration-slow) cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 0;
 }
 
@@ -38,8 +38,8 @@
     font-family: var(--font-ui);
     font-size: 0.78rem;
     font-weight: 500;
-    cursor: pointer;
-    transition: color 0.2s var(--ease-out);
+    cursor: default;
+    transition: color var(--duration-fast) var(--ease-out);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -164,8 +164,8 @@
     padding: 8px var(--space-sm);
     margin-bottom: 1px;
     border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background 0.15s;
+    cursor: default;
+    transition: background var(--duration-fast);
 }
 
 .channelItem:hover {
@@ -291,7 +291,6 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px var(--space-lg);
-    padding-top: 60px;
     border-bottom: 1px solid var(--overlay-light);
     flex-shrink: 0;
 }
@@ -323,10 +322,10 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: default;
     padding: 4px;
     border-radius: var(--radius-sm);
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--duration-fast), color var(--duration-fast);
 }
 
 .channelHeaderActionBtn:hover {
@@ -448,6 +447,30 @@
     flex-direction: row-reverse;
 }
 
+.channelNewMessagesBtn {
+    position: sticky;
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: fit-content;
+    margin-top: var(--space-sm);
+    padding: 6px 12px;
+    border: 1px solid rgba(var(--accent-rgb), 0.18);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--accent);
+    box-shadow: 0 4px 14px var(--shadow);
+    font-size: 0.78rem;
+    cursor: default;
+    z-index: 2;
+}
+
+.channelNewMessagesBtn:hover {
+    background: rgba(var(--accent-rgb), 0.08);
+}
+
 /* ── 频道输入区 ── */
 .channelInputWrapper {
     display: flex;
@@ -492,10 +515,10 @@
     align-items: center;
     gap: var(--space-sm);
     padding: 6px 12px;
-    cursor: pointer;
+    cursor: default;
     font-size: 13px;
     color: var(--text-primary);
-    transition: background 0.1s;
+    transition: background var(--duration-instant);
 }
 
 .channelMentionItem:hover,
@@ -538,7 +561,7 @@
     overflow-y: auto;
     scrollbar-width: none;
     line-height: 1.5;
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-fast);
 }
 
 .channelInputBox::-webkit-scrollbar {
@@ -559,10 +582,10 @@
     color: white;
     border: 1px solid var(--accent);
     border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all var(--duration) var(--ease-out);
+    cursor: default;
+    transition: all var(--duration-slow) var(--ease-out);
     flex-shrink: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--duration-fast);
 }
 
 .channelSendBtn:disabled {
@@ -606,7 +629,7 @@
     width: 440px;
     max-width: 90vw;
     box-shadow: 0 12px 48px var(--shadow);
-    animation: dropdown-in 0.2s var(--ease-out);
+    animation: hana-fade-up var(--duration-fast) var(--ease-out);
 }
 
 .createTitle {
@@ -639,7 +662,7 @@
     padding: 0.45rem 0.65rem;
     outline: none;
     box-shadow: 0 1px 3px var(--shadow);
-    transition: box-shadow var(--duration) var(--ease-out);
+    transition: box-shadow var(--duration-slow) var(--ease-out);
     width: 100%;
 }
 
@@ -665,8 +688,8 @@
     border: none;
     font-family: inherit;
     font-size: 0.82rem;
-    cursor: pointer;
-    transition: all 0.2s var(--ease-out);
+    cursor: default;
+    transition: all var(--duration-fast) var(--ease-out);
 }
 
 .createCancel {
@@ -687,6 +710,22 @@
     background: var(--accent-hover);
 }
 
+.createConfirm:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.createConfirm:disabled:hover {
+    background: var(--accent);
+}
+
+.createError {
+    color: var(--danger, #b45757);
+    font-size: 0.74rem;
+    line-height: 1.35;
+    margin-top: 4px;
+}
+
 /* ── 成员选择器 ── */
 .channelCreateMembers {
     display: flex;
@@ -705,8 +744,8 @@
     color: var(--text-light);
     font-family: var(--font-ui);
     font-size: 0.78rem;
-    cursor: pointer;
-    transition: all 0.15s var(--ease-out);
+    cursor: default;
+    transition: all var(--duration-fast) var(--ease-out);
 }
 
 .channelCreateMemberChip:hover {
@@ -781,6 +820,384 @@
 }
 
 .channelMemberName {
+    flex: 1;
+    min-width: 0;
     font-size: 0.82rem;
     color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.channelMemberRemoveButton {
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    opacity: 0.62;
+}
+
+.channelMemberRemoveButton:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--danger, #b45757);
+    opacity: 1;
+}
+
+.channelMemberRemoveButton:disabled {
+    cursor: default;
+    opacity: 0.25;
+}
+
+.channelMemberAddButton {
+    width: 100%;
+    min-height: 26px;
+    margin-top: 4px;
+    padding: 0 7px;
+    border: 1px dashed rgba(0, 0, 0, 0.09);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.26);
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    cursor: default;
+}
+
+.channelMemberAddButton:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.46);
+    color: var(--text);
+}
+
+.channelMemberAddButton:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+/* ========================================
+   频道 — Agent 动态
+   ======================================== */
+.agentActivityList {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.agentActivityHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: var(--space-sm);
+}
+
+.agentActivityHeader :global(.channel-info-label) {
+    margin-bottom: 0;
+}
+
+.agentActivityScheduler {
+    margin: -2px 0 8px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    line-height: 1.4;
+}
+
+.agentSettingsHeader {
+    margin-bottom: var(--space-sm);
+}
+
+.agentToolModeToggle {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.025);
+}
+
+.agentToolModeToggleFill {
+    width: 100%;
+}
+
+.agentToolModeToggleFill .agentToolModeButton {
+    flex: 1;
+}
+
+.agentToolModeButton {
+    min-width: 34px;
+    height: 22px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    cursor: default;
+}
+
+.agentToolModeButton:disabled {
+    cursor: default;
+    opacity: 0.58;
+}
+
+.agentToolModeButtonActive {
+    background: var(--bg-card);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.agentActivityItem {
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.34);
+    overflow: hidden;
+}
+
+.agentActivityRow {
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 8px;
+    display: grid;
+    grid-template-columns: 20px minmax(48px, max-content) minmax(0, 1fr);
+    gap: 7px;
+    align-items: center;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: default;
+}
+
+.agentActivityRow:hover {
+    background: rgba(0, 0, 0, 0.025);
+}
+
+.agentActivityAvatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--overlay-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 0.58rem;
+    font-weight: 600;
+}
+
+.agentActivityAvatarImg {
+    width: 20px;
+    height: 20px;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.agentActivityName {
+    font-size: 0.78rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agentActivitySummary {
+    min-width: 0;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agentActivityDetails {
+    border-top: 1px solid rgba(0, 0, 0, 0.045);
+}
+
+.agentActivityTranscriptScroll {
+    max-height: 11.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 6px 7px 7px;
+    font-size: 0.74rem;
+}
+
+.agentActivityTranscriptScroll :global(.message) {
+    max-width: 100%;
+}
+
+.agentActivityTranscriptScroll :global(.messageAssistant),
+.agentActivityTranscriptScroll :global(.messageUser) {
+    font-size: 0.74rem;
+}
+
+.agentActivityEmpty {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    padding: 2px 0;
+}
+
+/* ========================================
+   频道 — 当前群聊 Agent 设置
+   ======================================== */
+.agentSettingsCard {
+    position: relative;
+    z-index: 40;
+    overflow: visible;
+}
+
+.agentSettingsInlineGrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+}
+
+.agentSettingsInlineGrid .agentSettingsField {
+    margin-top: 0;
+}
+
+.agentSettingsInlineGridSpaced {
+    margin-top: 10px;
+}
+
+.agentSettingsField {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 10px;
+}
+
+.agentSettingsField:first-of-type {
+    margin-top: 0;
+}
+
+.agentSettingsLabel {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.agentReplyRangeRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+}
+
+.agentReplyRangeInput {
+    width: 100%;
+    height: 26px;
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.34);
+    color: var(--text);
+    font-size: 0.72rem;
+    padding: 0 7px;
+    outline: none;
+}
+
+.agentReplyRangeSep {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-align: center;
+}
+
+.agentReplyRangeInput:focus {
+    border-color: rgba(47, 111, 143, 0.28);
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.agentModelOverrideRow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+}
+
+.agentModelSelect {
+    position: relative;
+    min-width: 0;
+}
+
+.agentModelSelectButton {
+    width: 100%;
+    height: 26px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.34);
+    color: var(--text);
+    font-size: 0.7rem;
+    padding: 0 7px;
+    cursor: default;
+}
+
+.agentModelSelectButton:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.agentModelSelectButton span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agentModelSelectArrow {
+    color: var(--text-muted);
+    font-size: 0.62rem;
+}
+
+.agentModelDropdown {
+    position: absolute;
+    z-index: 1000;
+    right: 0;
+    top: calc(100% + 4px);
+    width: min(240px, 72vw);
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 7px;
+    background: var(--bg-card);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+}
+
+.agentModelGroupHeader {
+    padding: 5px 7px 3px;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+}
+
+.agentModelOption {
+    width: 100%;
+    min-height: 26px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.7rem;
+    text-align: left;
+    padding: 5px 7px;
+    cursor: default;
+}
+
+.agentModelOption:hover {
+    background: rgba(0, 0, 0, 0.045);
+}
+
+.agentModelOptionActive {
+    background: rgba(47, 111, 143, 0.1);
+    color: var(--accent);
 }

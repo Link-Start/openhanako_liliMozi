@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { useStore } from '../../stores';
 import { usePluginIframe } from '../../hooks/use-plugin-iframe';
-import { hanaUrl } from '../../hooks/use-hana-fetch';
+import { usePluginSurfaceUrl } from '../../hooks/use-plugin-surface-url';
 import s from './PluginWidgetView.module.css';
-import { DEFAULT_THEME } from '../../../shared/theme-registry.cjs';
+
+declare function t(key: string, vars?: Record<string, string | number>): string;
 
 interface Props {
   pluginId: string;
@@ -14,16 +15,19 @@ export function PluginWidgetView({ pluginId }: Props) {
   const agentId = useStore(st => st.currentAgentId);
   const widget = useMemo(() => widgets.find(w => w.pluginId === pluginId), [widgets, pluginId]);
 
-  const iframeSrc = useMemo(() => {
-    if (!widget?.routeUrl) return null;
-    const theme = document.documentElement.dataset.theme || DEFAULT_THEME;
-    const cssUrl = hanaUrl(`/api/plugins/theme.css?theme=${encodeURIComponent(theme)}`);
-    const fullUrl = hanaUrl(widget.routeUrl);
-    const sep = fullUrl.includes('?') ? '&' : '?';
-    return `${fullUrl}${sep}agentId=${encodeURIComponent(agentId || '')}&hana-theme=${encodeURIComponent(theme)}&hana-css=${encodeURIComponent(cssUrl)}`;
-  }, [widget?.routeUrl, agentId]);
+  const surfaceUrl = usePluginSurfaceUrl(widget?.routeUrl ?? null, agentId);
 
-  const { iframeRef, status, retry } = usePluginIframe(iframeSrc);
+  const { iframeRef, status: iframeStatus, retry: retryIframe } = usePluginIframe(surfaceUrl.iframeSrc, {
+    pluginId,
+    agentId,
+    slot: 'widget',
+    capabilityGrants: widget?.hostCapabilities ?? [],
+  });
+  const status = surfaceUrl.status === 'ready' ? iframeStatus : surfaceUrl.status;
+  const retry = () => {
+    surfaceUrl.retry();
+    retryIframe();
+  };
 
   if (!widget) {
     return <div className={s.error}>Widget not found</div>;
@@ -36,14 +40,14 @@ export function PluginWidgetView({ pluginId }: Props) {
       )}
       {status === 'error' && (
         <div className={s.overlay}>
-          <p>加载失败</p>
-          <button className={s.retryBtn} onClick={retry}>重试</button>
+          <p>{t('plugin.widget.loadFailed')}</p>
+          <button className={s.retryBtn} onClick={retry}>{t('plugin.widget.retry')}</button>
         </div>
       )}
       <iframe
         ref={iframeRef}
         className={s.iframe}
-        src={iframeSrc || undefined}
+        src={surfaceUrl.iframeSrc || undefined}
         sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
         style={{ opacity: status === 'ready' ? 1 : 0 }}
       />

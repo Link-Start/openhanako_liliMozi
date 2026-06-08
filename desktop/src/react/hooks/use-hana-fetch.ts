@@ -1,18 +1,21 @@
 import { useStore } from '../stores';
+import {
+  appendConnectionAuth,
+  buildConnectionUrl,
+  requireServerConnection,
+} from '../services/server-connection';
 
 const DEFAULT_TIMEOUT = 30_000;
 
 /**
- * 构建带认证的 Hana Server URL
+ * 构建带认证的 HanaAgent Server URL
  */
 export function hanaUrl(path: string): string {
-  const { serverPort, serverToken } = useStore.getState();
-  if (!serverPort) {
-    throw new Error(`hanaUrl ${path}: serverPort not ready`);
-  }
-  const sep = path.includes('?') ? '&' : '?';
-  const tokenParam = serverToken ? `${sep}token=${serverToken}` : '';
-  return `http://127.0.0.1:${serverPort}${path}${tokenParam}`;
+  const connection = requireServerConnection(
+    useStore.getState(),
+    `hanaUrl ${path}: server connection not ready`,
+  );
+  return buildConnectionUrl(connection, path, { includeTokenQuery: true });
 }
 
 /**
@@ -22,18 +25,20 @@ export function hanaUrl(path: string): string {
  */
 export async function hanaFetch(
   path: string,
-  opts: RequestInit & { timeout?: number } = {},
+  opts: RequestInit & { timeout?: number; throwOnHttpError?: boolean } = {},
 ): Promise<Response> {
-  const { serverPort, serverToken } = useStore.getState();
-  if (!serverPort) {
-    throw new Error(`hanaFetch ${path}: serverPort not ready`);
-  }
-  const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
-  if (serverToken) {
-    headers['Authorization'] = `Bearer ${serverToken}`;
-  }
+  const connection = requireServerConnection(
+    useStore.getState(),
+    `hanaFetch ${path}: server connection not ready`,
+  );
+  const headers = appendConnectionAuth(connection, opts.headers);
 
-  const { timeout = DEFAULT_TIMEOUT, signal: callerSignal, ...fetchOpts } = opts;
+  const {
+    timeout = DEFAULT_TIMEOUT,
+    signal: callerSignal,
+    throwOnHttpError = true,
+    ...fetchOpts
+  } = opts;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   if (callerSignal) {
@@ -42,12 +47,12 @@ export async function hanaFetch(
   }
 
   try {
-    const res = await fetch(`http://127.0.0.1:${serverPort}${path}`, {
+    const res = await fetch(buildConnectionUrl(connection, path), {
       ...fetchOpts,
       headers,
       signal: controller.signal,
     });
-    if (!res.ok) {
+    if (throwOnHttpError && !res.ok) {
       throw new Error(`hanaFetch ${path}: ${res.status} ${res.statusText}`);
     }
     return res;

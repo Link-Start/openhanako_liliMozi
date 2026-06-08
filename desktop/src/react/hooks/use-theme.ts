@@ -1,4 +1,4 @@
-import registry from '../../shared/theme-registry.cjs';
+import registry from '../../shared/theme-registry';
 
 export const THEME_LIST = registry.getThemeIds();
 

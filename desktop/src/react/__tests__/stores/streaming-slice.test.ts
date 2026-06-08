@@ -23,6 +23,7 @@ describe('streaming-slice', () => {
 
   it('初始状态', () => {
     expect(slice.streamingSessions).toEqual([]);
+    expect(slice.unreadOutputSessionPaths).toEqual([]);
     expect(slice.inlineErrors).toEqual({});
   });
 
@@ -54,6 +55,20 @@ describe('streaming-slice', () => {
     slice.addStreamingSession('/s1');
     slice.removeStreamingSession('/x');
     expect(slice.streamingSessions).toEqual(['/s1']);
+  });
+
+  it('markSessionOutputUnread 标记后台完成输出并去重', () => {
+    slice.markSessionOutputUnread('/s1');
+    slice.markSessionOutputUnread('/s1');
+    slice.markSessionOutputUnread('/s2');
+    expect(slice.unreadOutputSessionPaths).toEqual(['/s1', '/s2']);
+  });
+
+  it('clearSessionOutputUnread 清理指定 session 的未读输出标记', () => {
+    slice.markSessionOutputUnread('/s1');
+    slice.markSessionOutputUnread('/s2');
+    slice.clearSessionOutputUnread('/s1');
+    expect(slice.unreadOutputSessionPaths).toEqual(['/s2']);
   });
 });
 

@@ -10,10 +10,13 @@ import { handleServerMessage, applyStreamingStatus } from './ws-message-handler'
 import { requestStreamResume, injectHandlers } from './stream-resume';
 import { useStore } from '../stores';
 import { setStatus } from '../utils/ui-helpers';
-// @ts-expect-error -- shared JS module, no type declarations
-import { AppError } from '../../../../shared/errors.js';
-// @ts-expect-error -- shared JS module, no type declarations
-import { errorBus } from '../../../../shared/error-bus.js';
+import {
+  buildConnectionWsUrl,
+  createLocalServerConnection,
+  resolveServerConnection,
+} from './server-connection';
+import { AppError } from '../../../../shared/errors.ts';
+import { errorBus } from '../../../../shared/error-bus.ts';
 
 // ── 模块级 WS 实例 ──
 let _ws: WebSocket | null = null;
@@ -23,7 +26,8 @@ let _wsRetryDelay = 1000;
 const WS_RETRY_MAX = 30000;
 let _wsRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let _wsResumeVersion = 0;
-const WS_MAX_RETRIES = 20;
+const WS_FAST_RETRY_LIMIT = 20;
+const WS_SLOW_RETRY_DELAY = 60_000;
 let _wsRetryCount = 0;
 
 // 注入循环依赖的 handlers
@@ -38,18 +42,21 @@ export function getWebSocket(): WebSocket | null {
 export function connectWebSocket(port?: string, token?: string): void {
   // 如果没有传参，从 Zustand store 获取
   const storeState = useStore.getState();
-  const serverPort = port || storeState.serverPort;
-  const serverToken = token || storeState.serverToken;
+  const connection = port !== undefined || token !== undefined
+    ? createLocalServerConnection({
+        serverPort: port || storeState.serverPort,
+        serverToken: token ?? storeState.serverToken,
+      })
+    : resolveServerConnection(storeState);
 
-  if (!serverPort) return;
+  if (!connection) return;
 
   if (_wsRetryTimer) { clearTimeout(_wsRetryTimer); _wsRetryTimer = null; }
   if (_ws) {
     try { _ws.onclose = null; _ws.close(); } catch { /* silent */ }
   }
 
-  const tokenParam = serverToken ? `?token=${serverToken}` : '';
-  const url = `ws://127.0.0.1:${serverPort}/ws${tokenParam}`;
+  const url = buildConnectionWsUrl(connection, '/ws');
   _ws = new WebSocket(url);
 
   _ws.onopen = () => {
@@ -59,13 +66,14 @@ export function connectWebSocket(port?: string, token?: string): void {
     useStore.setState({ wsState: 'connected', wsReconnectAttempt: 0, compactingSessions: [] });
 
     const s = useStore.getState();
-    if (s.currentSessionPath && s.streamingSessions.includes(s.currentSessionPath)) {
+    const streamingPaths = Array.from(new Set((s.streamingSessions || []).filter(Boolean)));
+    if (streamingPaths.length > 0) {
       const myVersion = ++_wsResumeVersion;
-      const targetPath = s.currentSessionPath;
       Promise.resolve().then(async () => {
         if (myVersion !== _wsResumeVersion) return;
-        if (useStore.getState().currentSessionPath !== targetPath) return;
-        requestStreamResume(targetPath);
+        for (const targetPath of streamingPaths) {
+          requestStreamResume(targetPath);
+        }
       }).catch((err) => {
         console.error('[ws] reconnect resume failed:', err);
       });
@@ -92,13 +100,14 @@ export function connectWebSocket(port?: string, token?: string): void {
     setStatus('status.disconnected', false);
     _wsRetryCount++;
 
-    if (_wsRetryCount <= WS_MAX_RETRIES) {
-      useStore.setState({ wsState: 'reconnecting', wsReconnectAttempt: _wsRetryCount });
-      _wsRetryTimer = setTimeout(() => connectWebSocket(serverPort, serverToken ?? undefined), _wsRetryDelay);
+    useStore.setState({ wsState: 'reconnecting', wsReconnectAttempt: _wsRetryCount });
+    if (_wsRetryCount <= WS_FAST_RETRY_LIMIT) {
+      _wsRetryTimer = setTimeout(() => connectWebSocket(), _wsRetryDelay);
       _wsRetryDelay = Math.min(_wsRetryDelay * 2, WS_RETRY_MAX);
     } else {
-      useStore.setState({ wsState: 'disconnected' });
+      _wsRetryTimer = setTimeout(() => connectWebSocket(), WS_SLOW_RETRY_DELAY);
     }
+    (_wsRetryTimer as unknown as { unref?: () => void })?.unref?.();
   };
 
   _ws.onerror = () => {

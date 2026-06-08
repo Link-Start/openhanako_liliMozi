@@ -1,0 +1,149 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PlatformApi, PreviewItem } from '../../types';
+
+const mockState: { previewItems: PreviewItem[] } = { previewItems: [] };
+const mockUpsertPreviewItem = vi.fn();
+
+vi.mock('../../stores', () => ({
+  useStore: {
+    getState: () => mockState,
+  },
+}));
+
+vi.mock('../../stores/preview-actions', () => ({
+  upsertPreviewItem: mockUpsertPreviewItem,
+}));
+
+describe('refreshPreviewItemsFromFile', () => {
+  beforeEach(() => {
+    mockState.previewItems = [];
+    mockUpsertPreviewItem.mockReset();
+    window.platform = {
+      readFileSnapshot: vi.fn(async (filePath: string) => ({
+        content: `text:${filePath}`,
+        version: { mtimeMs: 10, size: 20, sha256: 'text-hash' },
+      })),
+      readFile: vi.fn(async (filePath: string) => `legacy:${filePath}`),
+      readDocxHtml: vi.fn(async (filePath: string) => `<p>docx:${filePath}</p>`),
+      readXlsxHtml: vi.fn(async (filePath: string) => `<table><tr><td>${filePath}</td></tr></table>`),
+      readFileBase64: vi.fn(async (filePath: string) => `pdf:${filePath}`),
+    } as unknown as PlatformApi;
+  });
+
+  it('reloads matching preview items through their own preview type reader', async () => {
+    mockState.previewItems = [
+      {
+        id: 'doc',
+        type: 'docx',
+        title: 'report.docx',
+        content: '<p>old</p>',
+        filePath: '/tmp/report.docx',
+        ext: 'docx',
+      },
+      {
+        id: 'other',
+        type: 'markdown',
+        title: 'other.md',
+        content: '# Old',
+        filePath: '/tmp/other.md',
+        ext: 'md',
+      },
+    ];
+
+    const { __resetPreviewFileRefreshStateForTests, refreshPreviewItemsFromFile } = await import('../../utils/preview-file-refresh');
+    __resetPreviewFileRefreshStateForTests();
+    await refreshPreviewItemsFromFile('/tmp/report.docx');
+
+    expect(window.platform?.readDocxHtml).toHaveBeenCalledWith('/tmp/report.docx');
+    expect(window.platform?.readFileSnapshot).not.toHaveBeenCalled();
+    expect(mockUpsertPreviewItem).toHaveBeenCalledTimes(1);
+    expect(mockUpsertPreviewItem).toHaveBeenCalledWith({
+      ...mockState.previewItems[0],
+      content: '<p>docx:/tmp/report.docx</p>',
+      fileVersion: undefined,
+      status: 'available',
+      missingAt: null,
+    });
+  });
+
+  it('drops stale refresh results when a newer refresh finishes first', async () => {
+    const oldVersion = { mtimeMs: 10, size: 20, sha256: 'old' };
+    const newVersion = { mtimeMs: 11, size: 21, sha256: 'new' };
+    mockState.previewItems = [{
+      id: 'note',
+      type: 'markdown',
+      title: 'note.md',
+      content: 'old content',
+      filePath: '/tmp/note.md',
+      ext: 'md',
+    }];
+
+    let resolveOld!: (value: { content: string; version: typeof oldVersion }) => void;
+    const oldRead = new Promise<{ content: string; version: typeof oldVersion }>((resolve) => {
+      resolveOld = resolve;
+    });
+    vi.mocked(window.platform!.readFileSnapshot!)
+      .mockReturnValueOnce(oldRead)
+      .mockResolvedValueOnce({
+        content: 'new content',
+        version: newVersion,
+      });
+
+    const { __resetPreviewFileRefreshStateForTests, refreshPreviewItemsFromFile } = await import('../../utils/preview-file-refresh');
+    __resetPreviewFileRefreshStateForTests();
+
+    const firstRefresh = refreshPreviewItemsFromFile('/tmp/note.md');
+    const secondRefresh = refreshPreviewItemsFromFile('/tmp/note.md');
+
+    await secondRefresh;
+    expect(mockUpsertPreviewItem).toHaveBeenCalledTimes(1);
+    expect(mockUpsertPreviewItem).toHaveBeenLastCalledWith({
+      ...mockState.previewItems[0],
+      content: 'new content',
+      fileVersion: newVersion,
+      status: 'available',
+      missingAt: null,
+    });
+
+    resolveOld({
+      content: 'older content',
+      version: oldVersion,
+    });
+    await firstRefresh;
+
+    expect(mockUpsertPreviewItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks matching preview items missing when the backing file cannot be read', async () => {
+    mockState.previewItems = [{
+      id: 'missing',
+      type: 'markdown',
+      title: 'missing.md',
+      content: 'stale',
+      filePath: '/tmp/missing.md',
+      ext: 'md',
+    }];
+    vi.mocked(window.platform!.readFileSnapshot!).mockResolvedValueOnce(null);
+    vi.mocked(window.platform!.readFile!).mockResolvedValueOnce(null);
+    window.t = ((key: string) => key) as typeof window.t;
+    const noticeSpy = vi.fn();
+    window.addEventListener('hana-inline-notice', noticeSpy);
+
+    const { __resetPreviewFileRefreshStateForTests, refreshPreviewItemsFromFile } = await import('../../utils/preview-file-refresh');
+    __resetPreviewFileRefreshStateForTests();
+
+    await refreshPreviewItemsFromFile('/tmp/missing.md');
+    window.removeEventListener('hana-inline-notice', noticeSpy);
+
+    expect(mockUpsertPreviewItem).toHaveBeenCalledTimes(1);
+    expect(mockUpsertPreviewItem).toHaveBeenCalledWith({
+      ...mockState.previewItems[0],
+      status: 'missing',
+      missingAt: expect.any(Number),
+    });
+    expect(noticeSpy).toHaveBeenCalled();
+  });
+});

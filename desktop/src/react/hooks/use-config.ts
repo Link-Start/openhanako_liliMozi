@@ -1,23 +1,41 @@
 import { useEffect, useRef, useState } from 'react';
 import { hanaFetch } from './use-hana-fetch';
 
-let configCache: any = null;
-let cacheTime = 0;
+interface ConfigCacheEntry {
+  data: any;
+  time: number;
+}
+
+const configCache = new Map<string, ConfigCacheEntry>();
 const STALE_MS = 5000; // 5s stale window
+const DEFAULT_CACHE_KEY = 'default';
+
+interface FetchConfigOptions {
+  cacheKey?: string | null;
+  force?: boolean;
+}
+
+function normalizeCacheKey(cacheKey?: string | null): string {
+  return cacheKey || DEFAULT_CACHE_KEY;
+}
 
 /** Invalidate cache (call after PUT /api/config or on WS config_changed) */
-export function invalidateConfigCache() {
-  configCache = null;
-  cacheTime = 0;
+export function invalidateConfigCache(cacheKey?: string | null) {
+  if (cacheKey) {
+    configCache.delete(normalizeCacheKey(cacheKey));
+    return;
+  }
+  configCache.clear();
 }
 
 /** Fetch config with in-memory cache */
-export async function fetchConfig(): Promise<any> {
-  if (configCache && Date.now() - cacheTime < STALE_MS) return configCache;
+export async function fetchConfig(options: FetchConfigOptions = {}): Promise<any> {
+  const key = normalizeCacheKey(options.cacheKey);
+  const cached = configCache.get(key);
+  if (!options.force && cached && Date.now() - cached.time < STALE_MS) return cached.data;
   const res = await hanaFetch('/api/config');
   const data = await res.json();
-  configCache = data;
-  cacheTime = Date.now();
+  configCache.set(key, { data, time: Date.now() });
   return data;
 }
 
@@ -25,19 +43,20 @@ export async function fetchConfig(): Promise<any> {
  * React hook: returns config and a refresh function.
  * Auto-fetches on mount. Use `refresh()` after mutations.
  */
-export function useConfig() {
-  const [config, setConfig] = useState<any>(configCache);
+export function useConfig(options: FetchConfigOptions = {}) {
+  const key = normalizeCacheKey(options.cacheKey);
+  const [config, setConfig] = useState<any>(configCache.get(key)?.data ?? null);
   const mounted = useRef(true);
 
   useEffect(() => {
     mounted.current = true;
-    fetchConfig().then(d => { if (mounted.current) setConfig(d); }).catch(() => {});
+    fetchConfig({ cacheKey: key, force: options.force }).then(d => { if (mounted.current) setConfig(d); }).catch(() => {});
     return () => { mounted.current = false; };
-  }, []);
+  }, [key, options.force]);
 
   const refresh = async () => {
-    invalidateConfigCache();
-    const d = await fetchConfig();
+    invalidateConfigCache(key);
+    const d = await fetchConfig({ cacheKey: key, force: true });
     if (mounted.current) setConfig(d);
     return d;
   };

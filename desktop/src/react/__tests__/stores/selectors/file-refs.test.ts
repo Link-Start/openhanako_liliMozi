@@ -37,13 +37,13 @@ describe('selectDeskFiles', () => {
     expect(refs.find(r => r.name === 'mystery')?.kind).toBe('other');
   });
 
-  it('路径拼接 = basePath + currentPath + name', () => {
+  it('路径拼接只消费 CWD 根目录，忽略旧的 currentPath 导航字段', () => {
     const state = makeState(
       [{ name: 'a.png', isDir: false }],
       '/root',
       'sub/dir',
     );
-    expect(selectDeskFiles(state)[0].path).toBe('/root/sub/dir/a.png');
+    expect(selectDeskFiles(state)[0].path).toBe('/root/a.png');
   });
 
   it('currentPath 为空时路径 = basePath + name', () => {
@@ -62,7 +62,7 @@ describe('selectDeskFiles', () => {
       'sub',
     );
     // 关键：前导 // 不能被折叠成 /，否则 pathToFileUrl 的 UNC 分支匹配不上
-    expect(selectDeskFiles(state)[0].path).toBe('//server/share/sub/a.png');
+    expect(selectDeskFiles(state)[0].path).toBe('//server/share/a.png');
   });
 
   it('Windows 盘符风格 basePath（仅正斜杠）保留', () => {
@@ -80,7 +80,15 @@ describe('selectDeskFiles', () => {
       '/root/',
       '/sub/',
     );
-    expect(selectDeskFiles(state)[0].path).toBe('/root/sub/a.png');
+    expect(selectDeskFiles(state)[0].path).toBe('/root/a.png');
+  });
+
+  it('does not emit path-backed desk refs for mounted Studio workspaces', () => {
+    const state = {
+      ...makeState([{ name: 'remote.md', isDir: false }], 'studio:mount_docs'),
+      deskWorkspaceMountId: 'mount_docs',
+    };
+    expect(selectDeskFiles(state)).toEqual([]);
   });
 
   it('同一输入多次调用返回引用稳定（memoization）', () => {
@@ -97,14 +105,29 @@ describe('selectDeskFiles', () => {
     expect(ref.id).toBe('desk:/x/a.png');
     expect(ref.source).toBe('desk');
   });
+
+  it('把 DeskFile mtime/size 转成 FileRef version', () => {
+    const state = makeState([{
+      name: 'a.png',
+      isDir: false,
+      size: 42,
+      mtime: '2026-05-23T08:00:00.000Z',
+    }], '/x');
+    const [ref] = selectDeskFiles(state);
+    expect(ref.version).toEqual({
+      mtimeMs: Date.parse('2026-05-23T08:00:00.000Z'),
+      size: 42,
+    });
+  });
 });
 
-function sessionState(items: ChatListItem[], path = '/s/1') {
+function sessionState(items: ChatListItem[], path = '/s/1', sessionFiles: unknown[] = []) {
   return {
     deskFiles: [],
     deskBasePath: '',
     deskCurrentPath: '',
     chatSessions: { [path]: { items, hasMore: false, loadingMore: false } },
+    sessionRegistryFilesByPath: sessionFiles.length ? { [path]: sessionFiles } : {},
   } as any;
 }
 
@@ -122,6 +145,94 @@ describe('selectSessionFiles', () => {
     const r2 = selectSessionFiles(sessionState([]), '/nowhere');
     expect(r1).toEqual([]);
     expect(r1).toBe(r2);
+  });
+
+  it('优先从 session registry 抽取相关文件', () => {
+    const refs = selectSessionFiles(sessionState([], '/s/registry', [{
+      fileId: 'sf_write',
+      filePath: '/workspace/draft.md',
+      label: 'draft.md',
+      ext: 'md',
+      mime: 'text/markdown',
+      origin: 'agent_write',
+      operations: ['created', 'modified'],
+      createdAt: 1234,
+      mtimeMs: 5678,
+      size: 99,
+      status: 'available',
+    }]), '/s/registry');
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      fileId: 'sf_write',
+      source: 'session-registry',
+      name: 'draft.md',
+      path: '/workspace/draft.md',
+      kind: 'markdown',
+      origin: 'agent_write',
+      operations: ['created', 'modified'],
+      timestamp: 1234,
+      version: { mtimeMs: 5678, size: 99 },
+    });
+  });
+
+  it('把 session registry 的 resource envelope 带入 FileRef', () => {
+    const refs = selectSessionFiles(sessionState([], '/s/resource', [{
+      fileId: 'sf_image',
+      filePath: '/workspace/image.png',
+      label: 'image.png',
+      ext: 'png',
+      mime: 'image/png',
+      status: 'available',
+      resource: {
+        schemaVersion: 1,
+        resourceId: 'res_sf_image',
+        name: 'studios/studio_local/resources/res_sf_image',
+        studioId: 'studio_local',
+        type: 'file',
+        source: 'session_file',
+        fileId: 'sf_image',
+        displayName: 'image.png',
+        lifecycle: { status: 'available', missingAt: null },
+        storage: { provider: 'session_file', localOnly: true },
+        links: {
+          self: '/api/resources/res_sf_image',
+          content: '/api/resources/res_sf_image/content',
+        },
+      },
+    }]), '/s/resource');
+
+    expect(refs[0].resource).toEqual({
+      resourceId: 'res_sf_image',
+      studioId: 'studio_local',
+      links: {
+        self: '/api/resources/res_sf_image',
+        content: '/api/resources/res_sf_image/content',
+      },
+    });
+  });
+
+  it('registry 与旧 blocks 指向同一 SessionFile 时不重复', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'm-file', role: 'assistant',
+        blocks: [
+          { type: 'file', fileId: 'sf_same', filePath: '/workspace/out.md', label: 'out.md', ext: 'md' },
+        ],
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items, '/s/dedupe', [{
+      fileId: 'sf_same',
+      filePath: '/workspace/out.md',
+      label: 'out.md',
+      ext: 'md',
+      origin: 'stage_files',
+      operations: ['staged'],
+    }]), '/s/dedupe');
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0].source).toBe('session-registry');
   });
 
   it('抽取 user attachments（过滤目录）', () => {
@@ -218,6 +329,50 @@ describe('selectSessionFiles', () => {
     });
   });
 
+  it('把 blocks.file 的 resource envelope 带入 FileRef', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'm-resource',
+        role: 'assistant',
+        blocks: [
+          {
+            type: 'file',
+            fileId: 'sf_generated',
+            filePath: '/generated/image.png',
+            label: 'image.png',
+            ext: 'png',
+            resource: {
+              schemaVersion: 1,
+              resourceId: 'res_sf_generated',
+              name: 'studios/studio_1/resources/res_sf_generated',
+              studioId: 'studio_1',
+              type: 'file',
+              source: 'session_file',
+              fileId: 'sf_generated',
+              lifecycle: { status: 'available', missingAt: null },
+              storage: { provider: 'session_file', localOnly: true },
+              links: {
+                self: '/api/resources/res_sf_generated',
+                content: '/api/resources/res_sf_generated/content',
+              },
+            },
+          },
+        ],
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items), '/s/1');
+
+    expect(refs[0].resource).toEqual({
+      resourceId: 'res_sf_generated',
+      studioId: 'studio_1',
+      links: {
+        self: '/api/resources/res_sf_generated',
+        content: '/api/resources/res_sf_generated/content',
+      },
+    });
+  });
+
   it('抽取 legacy artifact 对应的 session file', () => {
     const items: ChatListItem[] = [{
       type: 'message',
@@ -286,6 +441,93 @@ describe('selectSessionFiles', () => {
     }];
     const refs = selectSessionFiles(sessionState(items), '/s/1');
     expect(refs.map(r => r.name)).toEqual(['a.png', 'b.png']);
+  });
+
+  it('registry 文件和消息附件指向同一路径时只显示干净 display label', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'voice-msg',
+        role: 'user',
+        attachments: [{
+          path: '/cache/录音 6_mpyhzdno_0ad8830b.wav',
+          name: '录音 6_mpyhzdno_0ad8830b.wav',
+          isDir: false,
+        }],
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items, '/s/voice', [{
+      fileId: 'sf_voice',
+      filePath: '/cache/录音 6_mpyhzdno_0ad8830b.wav',
+      label: '录音 6.wav',
+      filename: '录音 6_mpyhzdno_0ad8830b.wav',
+      ext: 'wav',
+      mime: 'audio/wav',
+      kind: 'audio',
+      status: 'available',
+    }]), '/s/voice');
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      fileId: 'sf_voice',
+      source: 'session-registry',
+      name: '录音 6.wav',
+      path: '/cache/录音 6_mpyhzdno_0ad8830b.wav',
+      kind: 'audio',
+    });
+  });
+
+  it('会话文件列表默认排除 voice-input，但仍保留普通音频附件', () => {
+    const refs = selectSessionFiles(sessionState([], '/s/listed-voice', [{
+      fileId: 'sf_voice_input',
+      filePath: '/cache/voice-input.wav',
+      label: '录音 1.wav',
+      ext: 'wav',
+      mime: 'audio/wav',
+      kind: 'audio',
+      presentation: 'voice-input',
+      listed: false,
+      status: 'available',
+    }, {
+      fileId: 'sf_uploaded_audio',
+      filePath: '/cache/uploaded.wav',
+      label: '会议录音.wav',
+      ext: 'wav',
+      mime: 'audio/wav',
+      kind: 'audio',
+      presentation: 'attachment',
+      listed: true,
+      status: 'available',
+    }]), '/s/listed-voice');
+
+    expect(refs.map(r => r.fileId)).toEqual(['sf_uploaded_audio']);
+    expect(refs[0]).toMatchObject({
+      name: '会议录音.wav',
+      presentation: 'attachment',
+      listed: true,
+    });
+  });
+
+  it('聊天恢复用途会保留 voice-input 并携带展示语义', () => {
+    const refs = selectSessionFiles(sessionState([], '/s/chat-voice', [{
+      fileId: 'sf_voice_input',
+      filePath: '/cache/voice-input.wav',
+      label: '录音 1.wav',
+      ext: 'wav',
+      mime: 'audio/wav',
+      kind: 'audio',
+      presentation: 'voice-input',
+      listed: false,
+      status: 'available',
+    }]), '/s/chat-voice', { includeUnlisted: true });
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      fileId: 'sf_voice_input',
+      kind: 'audio',
+      presentation: 'voice-input',
+      listed: false,
+    });
   });
 
   it('跨多消息按消息顺序', () => {

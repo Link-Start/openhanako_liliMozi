@@ -1,94 +1,28 @@
+"use strict";
+
 /**
- * theme-registry.cjs — 主题元信息唯一信源
+ * theme-registry.cjs — CommonJS adapter for main.cjs / preload.cjs / Node tests.
  *
- * CJS 格式以便 main.cjs / preload.cjs 直接 require，Vite 也能 import。
- * 任何硬编码主题 id 字符串的 .ts/.tsx/.js/.cjs 都会被
- * tests/theme-registry-structural.test.js 挡住。
+ * Theme data lives in theme-registry-data.json. Renderer TypeScript imports
+ * theme-registry.ts so Vite dev never serves this CJS module to the browser.
  */
 
-const STORAGE_KEY = 'hana-theme';
-const DEFAULT_THEME = 'warm-paper';
-const AUTO_LIGHT_DEFAULT = 'warm-paper';
-const AUTO_DARK_DEFAULT = 'midnight';
-const LEGACY_THEME_ALIASES = Object.freeze({
-  'claude-design': 'new-warm-paper',
-});
+const data = require("./theme-registry-data.json");
 
-const AUTO_OPTION = Object.freeze({
-  id: 'auto',
-  i18nName: 'settings.appearance.auto',
-  i18nMode: 'settings.appearance.autoMode',
-});
+const STORAGE_KEY = data.storageKey;
+const DEFAULT_THEME = data.defaultTheme;
+const AUTO_LIGHT_DEFAULT = data.autoLightDefault;
+const AUTO_DARK_DEFAULT = data.autoDarkDefault;
+const LEGACY_THEME_ALIASES = Object.freeze({ ...data.legacyThemeAliases });
+const PAPER_TEXTURE_BLOCKED_THEME_IDS = Object.freeze([...data.paperTextureBlockedThemeIds]);
+const AUTO_OPTION = Object.freeze({ ...data.autoOption });
 
 const THEMES = Object.freeze(Object.fromEntries(
-  Object.entries({
-    'warm-paper': {
-      cssPath: 'themes/warm-paper.css',
-      backgroundColor: '#F8F5ED',
-      i18nName: 'settings.appearance.warmPaper',
-      i18nMode: 'settings.appearance.warmPaperMode',
-    },
-    'midnight': {
-      cssPath: 'themes/midnight.css',
-      backgroundColor: '#3B4A54',
-      i18nName: 'settings.appearance.midnight',
-      i18nMode: 'settings.appearance.midnightMode',
-    },
-    'high-contrast': {
-      cssPath: 'themes/high-contrast.css',
-      backgroundColor: '#FAF9F6',
-      i18nName: 'settings.appearance.highContrast',
-      i18nMode: 'settings.appearance.highContrastMode',
-    },
-    'grass-aroma': {
-      cssPath: 'themes/grass-aroma.css',
-      backgroundColor: '#F5F8F3',
-      i18nName: 'settings.appearance.grassAroma',
-      i18nMode: 'settings.appearance.grassAromaMode',
-    },
-    'contemplation': {
-      cssPath: 'themes/contemplation.css',
-      backgroundColor: '#F3F5F7',
-      i18nName: 'settings.appearance.contemplation',
-      i18nMode: 'settings.appearance.contemplationMode',
-    },
-    'absolutely': {
-      cssPath: 'themes/absolutely.css',
-      backgroundColor: '#F4F3EE',
-      i18nName: 'settings.appearance.absolutely',
-      i18nMode: 'settings.appearance.absolutelyMode',
-    },
-    'delve': {
-      cssPath: 'themes/delve.css',
-      backgroundColor: '#FFFFFF',
-      i18nName: 'settings.appearance.delve',
-      i18nMode: 'settings.appearance.delveMode',
-    },
-    'deep-think': {
-      cssPath: 'themes/deep-think.css',
-      backgroundColor: '#FCFCFD',
-      i18nName: 'settings.appearance.deepThink',
-      i18nMode: 'settings.appearance.deepThinkMode',
-    },
-    'new-warm-paper': {
-      cssPath: 'themes/new-warm-paper.css',
-      backgroundColor: '#F5EFE4',
-      i18nName: 'settings.appearance.newWarmPaper',
-      i18nMode: 'settings.appearance.newWarmPaperMode',
-    },
-    'midnight-contrast': {
-      cssPath: 'themes/midnight-contrast.css',
-      backgroundColor: '#26343D',
-      i18nName: 'settings.appearance.midnightContrast',
-      i18nMode: 'settings.appearance.midnightContrastMode',
-    },
-  }).map(([k, v]) => [k, Object.freeze(v)])
+  Object.entries(data.themes).map(([k, v]) => [k, Object.freeze({ ...v })])
 ));
 
 // Spec-required startup assertion: every theme entry must have all 4 fields.
-// Fails at module-load time (not at consumer call time) so misconfigurations
-// surface clearly in every process that requires the registry.
-// (All existing tests indirectly verify this by successfully loading the module.)
+// Fails at module-load time so misconfigurations surface clearly in every process.
 for (const [id, entry] of Object.entries(THEMES)) {
   if (!entry.cssPath || !entry.backgroundColor || !entry.i18nName || !entry.i18nMode) {
     throw new Error(`theme-registry: theme "${id}" is missing required fields (cssPath / backgroundColor / i18nName / i18nMode)`);
@@ -100,8 +34,8 @@ for (const [id, entry] of Object.entries(THEMES)) {
 
 /** 合法值原样返回（含 'auto'），非法 / null / undefined → DEFAULT_THEME。不主动覆写 localStorage。 */
 function migrateSavedTheme(raw) {
-  if (raw === 'auto') return 'auto';
-  if (typeof raw !== 'string' || raw.length === 0) return DEFAULT_THEME;
+  if (raw === "auto") return "auto";
+  if (typeof raw !== "string" || raw.length === 0) return DEFAULT_THEME;
   if (LEGACY_THEME_ALIASES[raw]) return LEGACY_THEME_ALIASES[raw];
   return THEMES[raw] ? raw : DEFAULT_THEME;
 }
@@ -110,7 +44,7 @@ function migrateSavedTheme(raw) {
  *  输出：{ stored: 应保存回 localStorage 的值, concrete: 实际渲染主题 id } */
 function resolveSavedTheme(raw, isDark) {
   const stored = migrateSavedTheme(raw);
-  if (stored === 'auto') {
+  if (stored === "auto") {
     return { stored, concrete: isDark ? AUTO_DARK_DEFAULT : AUTO_LIGHT_DEFAULT };
   }
   return { stored, concrete: stored };
@@ -129,11 +63,16 @@ function getAllUIOptions() {
   return [...themeOpts, { ...AUTO_OPTION }];
 }
 
+function isPaperTextureBlockedTheme(themeId) {
+  return PAPER_TEXTURE_BLOCKED_THEME_IDS.includes(themeId);
+}
+
 module.exports = {
   STORAGE_KEY,
   DEFAULT_THEME,
   AUTO_LIGHT_DEFAULT,
   AUTO_DARK_DEFAULT,
+  PAPER_TEXTURE_BLOCKED_THEME_IDS,
   AUTO_OPTION,
   LEGACY_THEME_ALIASES,
   THEMES,
@@ -141,4 +80,5 @@ module.exports = {
   resolveSavedTheme,
   getThemeIds,
   getAllUIOptions,
+  isPaperTextureBlockedTheme,
 };

@@ -54,7 +54,7 @@
   height: 100%;
   background: var(--accent);
   border-radius: 3px;
-  transition: width 0.3s ease;
+  transition: width var(--duration-slow) ease;
 }
 
 .action {
@@ -65,13 +65,13 @@
   background: transparent;
   border: 1px solid var(--overlay-medium, rgba(0, 0, 0, 0.12));
   border-radius: 2px;
-  cursor: pointer;
+  cursor: default;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
   font: inherit;
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
 }
 
 .action:hover {

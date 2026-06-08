@@ -14,7 +14,7 @@
   height: 100%;
   border: none;
   border-radius: var(--radius-lg);
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-fast) ease;
 }
 .overlay {
   position: absolute;
@@ -34,10 +34,7 @@
   border: 2px solid var(--border);
   border-top-color: var(--text-secondary);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
+  animation: hana-spin 0.8s linear infinite;
 }
 .retryBtn {
   padding: 6px 16px;
@@ -45,7 +42,7 @@
   border-radius: 4px;
   background: var(--bg-secondary);
   color: var(--text-primary);
-  cursor: pointer;
+  cursor: default;
   font-size: 0.8rem;
 }
 .retryBtn:hover {

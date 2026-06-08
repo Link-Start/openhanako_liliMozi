@@ -21,7 +21,7 @@
             display: flex;
             align-items: center;
             padding: 0 10px;
-            gap: 4px;
+            gap: 6px;
             position: relative;
         }
         .toolbar-left {
@@ -35,7 +35,7 @@
             border: none; background: transparent;
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; color: var(--text-muted);
+            cursor: default; color: var(--text-muted);
             transition: background 0.12s, color 0.12s;
             padding: 0;
         }
@@ -46,15 +46,87 @@
         .close-btn:hover { background: rgba(255, 59, 48, 0.12); color: #FF3B30; }
         .close-btn:active { background: rgba(255, 59, 48, 0.2); color: #FF3B30; }
         .nav-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+        .browser-tab-list {
+            flex: 1 1 auto;
+            min-width: 120px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+            -webkit-app-region: no-drag;
+        }
+        .browser-tab-list::-webkit-scrollbar { display: none; }
+        .browser-tab {
+            width: 148px;
+            max-width: 148px;
+            min-width: 88px;
+            height: 31px;
+            padding: 0 7px 0 12px;
+            border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+            background: color-mix(in srgb, var(--bg-card) 86%, transparent);
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.035);
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 0 0 auto;
+            cursor: default;
+            transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s;
+            -webkit-app-region: no-drag;
+        }
+        .browser-tab:hover {
+            color: var(--text);
+            background: var(--bg-card);
+            border-color: color-mix(in srgb, var(--border) 88%, var(--text-muted));
+        }
+        .browser-tab.active {
+            color: var(--text);
+            background: var(--bg-card);
+            border-color: color-mix(in srgb, var(--border) 82%, var(--text));
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.055);
+        }
+        .browser-tab-title {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 12.5px;
+            line-height: 1;
+            text-align: left;
+        }
+        .browser-tab-close {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            color: var(--text-light);
+            opacity: 0.72;
+        }
+        .browser-tab-close:hover {
+            opacity: 1;
+            color: var(--text);
+            background: var(--accent-light);
+        }
+        .browser-tab-close svg {
+            width: 12px;
+            height: 12px;
+        }
+        .new-tab-btn {
+            flex: 0 0 auto;
+            -webkit-app-region: no-drag;
+        }
         .toolbar-drag {
-            flex: 1; min-width: 0; height: 100%;
+            flex: 0 1 160px; min-width: 28px; height: 100%;
             display: flex; align-items: center; justify-content: center;
             -webkit-app-region: drag;
-        }
-        .page-title {
-            font-size: 12.5px; font-weight: 500; color: var(--text-light);
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-            line-height: 1; pointer-events: none;
         }
         .toolbar-right { flex-shrink: 0; }
         .stop-btn {
@@ -62,7 +134,7 @@
             border: none; background: transparent;
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; color: var(--coral);
+            cursor: default; color: var(--coral);
             transition: background 0.12s, color 0.12s;
             padding: 0;
         }

@@ -1,4 +1,5 @@
-import type { DeskFile } from '../types';
+import type { DeskFile, StudioWorkspace } from '../types';
+import type { RightWorkspaceTab } from '../types';
 
 export interface CwdSkillInfo {
   name: string;
@@ -6,6 +7,7 @@ export interface CwdSkillInfo {
   source: string;
   filePath: string;
   baseDir: string;
+  workspaceMountId?: string | null;
 }
 
 export interface WorkspaceDeskState {
@@ -17,8 +19,10 @@ export interface WorkspaceDeskState {
   deskJianContent: string | null;
   cwdSkills: CwdSkillInfo[];
   cwdSkillsOpen: boolean;
-  previewOpen: boolean;
   jianDrawerOpen: boolean;
+  rightWorkspaceTab: RightWorkspaceTab;
+  jianView: string;
+  previewOpen: boolean;
   openTabs: string[];
   activeTabId: string | null;
 }
@@ -29,12 +33,18 @@ export interface DeskSlice {
   deskCurrentPath: string;
   deskTreeFilesByPath: Record<string, DeskFile[]>;
   deskExpandedPaths: string[];
+  deskDirtyTreePaths: string[];
   deskSelectedPath: string;
   deskJianContent: string | null;
   cwdSkills: CwdSkillInfo[];
   cwdSkillsOpen: boolean;
   homeFolder: string | null;
   selectedFolder: string | null;
+  selectedWorkspaceMountId: string | null;
+  selectedWorkspaceLabel: string | null;
+  deskWorkspaceMountId: string | null;
+  deskWorkspaceLabel: string | null;
+  studioWorkspaces: StudioWorkspace[];
   workspaceFolders: string[];
   cwdHistory: string[];
   workspaceDeskStateByRoot: Record<string, WorkspaceDeskState>;
@@ -46,11 +56,16 @@ export interface DeskSlice {
   setDeskCurrentPath: (path: string) => void;
   setDeskTreeFiles: (subdir: string, files: DeskFile[]) => void;
   setDeskExpandedPaths: (paths: string[]) => void;
+  markDeskTreeDirty: (subdir: string) => void;
+  clearDeskTreeDirty: (subdirs: string[]) => void;
   setDeskSelectedPath: (path: string) => void;
   clearDeskTree: () => void;
   setDeskJianContent: (content: string | null) => void;
   setHomeFolder: (folder: string | null) => void;
   setSelectedFolder: (folder: string | null) => void;
+  setSelectedWorkspaceMount: (mountId: string | null, label?: string | null) => void;
+  setDeskWorkspaceMount: (mountId: string | null, label?: string | null) => void;
+  setStudioWorkspaces: (workspaces: StudioWorkspace[]) => void;
   setWorkspaceFolders: (folders: string[]) => void;
   setCwdHistory: (history: string[]) => void;
   setWorkspaceDeskState: (root: string, state: WorkspaceDeskState) => void;
@@ -64,12 +79,18 @@ export const createDeskSlice = (
   deskCurrentPath: '',
   deskTreeFilesByPath: {},
   deskExpandedPaths: [],
+  deskDirtyTreePaths: [],
   deskSelectedPath: '',
   deskJianContent: null,
   cwdSkills: [],
   cwdSkillsOpen: false,
   homeFolder: null,
   selectedFolder: null,
+  selectedWorkspaceMountId: null,
+  selectedWorkspaceLabel: null,
+  deskWorkspaceMountId: null,
+  deskWorkspaceLabel: null,
+  studioWorkspaces: [],
   workspaceFolders: [],
   cwdHistory: [],
   workspaceDeskStateByRoot: {},
@@ -86,15 +107,37 @@ export const createDeskSlice = (
     },
   })),
   setDeskExpandedPaths: (paths) => set({ deskExpandedPaths: paths }),
+  markDeskTreeDirty: (subdir) => set((s) => {
+    const normalized = (subdir || '').replace(/^\/+|\/+$/g, '');
+    return s.deskDirtyTreePaths.includes(normalized)
+      ? {}
+      : { deskDirtyTreePaths: [...s.deskDirtyTreePaths, normalized] };
+  }),
+  clearDeskTreeDirty: (subdirs) => set((s) => {
+    const clearSet = new Set(subdirs.map(subdir => (subdir || '').replace(/^\/+|\/+$/g, '')));
+    if (clearSet.size === 0) return {};
+    const next = s.deskDirtyTreePaths.filter(subdir => !clearSet.has(subdir));
+    return next.length === s.deskDirtyTreePaths.length ? {} : { deskDirtyTreePaths: next };
+  }),
   setDeskSelectedPath: (path) => set({ deskSelectedPath: path }),
   clearDeskTree: () => set({
     deskTreeFilesByPath: {},
     deskExpandedPaths: [],
+    deskDirtyTreePaths: [],
     deskSelectedPath: '',
   }),
   setDeskJianContent: (content) => set({ deskJianContent: content }),
   setHomeFolder: (folder) => set({ homeFolder: folder }),
   setSelectedFolder: (folder) => set({ selectedFolder: folder }),
+  setSelectedWorkspaceMount: (mountId, label = null) => set({
+    selectedWorkspaceMountId: mountId,
+    selectedWorkspaceLabel: label ?? null,
+  }),
+  setDeskWorkspaceMount: (mountId, label = null) => set({
+    deskWorkspaceMountId: mountId,
+    deskWorkspaceLabel: label ?? null,
+  }),
+  setStudioWorkspaces: (workspaces) => set({ studioWorkspaces: workspaces }),
   setWorkspaceFolders: (folders) => set({ workspaceFolders: folders }),
   setCwdHistory: (history) => set({ cwdHistory: history }),
   setWorkspaceDeskState: (root, state) => set((s) => ({

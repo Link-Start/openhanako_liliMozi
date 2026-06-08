@@ -3,6 +3,7 @@
  */
 
 import { memo, useState, useCallback } from 'react';
+import { Collapse } from '@/ui';
 import styles from './Chat.module.css';
 
 interface Props {
@@ -23,9 +24,9 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, sealed }: Pr
           <>{t('thinking.active')}<span className={styles.thinkingDots} /></>
         )}
       </summary>
-      {open && content && (
+      <Collapse open={open && !!content}>
         <div className={styles.thinkingBlockBody}>{content}</div>
-      )}
+      </Collapse>
     </details>
   );
 });

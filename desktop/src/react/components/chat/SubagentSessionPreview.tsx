@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { subscribeStreamKey } from '../../services/stream-key-dispatcher';
 import { renderMarkdown } from '../../utils/markdown';
+import { findOpenToolIndex, toolCallFromStartEvent, toolCallIdFromEvent } from '../../utils/tool-call-identity';
 import type { ChatListItem, ChatMessage, ContentBlock } from '../../stores/chat-types';
 import { useStore } from '../../stores';
 import { loadMessages } from '../../stores/session-actions';
+import { useContinuousBottomScroll } from '../../hooks/use-continuous-bottom-scroll';
 import { ChatTranscript } from './ChatTranscript';
 import styles from './Chat.module.css';
 
@@ -15,6 +17,7 @@ interface Props {
   sessionPath: string | null;
   agentId?: string | null;
   streamStatus: 'running' | 'done' | 'failed' | 'aborted';
+  summary?: string | null;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
 }
 
@@ -48,7 +51,7 @@ function upsertBlock(
   return insertAtStart ? [nextBlock, ...blocks] : [...blocks, nextBlock];
 }
 
-export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamStatus, scrollContainerRef }: Props) {
+export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamStatus, summary, scrollContainerRef }: Props) {
   const entry = useStore(s => s.subagentPreviewByTaskId[taskId]);
   const session = useStore(s => (sessionPath ? s.chatSessions[sessionPath] ?? null : null));
   const items = session?.items ?? EMPTY_ITEMS;
@@ -56,7 +59,12 @@ export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamSta
   const [streamMessage, setStreamMessage] = useState<ChatMessage | null>(null);
   const [streamRevision, setStreamRevision] = useState(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const stickToBottomRef = useRef(true);
+  const bottomScroll = useContinuousBottomScroll({
+    scrollRef: scrollContainerRef,
+    contentRef,
+    active: !!sessionPath,
+    stickyThreshold: PREVIEW_STICKY_THRESHOLD,
+  });
   const activeStreamTurnRef = useRef(0);
   const pendingCleanupTurnRef = useRef<number | null>(null);
 
@@ -66,53 +74,23 @@ export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamSta
     return activeStreamTurnRef.current;
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [scrollContainerRef]);
-
-  useEffect(() => {
-    stickToBottomRef.current = true;
+  // Switch landing in the layout phase (pre-paint). Only arm an instant landing when the target
+  // session has no messages yet, so the first async hydrate (0 -> N) snaps without animating;
+  // an already-loaded session lands via the instant scroll and later growth = streaming (smooth follow).
+  useLayoutEffect(() => {
+    const alreadyHydrated = !!sessionPath
+      && (useStore.getState().chatSessions[sessionPath]?.items?.length ?? 0) > 0;
+    if (sessionPath && !alreadyHydrated) bottomScroll.armInstantLanding();
+    bottomScroll.scrollToBottom({ mode: 'instant', forceSticky: true });
     activeStreamTurnRef.current = 0;
     pendingCleanupTurnRef.current = null;
     setStreamMessage(null);
     setStreamRevision(0);
-  }, [sessionPath]);
+  }, [bottomScroll, sessionPath]);
 
   useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-
-    const syncStickyState = () => {
-      stickToBottomRef.current =
-        el.scrollHeight - el.scrollTop - el.clientHeight < PREVIEW_STICKY_THRESHOLD;
-    };
-
-    syncStickyState();
-    el.addEventListener('scroll', syncStickyState, { passive: true });
-    return () => el.removeEventListener('scroll', syncStickyState);
-  }, [scrollContainerRef, sessionPath]);
-
-  useEffect(() => {
-    if (!stickToBottomRef.current) return;
-    const raf = window.requestAnimationFrame(scrollToBottom);
-    return () => window.cancelAnimationFrame(raf);
-  }, [items.length, entry?.loading, streamStatus, streamRevision, scrollToBottom]);
-
-  useEffect(() => {
-    const content = contentRef.current;
-    const ResizeObserverImpl = window.ResizeObserver;
-    if (!content || !ResizeObserverImpl) return;
-
-    const ro = new ResizeObserverImpl(() => {
-      if (stickToBottomRef.current) {
-        scrollToBottom();
-      }
-    });
-    ro.observe(content);
-    return () => ro.disconnect();
-  }, [scrollToBottom, items.length, streamRevision]);
+    bottomScroll.followBottom();
+  }, [bottomScroll, items.length, entry?.loading, streamStatus, streamRevision]);
 
   // streamMessage 的清理完全交给 turn_end 事件（下方 subscribeStreamKey 分支中处理）。
   // 不能用 hasAssistantHistory(items) 做被动推断：多轮 turn 场景下 items 永远有上一轮的
@@ -242,15 +220,14 @@ export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamSta
           updateStreamMessage((message) => {
             const blocks = message.blocks || [];
             const textBlock = blocks.find((block) => block.type === 'text') as (Extract<ContentBlock, { type: 'text' }> & { _raw?: string }) | undefined;
-            // 维护纯文本累加器 _raw，避免每次 delta 都从 HTML 反向解析
-            const prevText = textBlock?._raw ?? '';
+            const prevText = textBlock?.source ?? textBlock?._raw ?? '';
             const nextText = prevText + (event.delta || '');
             return {
               ...message,
               blocks: upsertBlock(
                 blocks,
                 (block) => block.type === 'text',
-                { type: 'text', html: renderMarkdown(nextText), _raw: nextText } as any,
+                { type: 'text', html: renderMarkdown(nextText), source: nextText },
               ),
             };
           });
@@ -267,12 +244,12 @@ export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamSta
               const group = blocks[actualIndex] as Extract<ContentBlock, { type: 'tool_group' }>;
               blocks[actualIndex] = {
                 ...group,
-                tools: [...group.tools, { name: event.name, args: event.args, done: false, success: false }],
+                tools: [...group.tools, toolCallFromStartEvent(event)],
               };
             } else {
               blocks.push({
                 type: 'tool_group',
-                tools: [{ name: event.name, args: event.args, done: false, success: false }],
+                tools: [toolCallFromStartEvent(event)],
                 collapsed: false,
               });
             }
@@ -286,11 +263,13 @@ export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamSta
             for (let i = blocks.length - 1; i >= 0; i -= 1) {
               const block = blocks[i];
               if (block.type !== 'tool_group') continue;
-              const toolIndex = block.tools.findIndex((tool) => tool.name === event.name && !tool.done);
+              const toolIndex = findOpenToolIndex(block.tools, event);
               if (toolIndex < 0) continue;
               const tools = [...block.tools];
+              const id = toolCallIdFromEvent(event);
               tools[toolIndex] = {
                 ...tools[toolIndex],
+                ...(id ? { id } : {}),
                 done: true,
                 success: !!event.success,
                 details: event.details,
@@ -346,18 +325,23 @@ export function SubagentSessionPreview({ taskId, sessionPath, agentId, streamSta
     ? [...items, { type: 'message' as const, data: streamMessage }]
     : items;
 
+  const t = window.t ?? ((k: string) => k);
+
   if (!sessionPath) {
-    return <div>正在连接 subagent session...</div>;
+    if (streamStatus !== 'running') {
+      return <div>{summary || (streamStatus === 'failed' ? t('chat.subagentPreview.historyUnrecoverable') : t('chat.subagentPreview.noSession'))}</div>;
+    }
+    return <div>{t('chat.subagentPreview.connecting')}</div>;
   }
 
   return (
     <div ref={contentRef} className={styles.subagentPreviewTranscript}>
       {entry?.loading && mergedItems.length === 0 ? (
-        <div>正在加载会话...</div>
+        <div>{t('chat.subagentPreview.loadingSession')}</div>
       ) : streamStatus === 'running' && mergedItems.length === 0 ? (
-        <div>正在等待会话内容...</div>
+        <div>{t('chat.subagentPreview.waitingContent')}</div>
       ) : mergedItems.length === 0 ? (
-        <div>暂无会话内容</div>
+        <div>{t('chat.subagentPreview.noContent')}</div>
       ) : (
         <ChatTranscript
           items={mergedItems}

@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import registry from '../../../shared/theme-registry.cjs';
+import registry from '../../../shared/theme-registry';
 import settingsStyles from '../../settings/Settings.module.css';
 import { OB_THEMES, themeKey } from '../constants';
 import { StepContainer } from '../onboarding-ui';

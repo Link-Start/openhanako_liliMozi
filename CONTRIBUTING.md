@@ -1,17 +1,17 @@
-# Contributing to Hanako
+# Contributing to HanaAgent
 
-感谢你对 Hanako 的关注！
+感谢你对 HanaAgent 的关注！
 
 ## 开发环境
 
 ### 前置条件
 
-- Node.js >= 20
-- npm >= 10
+- Node.js >= 24.12 (see package.json engines)
+- npm (latest compatible with your Node.js version)
 - C/C++ 编译工具链（编译 `better-sqlite3` native module 需要）：
   - **macOS**：`xcode-select --install`（安装 Command Line Tools）
   - **Linux**：`sudo apt install build-essential python3`（Debian/Ubuntu）
-  - **Windows**：`npm install -g windows-build-tools` 或安装 Visual Studio Build Tools
+  - **Windows**：安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)（选择 "Desktop development with C++" 工作负载）
 
 ### 本地运行
 

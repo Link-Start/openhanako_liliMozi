@@ -1,8 +1,9 @@
 import { hanaFetch } from '../hooks/use-hana-fetch';
-import type { PreviewItem, TextFileSnapshot } from '../types';
+import { hasServerConnection } from '../services/server-connection';
+import type { PreviewItem, RightWorkspaceTab } from '../types';
+import { readFileForPreviewType } from '../utils/preview-file-content';
 import { useStore } from './index';
-// @ts-expect-error — shared JS module
-import { normalizeWorkspacePath } from '../../../../shared/workspace-history.js';
+import { normalizeWorkspacePath } from '../../../../shared/workspace-history.ts';
 
 interface PersistedPreviewTab {
   id: string;
@@ -16,9 +17,13 @@ interface PersistedPreviewTab {
 
 export interface PersistedWorkspaceUiState {
   updatedAt?: number;
+  /** Legacy read-only field from the old folder-navigation desk. New writes omit it. */
   deskCurrentPath?: string;
   deskExpandedPaths?: string[];
   deskSelectedPath?: string;
+  rightWorkspaceTab?: RightWorkspaceTab;
+  jianView?: string;
+  jianDrawerOpen?: boolean;
   previewOpen?: boolean;
   openTabs?: string[];
   activeTabId?: string | null;
@@ -26,7 +31,9 @@ export interface PersistedWorkspaceUiState {
 }
 
 const SAVE_DEBOUNCE_MS = 350;
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export type WorkspaceUiSurface = 'electron' | 'pwa';
 
 function normalizeRoot(root: string | null | undefined): string | null {
   return normalizeWorkspacePath(root);
@@ -65,6 +72,23 @@ function previewTabFromItem(root: string, item: PreviewItem): PersistedPreviewTa
   };
 }
 
+export function resolveWorkspaceUiSurface(): WorkspaceUiSurface {
+  if (typeof document !== 'undefined' && document.documentElement.getAttribute('data-platform') === 'web') {
+    return 'pwa';
+  }
+  if (typeof window !== 'undefined' && window.location?.pathname?.startsWith('/mobile')) {
+    return 'pwa';
+  }
+  return 'electron';
+}
+
+function workspaceUiStateUrl(root: string): string {
+  const params = new URLSearchParams();
+  params.set('workspace', root);
+  params.set('surface', resolveWorkspaceUiSurface());
+  return `/api/preferences/workspace-ui-state?${params.toString()}`;
+}
+
 export function buildPersistedWorkspaceUiState(root: string): PersistedWorkspaceUiState {
   const state = useStore.getState();
   const previewItemsById = new Map(state.previewItems.map(item => [item.id, item]));
@@ -80,9 +104,11 @@ export function buildPersistedWorkspaceUiState(root: string): PersistedWorkspace
     : (openTabs[0] || null);
 
   return {
-    deskCurrentPath: normalizeSubdir(state.deskCurrentPath),
     deskExpandedPaths: [...(state.deskExpandedPaths || [])].map(normalizeSubdir).filter(Boolean),
     deskSelectedPath: normalizeSubdir(state.deskSelectedPath),
+    rightWorkspaceTab: state.rightWorkspaceTab,
+    jianView: state.jianView,
+    jianDrawerOpen: !!state.jianDrawerOpen,
     previewOpen: !!state.previewOpen,
     openTabs,
     activeTabId,
@@ -93,36 +119,15 @@ export function buildPersistedWorkspaceUiState(root: string): PersistedWorkspace
 export async function loadPersistedWorkspaceUiState(root: string): Promise<PersistedWorkspaceUiState | null> {
   const normalized = normalizeRoot(root);
   const state = useStore.getState();
-  if (!normalized || !state.serverPort) return null;
+  if (!normalized || !hasServerConnection(state)) return null;
   try {
-    const res = await hanaFetch(`/api/preferences/workspace-ui-state?workspace=${encodeURIComponent(normalized)}`);
+    const res = await hanaFetch(workspaceUiStateUrl(normalized));
     const data = await res.json().catch(() => null);
     return data?.state && typeof data.state === 'object' ? data.state as PersistedWorkspaceUiState : null;
   } catch (err) {
     console.warn('[workspace-ui-state] load failed:', err);
     return null;
   }
-}
-
-async function readPreviewContent(filePath: string, type: string): Promise<Pick<PreviewItem, 'content' | 'fileVersion'> | null> {
-  const platform = window.platform;
-  if (!platform) return null;
-  if (type === 'docx') {
-    const content = await platform.readDocxHtml?.(filePath);
-    return content == null ? null : { content };
-  }
-  if (type === 'xlsx') {
-    const content = await platform.readXlsxHtml?.(filePath);
-    return content == null ? null : { content };
-  }
-  if (type === 'pdf') {
-    const content = await platform.readFileBase64?.(filePath);
-    return content == null ? null : { content };
-  }
-  const snapshot = await platform.readFileSnapshot?.(filePath) as TextFileSnapshot | null | undefined;
-  if (snapshot) return { content: snapshot.content, fileVersion: snapshot.version };
-  const content = await platform.readFile?.(filePath);
-  return content == null ? null : { content };
 }
 
 export async function hydratePersistedPreviewItems(
@@ -139,7 +144,7 @@ export async function hydratePersistedPreviewItems(
     if (!filePath || !tab.id) continue;
     try {
       const type = tab.type || 'file-info';
-      const read = await readPreviewContent(filePath, type);
+      const read = await readFileForPreviewType(filePath, type);
       if (!read) continue;
       items.push({
         id: tab.id,
@@ -160,23 +165,31 @@ export async function hydratePersistedPreviewItems(
 
 export function schedulePersistCurrentWorkspaceUiState(root?: string | null): void {
   const normalized = normalizeRoot(root ?? useStore.getState().deskBasePath);
-  if (!normalized || !useStore.getState().serverPort) return;
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    void persistCurrentWorkspaceUiStateNow(normalized);
+  if (!normalized || !hasServerConnection(useStore.getState())) return;
+  const state = buildPersistedWorkspaceUiState(normalized);
+  const existing = saveTimers.get(normalized);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    saveTimers.delete(normalized);
+    void persistWorkspaceUiState(normalized, state);
   }, SAVE_DEBOUNCE_MS);
+  saveTimers.set(normalized, timer);
 }
 
 export async function persistCurrentWorkspaceUiStateNow(root?: string | null): Promise<void> {
   const normalized = normalizeRoot(root ?? useStore.getState().deskBasePath);
-  if (!normalized || !useStore.getState().serverPort) return;
+  if (!normalized || !hasServerConnection(useStore.getState())) return;
   const state = buildPersistedWorkspaceUiState(normalized);
+  await persistWorkspaceUiState(normalized, state);
+}
+
+async function persistWorkspaceUiState(root: string, state: PersistedWorkspaceUiState): Promise<void> {
+  const surface = resolveWorkspaceUiSurface();
   try {
     await hanaFetch('/api/preferences/workspace-ui-state', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspace: normalized, state }),
+      body: JSON.stringify({ workspace: root, surface, state }),
     });
   } catch (err) {
     console.warn('[workspace-ui-state] save failed:', err);

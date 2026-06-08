@@ -52,7 +52,7 @@ function providerSummary(overrides: Partial<ProviderSummary>): ProviderSummary {
 
 describe('ApiKeyCredentials', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mocks.hanaFetch.mockReset();
     mocks.hanaFetch.mockResolvedValue(jsonResponse({ ok: true }));
   });
 
@@ -114,6 +114,97 @@ describe('ApiKeyCredentials', () => {
       base_url: 'https://api.groq.com/openai/v1',
       api: 'openai-completions',
       api_key: 'saved-groq-key',
+    });
+  });
+
+  it('reveals a masked saved api key through the explicit provider endpoint', async () => {
+    const onRefresh = vi.fn(async () => {});
+    mocks.hanaFetch.mockResolvedValueOnce(jsonResponse({ api_key: 'sk-real-provider-key' }));
+
+    const { container } = render(
+      <ApiKeyCredentials
+        providerId="deepseek"
+        summary={providerSummary({ api_key: '********', has_credentials: true })}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector('input[type="password"]')).toHaveValue('********'));
+    const revealButton = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent === 'settings.api.showKey') as HTMLButtonElement | undefined;
+
+    expect(revealButton).toBeTruthy();
+    fireEvent.click(revealButton as HTMLButtonElement);
+
+    await waitFor(() => expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/providers/deepseek/api-key'));
+    await waitFor(() => expect(container.querySelector('input[type="text"]')).toHaveValue('sk-real-provider-key'));
+  });
+
+  it('saves discovered Gemini models during preset setup instead of static defaults', async () => {
+    const onRefresh = vi.fn(async () => {});
+    mocks.hanaFetch
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({
+        models: [
+          {
+            id: 'gemini-3-pro-preview',
+            name: 'Gemini 3 Pro Preview',
+            context: 1048576,
+            maxOutput: 65536,
+          },
+          { id: 'gemini-3-flash-preview' },
+        ],
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    const { container } = render(
+      <ApiKeyCredentials
+        providerId="gemini"
+        summary={providerSummary({
+          display_name: 'Gemini',
+          base_url: '',
+          api: '',
+          models: [],
+        })}
+        isPresetSetup
+        presetInfo={{
+          label: 'Gemini',
+          value: 'gemini',
+          url: 'https://generativelanguage.googleapis.com/v1beta',
+          api: 'google-generative-ai',
+        }}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    const input = container.querySelector('input[type="password"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'gemini-key' } });
+    const saveButton = container.querySelector('button[title="settings.providers.verifyConnection"]') as HTMLButtonElement;
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(mocks.hanaFetch).toHaveBeenCalledWith(
+      '/api/config',
+      expect.objectContaining({ method: 'PUT' }),
+    ));
+    expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/providers/fetch-models', expect.objectContaining({
+      method: 'POST',
+    }));
+
+    const configCall = mocks.hanaFetch.mock.calls.find(([path]) => path === '/api/config');
+    const body = JSON.parse(String((configCall?.[1] as RequestInit).body));
+    expect(body.providers.gemini).toEqual({
+      base_url: 'https://generativelanguage.googleapis.com/v1beta',
+      api_key: 'gemini-key',
+      api: 'google-generative-ai',
+      models: [
+        {
+          id: 'gemini-3-pro-preview',
+          name: 'Gemini 3 Pro Preview',
+          context: 1048576,
+          maxOutput: 65536,
+        },
+        'gemini-3-flash-preview',
+      ],
     });
   });
 });

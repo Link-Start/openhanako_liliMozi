@@ -28,6 +28,14 @@ const CRITICAL_BUNDLED_FILES = [
 ];
 
 const DEFAULT_BACKOFF_MS = [200, 500, 1000, 2000, 4000, 8000];
+// 启动期望窗口。bundle 越打越大，Windows + Defender 实时扫描每个被 require 的
+// 文件让 cold start 经常突破 60s（#719 / #736），90s 给一次合理 buffer。
+const SERVER_INFO_FIRST_WAIT_MS = 90_000;
+// 超过 first deadline 后，看到任何 stdout 进度就再延这么久。bootstrap.js 用
+// worker_threads 跑独立 keepalive（5s 周期），即使主线程被 import 阻塞也能持续
+// 出信号，180s 是稳健的安全网。
+const SERVER_INFO_PROGRESS_GRACE_MS = 180_000;
+const SERVER_INFO_MAX_WAIT_MS = 5 * 60_000;
 
 /**
  * 校验打包模式下 server/node_modules/ 中关键 external 包是否齐全。
@@ -98,9 +106,118 @@ function isModuleResolutionError(stderrLogs) {
   return null;
 }
 
+function parsePortInUseStartupError(stderrLogs) {
+  if (!Array.isArray(stderrLogs) || stderrLogs.length === 0) return null;
+  const joined = stderrLogs.join("");
+  const marker = "[server] startup-error ";
+  const markerIndex = joined.indexOf(marker);
+  if (markerIndex >= 0) {
+    const afterMarker = joined.slice(markerIndex + marker.length);
+    const line = afterMarker.split(/\r?\n/, 1)[0]?.trim();
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed?.code === "PORT_IN_USE" || parsed?.code === "LISTEN_PERMISSION_DENIED") {
+        return normalizeListenStartupPayload(parsed);
+      }
+    } catch {}
+  }
+
+  const eaddrMatch = joined.match(/EADDRINUSE[^,\n]*?(?:address already in use\s*)?([^\s:]+):(\d+)/i);
+  if (eaddrMatch) return normalizeListenStartupPayload({
+    code: "PORT_IN_USE",
+    host: eaddrMatch[1],
+    port: Number(eaddrMatch[2]),
+    networkMode: "unknown",
+    suggestions: [],
+  });
+
+  const eaccesMatch = joined.match(/(?:EACCES|EPERM)[^,\n]*?(?:(?:permission denied|operation not permitted)\s*)?([^\s:]+):(\d+)/i);
+  if (!eaccesMatch) return null;
+  return normalizeListenStartupPayload({
+    code: "LISTEN_PERMISSION_DENIED",
+    host: eaccesMatch[1],
+    port: Number(eaccesMatch[2]),
+    networkMode: "unknown",
+    suggestions: [],
+  });
+}
+
+function extractRootServerStartupError(stderrLogs) {
+  const listenError = parsePortInUseStartupError(stderrLogs);
+  if (listenError) {
+    const suggestions = Array.isArray(listenError.suggestions) && listenError.suggestions.length
+      ? ` Suggestions: ${listenError.suggestions.join(" ")}`
+      : "";
+    const unknownCause = listenError.networkMode === "unknown"
+      ? (listenError.code === "PORT_IN_USE" ? " (EADDRINUSE)" : " (EACCES)")
+      : "";
+    const detail = listenError.code === "PORT_IN_USE"
+      ? "is already in use"
+      : "cannot be listened on";
+    return `${listenError.code}${unknownCause}: ${listenError.host}:${listenError.port} ${detail} (network mode: ${listenError.networkMode}).${suggestions}`;
+  }
+
+  if (!Array.isArray(stderrLogs) || stderrLogs.length === 0) return null;
+  const listenLine = stderrLogs
+    .join("")
+    .split(/\r?\n/)
+    .map(line => line.replace(/^\[stderr\]\s*/, "").trim())
+    .find(line => /EADDRINUSE|EACCES/i.test(line));
+  return listenLine || null;
+}
+
+function normalizeListenStartupPayload(value) {
+  if (!value || (value.code !== "PORT_IN_USE" && value.code !== "LISTEN_PERMISSION_DENIED")) return null;
+  const port = Number(value.port);
+  return {
+    code: value.code,
+    host: typeof value.host === "string" && value.host ? value.host : "unknown",
+    port: Number.isInteger(port) ? port : null,
+    networkMode: typeof value.networkMode === "string" && value.networkMode ? value.networkMode : "unknown",
+    listenHost: typeof value.listenHost === "string" && value.listenHost ? value.listenHost : undefined,
+    suggestions: Array.isArray(value.suggestions)
+      ? value.suggestions.filter(item => typeof item === "string" && item.trim()).map(item => item.trim())
+      : [],
+  };
+}
+
+/**
+ * Server readiness has two clocks:
+ * - firstDeadlineMs: the normal fast-path deadline.
+ * - maxWaitMs/progressGraceMs: the slow-start guard for Windows update/cold-start cases.
+ *
+ * After the first deadline, a live child may keep initializing only if it has
+ * produced recent output. This keeps slow imports from being misreported as a
+ * launch failure while still bounding truly stuck processes.
+ */
+function shouldKeepWaitingForServerInfo({
+  nowMs,
+  startedAtMs,
+  firstDeadlineMs,
+  lastProgressAtMs,
+  childAlive,
+  progressGraceMs = SERVER_INFO_PROGRESS_GRACE_MS,
+  maxWaitMs = SERVER_INFO_MAX_WAIT_MS,
+}) {
+  if (!Number.isFinite(nowMs) || !Number.isFinite(startedAtMs) || !Number.isFinite(firstDeadlineMs)) {
+    return false;
+  }
+  if (nowMs <= firstDeadlineMs) return true;
+  if (!childAlive) return false;
+  if (nowMs - startedAtMs >= maxWaitMs) return false;
+  if (!Number.isFinite(lastProgressAtMs)) return false;
+  return nowMs - lastProgressAtMs <= progressGraceMs;
+}
+
 module.exports = {
   CRITICAL_BUNDLED_FILES,
   CRITICAL_BUNDLED_EXTERNALS,
+  SERVER_INFO_FIRST_WAIT_MS,
+  SERVER_INFO_PROGRESS_GRACE_MS,
+  SERVER_INFO_MAX_WAIT_MS,
   ensureServerFilesReady,
   isModuleResolutionError,
+  parsePortInUseStartupError,
+  extractRootServerStartupError,
+  shouldKeepWaitingForServerInfo,
 };

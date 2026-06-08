@@ -1,5 +1,7 @@
 # Security Policy
 
+This project is now marketed as HanaAgent. During the rename transition, the repository and security-reporting URLs intentionally remain on the legacy `openhanako` GitHub path.
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please report it through GitHub:

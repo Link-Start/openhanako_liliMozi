@@ -16,10 +16,10 @@ describe('loadMediaSource', () => {
   afterEach(() => { delete (window as any).platform; });
 
   it('image: source=desk 走 getFileUrl（不再整文件 base64）', async () => {
-    const ref: FileRef = { id: '1', kind: 'image', source: 'desk', name: 'a.png', path: '/a.png', ext: 'png' };
+    const ref: FileRef = { id: '1', kind: 'image', source: 'desk', name: 'a.png', path: '/a.png', ext: 'png', version: { mtimeMs: 11, size: 22 } };
     const src = await loadMediaSource(ref);
     expect((window as any).platform.getFileUrl).toHaveBeenCalledWith('/a.png');
-    expect(src.url).toBe('file:///MOCK/a.png');
+    expect(src.url).toBe('file:///MOCK/a.png?v=11-22');
     expect((window as any).platform.readFileBase64).not.toHaveBeenCalled();
   });
 

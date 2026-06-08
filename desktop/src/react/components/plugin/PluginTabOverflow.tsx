@@ -5,8 +5,9 @@
  * in the visible tab bar area, plus hidden (unpinned) plugin tabs.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import type { TabType } from '../../types';
+import { AnchoredPortal } from '../../ui';
 import s from './PluginTabOverflow.module.css';
 
 declare function t(key: string, vars?: Record<string, string | number>): string;
@@ -27,16 +28,7 @@ interface Props {
 
 export function PluginTabOverflow({ tabs, currentTab, onSelect, onPin, onContextMenu }: Props) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   if (tabs.length === 0) return null;
 
@@ -45,8 +37,10 @@ export function PluginTabOverflow({ tabs, currentTab, onSelect, onPin, onContext
   const hiddenTabs = tabs.filter(tab => tab.hidden);
 
   return (
-    <div className={s.overflowWrap} ref={wrapRef}>
+    <div className={s.overflowWrap}>
       <button
+        type="button"
+        ref={triggerRef}
         className={`${s.overflowBtn}${open || hasActive ? ` ${s.overflowBtnActive}` : ''}`}
         title={t('channel.moreTabs')}
         onClick={() => setOpen(v => !v)}
@@ -55,10 +49,17 @@ export function PluginTabOverflow({ tabs, currentTab, onSelect, onPin, onContext
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      {open && (
-        <div className={s.dropdown}>
+      <AnchoredPortal
+        open={open}
+        anchorRef={triggerRef}
+        className={s.dropdown}
+        minWidth={140}
+        onClose={() => setOpen(false)}
+        role="menu"
+      >
           {normalTabs.map(tab => (
             <button
+              type="button"
               key={tab.id}
               className={`${s.dropdownItem}${tab.id === currentTab ? ` ${s.dropdownItemActive}` : ''}`}
               onClick={() => { onSelect(tab.id); setOpen(false); }}
@@ -73,6 +74,7 @@ export function PluginTabOverflow({ tabs, currentTab, onSelect, onPin, onContext
           {hiddenTabs.map(tab => (
             <div key={tab.id} className={s.dropdownRow}>
               <button
+                type="button"
                 className={`${s.dropdownItem} ${s.dropdownItemHidden}`}
                 onClick={() => { onSelect(tab.id); setOpen(false); }}
               >
@@ -80,8 +82,9 @@ export function PluginTabOverflow({ tabs, currentTab, onSelect, onPin, onContext
               </button>
               {onPin && (
                 <button
+                  type="button"
                   className={s.pinBtn}
-                  title="固定到标签栏"
+                  title={t('plugin.tab.pinToBar')}
                   onClick={(e) => { e.stopPropagation(); onPin(tab.id); setOpen(false); }}
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -91,8 +94,7 @@ export function PluginTabOverflow({ tabs, currentTab, onSelect, onPin, onContext
               )}
             </div>
           ))}
-        </div>
-      )}
+      </AnchoredPortal>
     </div>
   );
 }

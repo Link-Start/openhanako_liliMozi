@@ -3,6 +3,7 @@
  */
 
 import { memo, useState, useCallback } from 'react';
+import { Collapse } from '@/ui';
 import { moodLabel } from '../../utils/message-parser';
 import styles from './Chat.module.css';
 
@@ -21,9 +22,9 @@ export const MoodBlock = memo(function MoodBlock({ yuan, text }: Props) {
         <span className={`${styles.moodArrow}${open ? ` ${styles.moodArrowOpen}` : ''}`}>›</span>
         {' '}{moodLabel(yuan)}
       </div>
-      {open && (
+      <Collapse open={open}>
         <div className={styles.moodBlock}>{text}</div>
-      )}
+      </Collapse>
     </div>
   );
 });

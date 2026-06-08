@@ -15,35 +15,43 @@ function makeSlice(initial?: Partial<SliceState>): SliceState {
   });
 }
 
-describe('input-slice quotedSelection', () => {
+describe('input-slice quoted selections', () => {
   let slice: SliceState;
   beforeEach(() => { slice = makeSlice(); });
 
-  it('初始状态 quotedSelection 为 null', () => {
-    expect(slice.quotedSelection).toBeNull();
+  it('初始状态没有候选选区和已加入引用', () => {
+    expect(slice.quoteCandidate).toBeNull();
+    expect(slice.quotedSelections).toEqual([]);
   });
-  it('setQuotedSelection 设置引用', () => {
+  it('setQuoteCandidate 设置悬浮引用候选，不加入引用列表', () => {
     const sel = {
       text: '玻色子',
       sourceTitle: '百科全书',
+      sourceKind: 'preview',
       sourceFilePath: '/path/to/file.md',
       lineStart: 12,
       lineEnd: 15,
       charCount: 128,
-    };
-    slice.setQuotedSelection(sel);
-    expect(slice.quotedSelection).toEqual(sel);
+    } as const;
+    slice.setQuoteCandidate(sel);
+    expect(slice.quoteCandidate).toEqual(sel);
+    expect(slice.quotedSelections).toEqual([]);
   });
-  it('clearQuotedSelection 清除引用', () => {
-    slice.setQuotedSelection({ text: 'test', sourceTitle: 'title', charCount: 4 });
-    slice.clearQuotedSelection();
-    expect(slice.quotedSelection).toBeNull();
+  it('addQuotedSelection 追加多个独立引用', () => {
+    slice.addQuotedSelection({ text: 'old', sourceTitle: 'A', sourceKind: 'preview', charCount: 3 });
+    slice.addQuotedSelection({ text: 'new', sourceTitle: 'B', sourceKind: 'chat', charCount: 3 });
+    expect(slice.quotedSelections.map(sel => sel.text)).toEqual(['old', 'new']);
   });
-  it('setQuotedSelection 覆盖旧值', () => {
-    slice.setQuotedSelection({ text: 'old', sourceTitle: 'A', charCount: 3 });
-    slice.setQuotedSelection({ text: 'new', sourceTitle: 'B', charCount: 3 });
-    expect(slice.quotedSelection!.text).toBe('new');
-    expect(slice.quotedSelection!.sourceTitle).toBe('B');
+  it('removeQuotedSelection 只移除指定 chip', () => {
+    slice.addQuotedSelection({ text: 'old', sourceTitle: 'A', sourceKind: 'preview', charCount: 3 });
+    slice.addQuotedSelection({ text: 'new', sourceTitle: 'B', sourceKind: 'chat', charCount: 3 });
+    slice.removeQuotedSelection(0);
+    expect(slice.quotedSelections.map(sel => sel.text)).toEqual(['new']);
+  });
+  it('clearQuotedSelections 清除所有已加入引用', () => {
+    slice.addQuotedSelection({ text: 'test', sourceTitle: 'title', sourceKind: 'preview', charCount: 4 });
+    slice.clearQuotedSelections();
+    expect(slice.quotedSelections).toEqual([]);
   });
 });
 

@@ -3,9 +3,12 @@
  */
 
 import { memo, useState, useCallback, useEffect } from 'react';
+import { Collapse } from '@/ui';
 import styles from './Chat.module.css';
 import { extractToolDetail } from '../../utils/message-parser';
 import type { ToolDetail } from '../../utils/message-parser';
+import { openInternalLink } from '../../utils/link-open';
+import { LinkContextMenu, type LinkContextMenuState } from '../shared/LinkContextMenu';
 
 import type { ToolCall } from '../../stores/chat-types';
 
@@ -23,9 +26,22 @@ function getToolLabel(name: string, phase: string, agentName: string): string {
   return t?.(`tool._fallback.${phase}`, vars) || name;
 }
 
+function isCardBackedAutomationCreate(tool: ToolCall): boolean {
+  if (tool.name !== 'automation') return false;
+  const action = tool.args?.action;
+  return action === 'create'
+    || action === 'update'
+    || action === 'add_notify'
+    || action === 'add_plugin_action';
+}
+
 export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, collapsed: initialCollapsed, agentName = 'Hanako' }: Props) {
-  // subagent 有独立卡片，不在工具组里重复显示
-  const tools = rawTools.filter(t => t.name !== 'subagent');
+  // subagent / stage_files / automation create 有独立卡片，不在工具组里重复显示
+  const tools = rawTools.filter(t =>
+    t.name !== 'subagent'
+    && t.name !== 'stage_files'
+    && !isCardBackedAutomationCreate(t)
+  );
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   useEffect(() => {
     setCollapsed(initialCollapsed);
@@ -66,11 +82,21 @@ export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, co
           )}
         </div>
       )}
-      <div className={`${styles.toolGroupContent}${collapsed && !isSingle ? ` ${styles.toolGroupContentCollapsed}` : ''}`}>
-        {tools.map((tool, i) => (
-          <ToolIndicator key={`${tool.name}-${i}`} tool={tool} agentName={agentName} />
-        ))}
-      </div>
+      {isSingle ? (
+        <div className={styles.toolGroupContent}>
+          {tools.map((tool, i) => (
+            <ToolIndicator key={tool.id || `${tool.name}-${i}`} tool={tool} agentName={agentName} />
+          ))}
+        </div>
+      ) : (
+        <Collapse open={!collapsed}>
+          <div className={styles.toolGroupContent}>
+            {tools.map((tool, i) => (
+              <ToolIndicator key={tool.id || `${tool.name}-${i}`} tool={tool} agentName={agentName} />
+            ))}
+          </div>
+        </Collapse>
+      )}
     </div>
   );
 });
@@ -81,14 +107,12 @@ function handleDetailClick(e: React.MouseEvent, detail: ToolDetail) {
   e.preventDefault();
   e.stopPropagation();
   if (!detail.href) return;
-  if (detail.hrefType === 'file') {
-    window.platform?.showInFinder?.(detail.href);
-  } else {
-    window.platform?.openExternal?.(detail.href);
-  }
+  void openInternalLink(detail.href, { origin: 'session' });
 }
 
 const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: ToolCall; agentName: string }) {
+  const [linkMenu, setLinkMenu] = useState<LinkContextMenuState | null>(null);
+
   const detail = extractToolDetail(tool.name, tool.args);
   const label = getToolLabel(tool.name, tool.done ? 'done' : 'running', agentName);
   const detailTitle = detail.title || detail.href;
@@ -106,6 +130,16 @@ const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: T
               className={`${styles.toolDetail} ${styles.toolDetailLink}`}
               title={detailTitle}
               onClick={(e) => handleDetailClick(e, detail)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!detail.href) return;
+                setLinkMenu({
+                  href: detail.href,
+                  context: { origin: 'session', label: detail.text },
+                  position: { x: e.clientX, y: e.clientY },
+                });
+              }}
             >
               {detail.text}
             </span>
@@ -122,6 +156,12 @@ const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: T
           <span className={styles.toolDots} />
         )}
       </div>
+      {linkMenu && (
+        <LinkContextMenu
+          state={linkMenu}
+          onClose={() => setLinkMenu(null)}
+        />
+      )}
     </>
   );
 });

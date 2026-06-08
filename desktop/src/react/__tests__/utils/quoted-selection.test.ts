@@ -7,6 +7,7 @@ describe('formatQuotedSelectionForPrompt', () => {
     const result = formatQuotedSelectionForPrompt({
       text: 'ChatGPT 2022 年底刚出来的时候，大家最先玩的是什么？角色扮演。',
       sourceTitle: '脚本-Kimi多智能体.md',
+      sourceKind: 'preview',
       sourceFilePath: '/Users/test/脚本-Kimi多智能体.md',
       lineStart: 17,
       lineEnd: 17,

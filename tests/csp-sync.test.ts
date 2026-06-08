@@ -43,16 +43,51 @@ describe('CSP sync', () => {
   const profiles = extractCspProfiles();
   const htmlDir = path.resolve(__dirname, '..', 'desktop', 'src');
 
-  it('should have extracted all 6 profiles', () => {
-    expect(Object.keys(profiles)).toHaveLength(6);
+  it('should have extracted all 8 profiles', () => {
+    expect(Object.keys(profiles)).toHaveLength(8);
   });
 
   for (const [filename, profileCsp] of Object.entries(profiles)) {
     it(`${filename}: HTML source matches CSP_PROFILES`, () => {
+      if (filename === 'index.html' || filename === 'settings.html') {
+        const html = fs.readFileSync(path.join(htmlDir, filename), 'utf-8');
+        expect(html).toContain('modules/connection-csp.js');
+        expect(extractHtmlCsp(path.join(htmlDir, filename))).toBeNull();
+        return;
+      }
       const htmlPath = path.join(htmlDir, filename);
       const htmlCsp = extractHtmlCsp(htmlPath);
       expect(htmlCsp).not.toBeNull();
       expect(normalizeCsp(htmlCsp!)).toBe(normalizeCsp(profileCsp));
     });
   }
+
+  it('desktop index CSP is not widened to all remote origins', () => {
+    const indexCsp = profiles['index.html'];
+    const runtimeCsp = fs.readFileSync(path.join(htmlDir, 'modules', 'connection-csp.js'), 'utf-8');
+
+    expect(indexCsp).toBeTruthy();
+    expect(indexCsp).not.toMatch(/connect-src[^;]*\shttp:(?:\s|;|$)/);
+    expect(indexCsp).not.toMatch(/connect-src[^;]*\shttps:(?:\s|;|$)/);
+    expect(indexCsp).not.toMatch(/connect-src[^;]*\sws:(?:\s|;|$)/);
+    expect(indexCsp).not.toMatch(/connect-src[^;]*\swss:(?:\s|;|$)/);
+    expect(runtimeCsp).toContain('activeServerConnectionId');
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\shttp:(?:\s|;|$)/);
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\shttps:(?:\s|;|$)/);
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\sws:(?:\s|;|$)/);
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\swss:(?:\s|;|$)/);
+  });
+
+  it('settings window uses the same dynamic scoped connection CSP as the desktop index', () => {
+    const html = fs.readFileSync(path.join(htmlDir, 'settings.html'), 'utf-8');
+    const runtimeCsp = fs.readFileSync(path.join(htmlDir, 'modules', 'connection-csp.js'), 'utf-8');
+
+    expect(html).toContain('modules/connection-csp.js');
+    expect(extractHtmlCsp(path.join(htmlDir, 'settings.html'))).toBeNull();
+    expect(runtimeCsp).toContain('activeServerConnectionId');
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\shttp:(?:\s|;|$)/);
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\shttps:(?:\s|;|$)/);
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\sws:(?:\s|;|$)/);
+    expect(runtimeCsp).not.toMatch(/connect-src[^;]*\swss:(?:\s|;|$)/);
+  });
 });

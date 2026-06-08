@@ -5,17 +5,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../../stores';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
+import { isWebRuntime } from '../../utils/platform-runtime';
 import type { CwdSkillInfo } from '../../stores/desk-slice';
 import css from './Desk.module.css';
 
 // ── 加载 CWD skills ──
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('failed to read skill package'));
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.split(',').pop() || '' : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 async function loadCwdSkills() {
   const s = useStore.getState();
-  if (!s.deskBasePath) return;
+  if (!s.deskBasePath) {
+    useStore.setState({ cwdSkills: [], cwdSkillsOpen: false });
+    return;
+  }
+  const params = new URLSearchParams();
+  if (s.deskWorkspaceMountId) {
+    params.set('mountId', s.deskWorkspaceMountId);
+  } else {
+    params.set('dir', s.deskBasePath);
+  }
+  if (s.selectedAgentId) params.set('agentId', s.selectedAgentId);
   try {
     const res = await hanaFetch(
-      `/api/desk/skills?dir=${encodeURIComponent(s.deskBasePath)}`,
+      `/api/desk/skills?${params}`,
     );
     const data = await res.json();
     useStore.setState({ cwdSkills: data.skills || [] });
@@ -37,14 +60,17 @@ function useCwdSkillsOpen() {
 
 export function DeskCwdSkillsButton() {
   const deskBasePath = useStore(s => s.deskBasePath);
+  const deskWorkspaceMountId = useStore(s => s.deskWorkspaceMountId);
+  const skillCatalogVersion = useStore(s => s.skillCatalogVersion);
   const { open, skills, toggle } = useCwdSkillsOpen();
   const loadedRef = useRef('');
 
   useEffect(() => {
-    if (deskBasePath && deskBasePath !== loadedRef.current) {
-      loadCwdSkills().then(() => { loadedRef.current = deskBasePath; });
+    const loadKey = deskWorkspaceMountId ? `mount:${deskWorkspaceMountId}` : deskBasePath;
+    if (loadKey && (loadKey !== loadedRef.current || skillCatalogVersion > 0)) {
+      loadCwdSkills().then(() => { loadedRef.current = loadKey; });
     }
-  }, [deskBasePath]);
+  }, [deskBasePath, deskWorkspaceMountId, skillCatalogVersion]);
 
   const handleClick = useCallback(() => {
     if (!open) loadCwdSkills();
@@ -76,6 +102,7 @@ export function DeskCwdSkillsButton() {
 
 export function DeskCwdSkillsPanel() {
   const { open, skills } = useCwdSkillsOpen();
+  const deskWorkspaceMountId = useStore(s => s.deskWorkspaceMountId);
   const t = window.t ?? ((p: string) => p);
   const [visible, setVisible] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -109,7 +136,10 @@ export function DeskCwdSkillsPanel() {
       await hanaFetch('/api/desk/delete-skill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skillDir: skill.baseDir }),
+        body: JSON.stringify({
+          skillDir: skill.baseDir,
+          ...(useStore.getState().deskWorkspaceMountId ? { mountId: useStore.getState().deskWorkspaceMountId } : {}),
+        }),
       });
       await loadCwdSkills();
     } catch (err) {
@@ -122,19 +152,24 @@ export function DeskCwdSkillsPanel() {
     setDragging(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
-    const dir = useStore.getState().deskBasePath;
+    const { deskBasePath: dir, deskWorkspaceMountId: mountId } = useStore.getState();
     console.log('[cwd-skills] drop: files=', files.length, 'dir=', dir);
     if (!dir) return;
     let installed = false;
     for (const file of files) {
       const filePath = window.platform?.getFilePath?.(file);
       console.log('[cwd-skills] filePath=', filePath, 'file.name=', file.name);
-      if (!filePath) continue;
       try {
+        const s = useStore.getState();
+        const contentBase64 = filePath ? null : await fileToBase64(file);
         const res = await hanaFetch('/api/desk/install-skill', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePath, dir }),
+          body: JSON.stringify({
+            ...(filePath ? { filePath } : { file: { filename: file.name || 'skill.skill', contentBase64 } }),
+            ...(mountId ? { mountId } : { dir }),
+            ...(s.selectedAgentId ? { agentId: s.selectedAgentId } : {}),
+          }),
         });
         const data = await res.json();
         if (data.error) {
@@ -196,6 +231,7 @@ export function DeskCwdSkillsPanel() {
                       className={css.cwdSkillItem}
                       key={s.name}
                       onDoubleClick={() => {
+                        if (deskWorkspaceMountId) return;
                         window.platform?.openSkillViewer?.({
                           name: s.name,
                           baseDir: s.baseDir,
@@ -222,13 +258,15 @@ export function DeskCwdSkillsPanel() {
         )}
         {cmPos && (
           <div className={css.cwdCtxMenu} style={{ position: 'fixed', left: cmPos.x, top: cmPos.y, zIndex: 9999 }}>
-            <button onClick={() => {
-              const target = cmSkill?.baseDir || (useStore.getState().deskBasePath + '/.agents/skills');
-              window.platform?.showInFinder?.(target);
-              setCmPos(null);
-            }}>
-              {t('desk.openInFinder')}
-            </button>
+            {!isWebRuntime() && !deskWorkspaceMountId && (
+              <button onClick={() => {
+                const target = cmSkill?.baseDir || (useStore.getState().deskBasePath + '/.agents/skills');
+                window.platform?.showInFinder?.(target);
+                setCmPos(null);
+              }}>
+                {t('desk.openInFinder')}
+              </button>
+            )}
             {cmSkill && (
               <button className={css.cwdCtxDanger} onClick={() => {
                 deleteSkill(cmSkill);

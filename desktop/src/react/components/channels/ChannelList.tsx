@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../stores';
 import { useI18n } from '../../hooks/use-i18n';
-import { hanaFetch, hanaUrl } from '../../hooks/use-hana-fetch';
+import { hanaFetch } from '../../hooks/use-hana-fetch';
 import {
   loadChannels,
   openChannel,
@@ -13,39 +13,29 @@ import {
   toggleChannelsEnabled,
 } from '../../stores/channel-actions';
 import { toggleSidebar } from '../SidebarLayout';
-import { ContextMenu } from '../ContextMenu';
+import { ContextMenu, Toggle, type ContextMenuItem } from '../../ui';
 import { ChannelWarningModal } from './ChannelWarningModal';
-import type { ContextMenuItem } from '../ContextMenu';
 import type { Channel, Agent } from '../../types';
-import { yuanFallbackAvatar } from '../../utils/agent-helpers';
+import {
+  AgentAvatar,
+  buildAgentDisplayMap,
+  resolveAgentDisplayInfo,
+  refreshAgentAvatarVersion,
+  type AgentDisplayInfo,
+} from '../../utils/agent-display';
 import styles from './Channels.module.css';
 
 
-// ── 稳定头像时间戳（避免每次渲染生成新 URL） ──
-let _avatarTs = Date.now();
-export function refreshAvatarTs() { _avatarTs = Date.now(); }
-
 // ── 辅助类型 ──
 
-export interface MemberInfo {
-  id: string;
-  displayName: string;
-  avatarUrl: string | null;
-  fallbackAvatar: string | null;
-  yuan?: string;
-  isUser: boolean;
-}
+export type MemberInfo = AgentDisplayInfo;
+export function refreshAvatarTs() { refreshAgentAvatarVersion(); }
 
 // ── 辅助函数 ──
 
 /** 构建 agent 查找 Map（按 id 和 name 双索引），配合 useMemo 使用 */
 export function buildAgentMap(agents: Agent[]): Map<string, Agent> {
-  const m = new Map<string, Agent>();
-  for (const a of agents) {
-    m.set(a.id, a);
-    if (a.name) m.set(a.name, a);
-  }
-  return m;
+  return buildAgentDisplayMap(agents);
 }
 
 export function resolveChannelMember(
@@ -56,33 +46,14 @@ export function resolveChannelMember(
   currentAgentId: string | null,
   agentMap?: Map<string, Agent>,
 ): MemberInfo {
-  if (memberId === 'user' || memberId === userName) {
-    return {
-      id: memberId,
-      displayName: userName || 'user',
-      avatarUrl: userAvatarUrl,
-      fallbackAvatar: null,
-      isUser: true,
-    };
-  }
-  const agent = agentMap ? agentMap.get(memberId) : agents.find((a) => a.id === memberId || a.name === memberId);
-  if (agent) {
-    return {
-      id: memberId,
-      displayName: agent.name || agent.id,
-      avatarUrl: agent.hasAvatar ? hanaUrl(`/api/agents/${agent.id}/avatar?t=${_avatarTs}`) : null,
-      fallbackAvatar: yuanFallbackAvatar(agent.yuan),
-      yuan: agent.yuan,
-      isUser: false,
-    };
-  }
-  return {
+  return resolveAgentDisplayInfo({
     id: memberId,
-    displayName: memberId,
-    avatarUrl: null,
-    fallbackAvatar: null,
-    isUser: false,
-  };
+    agents,
+    agentMap,
+    userName,
+    userAvatarUrl,
+    fallbackAgentName: currentAgentId === memberId ? undefined : null,
+  });
 }
 
 export function formatChannelTime(timestamp: string): string {
@@ -106,21 +77,7 @@ export function formatChannelTime(timestamp: string): string {
 // ── MemberAvatar ──
 
 export function MemberAvatar({ info, className }: { info: MemberInfo; className?: string }) {
-  const [imgError, setImgError] = useState(false);
-
-  if (info.avatarUrl && !imgError) {
-    return (
-      <img
-        className={className}
-        src={info.avatarUrl}
-        onError={() => setImgError(true)}
-      />
-    );
-  }
-  if (imgError && info.fallbackAvatar) {
-    return <img className={className} src={info.fallbackAvatar} />;
-  }
-  return <>{(info.displayName || '?').charAt(0).toUpperCase()}</>;
+  return <AgentAvatar info={info} className={className} />;
 }
 
 // ══════════════════════════════════════════════════════
@@ -133,9 +90,10 @@ export function ChannelListSidebar() {
   const setChannelCreateOverlayVisible = useStore(s => s.setChannelCreateOverlayVisible);
   const [warningOpen, setWarningOpen] = useState(false);
 
-  const handleToggle = useCallback(() => {
-    const turningOn = !useStore.getState().channelsEnabled;
-    if (turningOn) {
+  const handleToggle = useCallback((next: boolean) => {
+    const current = useStore.getState().channelsEnabled;
+    if (current === undefined) return;
+    if (next) {
       setWarningOpen(true);
       return;
     }
@@ -165,9 +123,9 @@ export function ChannelListSidebar() {
         <span className="sidebar-title">{t('channel.tab')} <span className="beta-badge">Beta</span></span>
         <div className="sidebar-header-actions">
           <button
-            className={`sidebar-action-btn${!channelsEnabled ? ` ${styles.btnDisabled}` : ''}`}
+            className={`sidebar-action-btn${channelsEnabled !== true ? ` ${styles.btnDisabled}` : ''}`}
             title={t('channel.createTitle')}
-            disabled={!channelsEnabled}
+            disabled={channelsEnabled !== true}
             onClick={handleCreate}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -186,15 +144,12 @@ export function ChannelListSidebar() {
         <div className={styles.channelList}>
           <ChannelList />
         </div>
-        <div className={`${styles.channelDisabledOverlay}${channelsEnabled ? ` ${styles.channelDisabledOverlayHidden}` : ''}`}>
+        <div className={`${styles.channelDisabledOverlay}${channelsEnabled !== false ? ` ${styles.channelDisabledOverlayHidden}` : ''}`}>
           <span>{t('channel.disabled')}</span>
         </div>
         <div className={styles.channelToggleBar}>
           <span className={styles.channelToggleBarLabel}>{t('channel.toggleLabel')}</span>
-          <button
-            className={`hana-toggle${channelsEnabled ? ' on' : ''}`}
-            onClick={handleToggle}
-          ></button>
+          <Toggle on={channelsEnabled} onChange={handleToggle} />
         </div>
       </div>
       <ChannelWarningModal
@@ -315,7 +270,8 @@ function ChannelItem({ channel, isDM, isActive, agents, agentMap, userName, user
     setCtxMenu(null);
   }, []);
 
-  const selfInfo = resolveChannelMember(currentAgentId || '', userName, userAvatarUrl, agents, currentAgentId, agentMap);
+  const ownerAgentId = isDM ? (channel.dmOwnerId || currentAgentId || '') : (currentAgentId || '');
+  const selfInfo = resolveChannelMember(ownerAgentId, userName, userAvatarUrl, agents, ownerAgentId, agentMap);
 
   const ctxMenuItems: ContextMenuItem[] = ctxMenu ? [
     {
@@ -333,7 +289,7 @@ function ChannelItem({ channel, isDM, isActive, agents, agentMap, userName, user
       onContextMenu={handleContextMenu}
     >
       {isDM ? (
-        <DmIcon channel={channel} selfInfo={selfInfo} agents={agents} agentMap={agentMap} userName={userName} userAvatarUrl={userAvatarUrl} currentAgentId={currentAgentId} />
+        <DmIcon channel={channel} selfInfo={selfInfo} agents={agents} agentMap={agentMap} userName={userName} userAvatarUrl={userAvatarUrl} ownerAgentId={ownerAgentId} />
       ) : (
         <div className={styles.channelItemIcon}>#</div>
       )}
@@ -346,7 +302,7 @@ function ChannelItem({ channel, isDM, isActive, agents, agentMap, userName, user
         </div>
         <div className={styles.channelItemPreview}>
           {channel.lastMessage && (() => {
-            const senderInfo = resolveChannelMember(channel.lastSender, userName, userAvatarUrl, agents, currentAgentId, agentMap);
+            const senderInfo = resolveChannelMember(channel.lastSender, userName, userAvatarUrl, agents, ownerAgentId || currentAgentId, agentMap);
             return `${senderInfo.displayName}: ${channel.lastMessage}`;
           })()}
         </div>
@@ -370,17 +326,17 @@ function ChannelItem({ channel, isDM, isActive, agents, agentMap, userName, user
 
 // ── DM Icon (dual avatar) ──
 
-function DmIcon({ channel, selfInfo, agents, agentMap, userName, userAvatarUrl, currentAgentId }: {
+function DmIcon({ channel, selfInfo, agents, agentMap, userName, userAvatarUrl, ownerAgentId }: {
   channel: Channel;
   selfInfo: MemberInfo;
   agents: Agent[];
   agentMap: Map<string, Agent>;
   userName: string;
   userAvatarUrl: string | null;
-  currentAgentId: string | null;
+  ownerAgentId: string | null;
 }) {
   const peerId = channel.peerId || channel.members?.[0] || '';
-  const peerInfo = resolveChannelMember(peerId, userName, userAvatarUrl, agents, currentAgentId, agentMap);
+  const peerInfo = resolveChannelMember(peerId, userName, userAvatarUrl, agents, ownerAgentId, agentMap);
 
   return (
     <div className={styles.channelDmIcon}>

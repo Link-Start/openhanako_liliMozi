@@ -2,9 +2,8 @@
  * @vitest-environment jsdom
  */
 
-import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useStore } from '../../stores/index';
 import { SubagentCard } from '../../components/chat/SubagentCard';
 import { createSubagentPreviewSlice, type SubagentPreviewSlice } from '../../stores/subagent-preview-slice';
@@ -22,9 +21,14 @@ function makeSlice(): SubagentPreviewSlice {
   });
 }
 
+beforeEach(() => {
+  window.t = ((key: string) => key) as typeof window.t;
+});
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('subagent preview state ownership', () => {
@@ -106,9 +110,17 @@ describe('subagent preview state ownership', () => {
   });
 });
 
-describe('SubagentCard inline preview interaction', () => {
+describe('SubagentCard static resource card', () => {
   beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
     useStore.setState({
+      activeServerConnection: {
+        kind: 'local',
+        label: 'Local',
+        baseUrl: 'http://127.0.0.1:3210',
+        wsUrl: 'ws://127.0.0.1:3210',
+        token: null,
+      },
       currentAgentId: null,
       agents: [],
       chatSessions: {
@@ -127,9 +139,7 @@ describe('SubagentCard inline preview interaction', () => {
     } as never);
   });
 
-  it('点击卡片展开 preview，再点收起时会保留内容到收起动画结束', () => {
-    vi.useFakeTimers();
-
+  it('只渲染静态卡面预览，不在聊天流内展开 child session', () => {
     render(
       <SubagentCard
         block={{
@@ -144,18 +154,12 @@ describe('SubagentCard inline preview interaction', () => {
       />,
     );
 
-    const toggle = screen.getByRole('button', { name: /SORA/i });
-    fireEvent.click(toggle);
-    expect(screen.getByText('Preview A')).toBeTruthy();
-
-    fireEvent.click(toggle);
-    expect(screen.getByText('Preview A')).toBeTruthy();
-
-    act(() => {
-      vi.advanceTimersByTime(220);
-    });
-
+    expect(screen.getByText('SORA')).toBeTruthy();
+    expect(screen.getByText('任务：do work')).toBeTruthy();
+    expect(screen.getByText('subagent.status.done')).toBeTruthy();
     expect(screen.queryByText('Preview A')).toBeNull();
+    expect(screen.queryByRole('button', { name: /SORA/i })).toBeNull();
+    expect(useStore.getState().subagentPreviewByTaskId).toEqual({});
   });
 
   it('收起态显式信任 taskTitle，而不是再从 task 猜摘要', () => {
@@ -178,7 +182,7 @@ describe('SubagentCard inline preview interaction', () => {
     expect(screen.queryByText('这里是运行时输出，不该出现在收起态')).toBeNull();
   });
 
-  it('展开后 header 继续显示 taskTitle，不切换成运行时输出', () => {
+  it('运行时输出不会抢占静态卡面的 taskTitle', () => {
     render(
       <SubagentCard
         block={{
@@ -193,11 +197,9 @@ describe('SubagentCard inline preview interaction', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /SORA/i }));
-
     expect(screen.getByText('任务：制定一份一周生活整理清单')).toBeTruthy();
     expect(screen.queryByText('这里是运行时输出，不该抢占 header')).toBeNull();
-    expect(screen.getByText('Preview A')).toBeTruthy();
+    expect(screen.queryByText('Preview A')).toBeNull();
   });
 
   it('子 session 的 turn_end 不会把 subagent 卡片标记为完成', () => {
@@ -214,48 +216,37 @@ describe('SubagentCard inline preview interaction', () => {
       />,
     );
 
-    expect(screen.getByText('已派出')).toBeTruthy();
+    expect(screen.getByText('subagent.status.dispatched')).toBeTruthy();
 
     act(() => {
       dispatchStreamKey('/session/subagent-a', { type: 'turn_end', sessionPath: '/session/subagent-a' });
     });
 
-    expect(screen.getByText('已派出')).toBeTruthy();
-    expect(screen.queryByText('已完成')).toBeNull();
+    expect(screen.getByText('subagent.status.dispatched')).toBeTruthy();
+    expect(screen.queryByText('subagent.status.done')).toBeNull();
   });
 
-  it('多张 subagent 卡可以同时保持展开', () => {
+  it('运行中卡片只保留终止按钮，不提供展开入口', async () => {
     render(
-      <>
-        <SubagentCard
-          block={{
-            taskId: 'task-a',
-            task: 'do work',
-            taskTitle: '任务：do work',
-            agentName: 'SORA',
-            streamKey: '/session/subagent-a',
-            streamStatus: 'done',
-            summary: 'done',
-          }}
-        />
-        <SubagentCard
-          block={{
-            taskId: 'task-b',
-            task: 'do work',
-            taskTitle: '任务：do work',
-            agentName: 'MORI',
-            streamKey: '/session/subagent-b',
-            streamStatus: 'done',
-            summary: 'done',
-          }}
-        />
-      </>,
+      <SubagentCard
+        block={{
+          taskId: 'task-a',
+          task: 'do work',
+          taskTitle: '任务：do work',
+          agentName: 'SORA',
+          streamKey: '/session/subagent-a',
+          streamStatus: 'running',
+        }}
+      />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /SORA/i }));
-    fireEvent.click(screen.getByRole('button', { name: /MORI/i }));
+    const abort = screen.getByTitle('subagentAbort');
+    fireEvent.click(abort);
 
-    expect(screen.getByText('Preview A')).toBeTruthy();
-    expect(screen.getByText('Preview B')).toBeTruthy();
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:3210/api/task/task-a/abort', { method: 'POST' });
+    });
+    expect(screen.queryByText('Preview A')).toBeNull();
+    expect(useStore.getState().subagentPreviewByTaskId).toEqual({});
   });
 });

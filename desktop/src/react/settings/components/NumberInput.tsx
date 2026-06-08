@@ -9,6 +9,7 @@ interface NumberInputProps {
   max?: number;
   step?: number;
   precision?: 'int' | 'float';
+  fieldWidth?: 'default' | 'wide';
   disabled?: boolean;
 }
 
@@ -20,6 +21,7 @@ export function NumberInput({
   max,
   step,
   precision = 'int',
+  fieldWidth = 'default',
   disabled,
 }: NumberInputProps) {
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -29,11 +31,16 @@ export function NumberInput({
     onChange(next);
   };
 
+  const inputClassName = [
+    styles.numberInputField,
+    fieldWidth === 'wide' && styles.numberInputFieldWide,
+  ].filter(Boolean).join(' ');
+
   return (
     <div className={styles.numberInput}>
       <input
         type="number"
-        className={styles.numberInputField}
+        className={inputClassName}
         value={value}
         min={min}
         max={max}

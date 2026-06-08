@@ -29,7 +29,7 @@ export default defineConfig({
         "exceljs",
       ],
     },
-    target: "node22",
+    target: "node24",
     minify: "esbuild",
     sourcemap: false,
   },

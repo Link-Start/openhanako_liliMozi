@@ -3,8 +3,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { SelectWidget } from '../../settings/widgets/SelectWidget';
-import type { SelectOption } from '../../settings/widgets/SelectWidget';
+import { SelectWidget } from '@/ui';
+import type { SelectOption } from '@/ui';
 import { Toggle } from '../../settings/widgets/Toggle';
 import { lookupReferenceModelMeta } from '../../utils/model-metadata';
 import { loadModels as loadModelsAction, saveModel as saveModelAction } from '../onboarding-actions';
@@ -29,6 +29,7 @@ function toSavedModelEntry(model: AddedModelDraft): AddedModelEntry {
     || typeof model.context === 'number'
     || typeof model.maxOutput === 'number'
     || typeof model.image === 'boolean'
+    || typeof model.audio === 'boolean'
     || typeof model.reasoning === 'boolean';
   if (!hasMeta) return model.id;
   return {
@@ -37,6 +38,7 @@ function toSavedModelEntry(model: AddedModelDraft): AddedModelEntry {
     ...(typeof model.context === 'number' ? { context: model.context } : {}),
     ...(typeof model.maxOutput === 'number' ? { maxOutput: model.maxOutput } : {}),
     ...(typeof model.image === 'boolean' ? { image: model.image } : {}),
+    ...(typeof model.audio === 'boolean' ? { audio: model.audio } : {}),
     ...(typeof model.reasoning === 'boolean' ? { reasoning: model.reasoning } : {}),
   };
 }
@@ -75,6 +77,7 @@ export function ModelStep({
   const [editContext, setEditContext] = useState('');
   const [editMaxOutput, setEditMaxOutput] = useState('');
   const [editImage, setEditImage] = useState<boolean | undefined>(undefined);
+  const [editAudio, setEditAudio] = useState<boolean | undefined>(undefined);
   const [editReasoning, setEditReasoning] = useState<boolean | undefined>(undefined);
 
   const modelsLoadedFor = useRef('');
@@ -125,6 +128,7 @@ export function ModelStep({
       context: numberFromMeta(reference?.context) ?? numberFromMeta(fetched?.context),
       maxOutput: numberFromMeta(reference?.maxOutput) ?? numberFromMeta(fetched?.maxOutput),
       image: boolFromMeta(reference?.image ?? reference?.vision),
+      audio: boolFromMeta(reference?.audio),
       reasoning: boolFromMeta(reference?.reasoning),
     };
   }, [fetchedModels, providerName]);
@@ -136,6 +140,7 @@ export function ModelStep({
       context: model.context ?? baseline.context,
       maxOutput: model.maxOutput ?? baseline.maxOutput,
       image: model.image ?? baseline.image,
+      audio: model.audio ?? baseline.audio,
       reasoning: model.reasoning ?? baseline.reasoning,
     };
   }, [baselineForModel]);
@@ -187,6 +192,7 @@ export function ModelStep({
     setEditContext(meta.context ? String(meta.context) : '');
     setEditMaxOutput(meta.maxOutput ? String(meta.maxOutput) : '');
     setEditImage(typeof meta.image === 'boolean' ? meta.image : undefined);
+    setEditAudio(typeof meta.audio === 'boolean' ? meta.audio : undefined);
     setEditReasoning(typeof meta.reasoning === 'boolean' ? meta.reasoning : undefined);
   }, [effectiveModelMeta]);
 
@@ -208,11 +214,12 @@ export function ModelStep({
         ...(context && context !== baseline.context ? { context } : {}),
         ...(maxOutput && maxOutput !== baseline.maxOutput ? { maxOutput } : {}),
         ...(typeof editImage === 'boolean' && editImage !== baseline.image ? { image: editImage } : {}),
+        ...(typeof editAudio === 'boolean' && editAudio !== baseline.audio ? { audio: editAudio } : {}),
         ...(typeof editReasoning === 'boolean' && editReasoning !== baseline.reasoning ? { reasoning: editReasoning } : {}),
       };
     }));
     setEditingModelId('');
-  }, [baselineForModel, editContext, editImage, editMaxOutput, editName, editReasoning, editingModelId, showError]);
+  }, [baselineForModel, editAudio, editContext, editImage, editMaxOutput, editName, editReasoning, editingModelId, showError]);
 
   const currentEditingModel = editingModelId
     ? addedModels.find(model => model.id === editingModelId)
@@ -317,6 +324,9 @@ export function ModelStep({
                 <Toggle on={editImage === true} onChange={setEditImage} label={t('onboarding.model.imageInput')} />
               </div>
               <div className="ob-model-edit-toggle-row">
+                <Toggle on={editAudio === true} onChange={setEditAudio} label={t('onboarding.model.audioInput')} />
+              </div>
+              <div className="ob-model-edit-toggle-row">
                 <Toggle on={editReasoning === true} onChange={setEditReasoning} label={t('onboarding.model.reasoning')} />
               </div>
             </div>
@@ -391,6 +401,7 @@ export function ModelStep({
             <span className="ob-utility-hint">{t('onboarding.model.utilityHint')}</span>
           </div>
           <SelectWidget
+            className="ob-select-widget"
             options={modelSelectOptions}
             value={selectedUtility}
             onChange={setSelectedUtility}
@@ -404,6 +415,7 @@ export function ModelStep({
             <span className="ob-utility-hint">{t('onboarding.model.utilityLargeHint')}</span>
           </div>
           <SelectWidget
+            className="ob-select-widget"
             options={modelSelectOptions}
             value={selectedUtilityLarge}
             onChange={setSelectedUtilityLarge}

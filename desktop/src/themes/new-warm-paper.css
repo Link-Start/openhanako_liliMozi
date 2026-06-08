@@ -64,6 +64,8 @@
     --radius-lg:     4px;                       /* 规范 --r-lg：modal */
     --radius-input:  2px;                       /* 设置页专用变量 */
     --radius-card:   3px;
+    --radius-chat-surface: 6px;                 /* 聊天输入框：比方角主题其他元素略圆，保留一点柔和 */
+    --radius-chat-card:  4px;                    /* 聊天区卡片：warm-paper 方角风格 */
     --border-width:  0.5px;                     /* 规范：0.5px hairline */
 
     /* Select 下拉箭头（跟随 text-muted） */

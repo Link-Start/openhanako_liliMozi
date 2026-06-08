@@ -1,13 +1,15 @@
 import type { FileRef } from '../../types/file-ref';
-import type { DeskFile } from '../../types';
-import type { ChatListItem, ContentBlock } from '../chat-types';
+import type { DeskFile, FileVersion } from '../../types';
+import type { ChatListItem, ContentBlock, ResourceEnvelope, SessionRegistryFile } from '../chat-types';
 import { inferKindByExt, buildFileRefId } from '../../utils/file-kind';
 
 type StateShape = {
   deskFiles: DeskFile[];
   deskBasePath: string;
+  deskWorkspaceMountId?: string | null;
   deskCurrentPath: string;
   chatSessions?: Record<string, unknown>;
+  sessionRegistryFilesByPath?: Record<string, readonly SessionRegistryFile[] | undefined>;
 };
 
 function joinPath(base: string, sub: string, name: string): string {
@@ -28,22 +30,22 @@ function extOf(name: string): string | undefined {
 
 // ── Desk ──
 
-let cachedDesk: { files: DeskFile[]; basePath: string; currentPath: string; result: FileRef[] } | null = null;
+let cachedDesk: { files: DeskFile[]; basePath: string; result: FileRef[] } | null = null;
 
 export function selectDeskFiles(state: StateShape): FileRef[] {
-  const { deskFiles, deskBasePath, deskCurrentPath } = state;
+  const { deskFiles, deskBasePath, deskWorkspaceMountId } = state;
+  if (deskWorkspaceMountId) return [];
   if (
     cachedDesk
     && cachedDesk.files === deskFiles
     && cachedDesk.basePath === deskBasePath
-    && cachedDesk.currentPath === deskCurrentPath
   ) {
     return cachedDesk.result;
   }
   const result: FileRef[] = [];
   for (const f of deskFiles) {
     if (f.isDir) continue;
-    const path = joinPath(deskBasePath, deskCurrentPath, f.name);
+    const path = joinPath(deskBasePath, '', f.name);
     const ext = extOf(f.name);
     result.push({
       id: buildFileRefId({ source: 'desk', path }),
@@ -52,9 +54,10 @@ export function selectDeskFiles(state: StateShape): FileRef[] {
       name: f.name,
       path,
       ext,
+      version: versionFromDeskFile(f),
     });
   }
-  cachedDesk = { files: deskFiles, basePath: deskBasePath, currentPath: deskCurrentPath, result };
+  cachedDesk = { files: deskFiles, basePath: deskBasePath, result };
   return result;
 }
 
@@ -64,8 +67,16 @@ type SessionStateShape = StateShape & {
   chatSessions?: Record<string, { items: ChatListItem[] } | undefined>;
 };
 
-const cachedSession = new Map<string, { items: ChatListItem[]; result: FileRef[] }>();
+const cachedSession = new Map<string, {
+  sessionPath: string;
+  includeUnlisted: boolean;
+  items: readonly ChatListItem[];
+  registryFiles: readonly SessionRegistryFile[];
+  result: FileRef[];
+}>();
 const EMPTY_SESSION_RESULT: readonly FileRef[] = Object.freeze([]);
+const EMPTY_REGISTRY_FILES: readonly SessionRegistryFile[] = Object.freeze([]);
+const EMPTY_CHAT_ITEMS: readonly ChatListItem[] = Object.freeze([]);
 
 /**
  * 清理 session → FileRef[] 缓存。必须由 session 生命周期持有方（chat-slice）
@@ -79,16 +90,62 @@ export function invalidateSessionCache(sessionPath?: string): void {
     cachedSession.clear();
     return;
   }
-  cachedSession.delete(sessionPath);
+  for (const [key, cached] of cachedSession) {
+    if (cached.sessionPath === sessionPath) cachedSession.delete(key);
+  }
 }
 
-export function selectSessionFiles(state: SessionStateShape, sessionPath: string): readonly FileRef[] {
-  const items = state.chatSessions?.[sessionPath]?.items;
-  if (!items) return EMPTY_SESSION_RESULT;
-  const cached = cachedSession.get(sessionPath);
-  if (cached && cached.items === items) return cached.result;
+export function selectSessionFiles(
+  state: SessionStateShape,
+  sessionPath: string,
+  options: { includeUnlisted?: boolean } = {},
+): readonly FileRef[] {
+  const includeUnlisted = options.includeUnlisted === true;
+  const items = state.chatSessions?.[sessionPath]?.items || EMPTY_CHAT_ITEMS;
+  const registryFiles = state.sessionRegistryFilesByPath?.[sessionPath] || EMPTY_REGISTRY_FILES;
+  if (!items.length && !registryFiles.length) return EMPTY_SESSION_RESULT;
+  const cacheKey = sessionCacheKey(sessionPath, includeUnlisted);
+  const cached = cachedSession.get(cacheKey);
+  if (cached && cached.items === items && cached.registryFiles === registryFiles) return cached.result;
 
   const result: FileRef[] = [];
+  const seen = new Set<string>();
+
+  for (const file of registryFiles) {
+    if (file.isDirectory) continue;
+    if (!includeUnlisted && isUnlistedSessionFile(file)) continue;
+    const filePath = file.filePath || file.realPath || '';
+    if (!filePath) continue;
+    const fileId = file.fileId || file.id;
+    const name = file.label || file.displayName || file.filename || basenameOf(filePath);
+    const ext = file.ext || extOf(name) || extOf(filePath);
+    pushUniqueFile(result, seen, {
+      id: buildFileRefId({
+        source: 'session-registry',
+        sessionPath,
+        path: filePath,
+        ...(fileId ? { messageId: fileId } : {}),
+      }),
+      fileId,
+      kind: inferKindByExt(ext),
+      source: 'session-registry',
+      name,
+      path: filePath,
+      ext,
+      mime: file.mime,
+      status: file.status,
+      missingAt: file.missingAt,
+      origin: file.origin,
+      operations: file.operations,
+      presentation: presentationOf(file),
+      listed: listedOf(file),
+      createdAt: file.createdAt,
+      timestamp: file.createdAt,
+      version: versionFromSessionFile(file),
+      resource: compactResourceRef(file.resource),
+    });
+  }
+
   for (const item of items) {
     if (item.type !== 'message') continue;
     const msg = item.data;
@@ -97,8 +154,9 @@ export function selectSessionFiles(state: SessionStateShape, sessionPath: string
     if (msg.attachments) {
       for (const att of msg.attachments) {
         if (att.isDir) continue;
+        if (!includeUnlisted && isUnlistedSessionFile(att)) continue;
         const ext = extOf(att.name);
-        result.push({
+        pushUniqueFile(result, seen, {
           id: buildFileRefId({
             source: 'session-attachment',
             sessionPath, messageId: msg.id, path: att.path,
@@ -112,6 +170,8 @@ export function selectSessionFiles(state: SessionStateShape, sessionPath: string
           mime: att.mimeType,
           status: att.status,
           missingAt: att.missingAt,
+          presentation: presentationOf(att),
+          listed: listedOf(att),
           timestamp: msg.timestamp,
           sessionMessageId: msg.id,
           inlineData: att.base64Data && att.mimeType
@@ -126,7 +186,7 @@ export function selectSessionFiles(state: SessionStateShape, sessionPath: string
       for (let i = 0; i < msg.blocks.length; i++) {
         const b: ContentBlock = msg.blocks[i];
         if (b.type === 'file') {
-          result.push({
+          pushUniqueFile(result, seen, {
             id: buildFileRefId({
               source: 'session-block-file',
               sessionPath, messageId: msg.id, blockIdx: i, path: b.filePath,
@@ -140,13 +200,17 @@ export function selectSessionFiles(state: SessionStateShape, sessionPath: string
             mime: b.mime,
             status: b.status,
             missingAt: b.missingAt,
+            presentation: presentationOf(b),
+            listed: listedOf(b),
+            resource: compactResourceRef(b.resource),
+            version: versionFromSessionFile(b),
             timestamp: msg.timestamp,
             sessionMessageId: msg.id,
             sessionBlockIdx: i,
           });
         } else if (b.type === 'artifact' && b.filePath) {
           const ext = b.ext || extOf(b.filePath);
-          result.push({
+          pushUniqueFile(result, seen, {
             id: buildFileRefId({
               source: 'session-block-legacy-artifact',
               sessionPath, messageId: msg.id, blockIdx: i, path: b.filePath,
@@ -160,6 +224,10 @@ export function selectSessionFiles(state: SessionStateShape, sessionPath: string
             mime: b.mime,
             status: b.status,
             missingAt: b.missingAt,
+            presentation: presentationOf(b),
+            listed: listedOf(b),
+            resource: compactResourceRef(b.resource),
+            version: versionFromSessionFile(b),
             timestamp: msg.timestamp,
             sessionMessageId: msg.id,
             sessionBlockIdx: i,
@@ -185,6 +253,89 @@ export function selectSessionFiles(state: SessionStateShape, sessionPath: string
     }
   }
 
-  cachedSession.set(sessionPath, { items, result });
+  cachedSession.set(cacheKey, { sessionPath, includeUnlisted, items, registryFiles, result });
   return result;
+}
+
+function sessionCacheKey(sessionPath: string, includeUnlisted: boolean): string {
+  return `${includeUnlisted ? 'all' : 'listed'}\u0000${sessionPath}`;
+}
+
+function presentationOf(file: { presentation?: string } | undefined): string {
+  return file?.presentation === 'voice-input' ? 'voice-input' : 'attachment';
+}
+
+function listedOf(file: { listed?: boolean; presentation?: string } | undefined): boolean {
+  if (file?.listed === false) return false;
+  return presentationOf(file) !== 'voice-input';
+}
+
+function isUnlistedSessionFile(file: { listed?: boolean; presentation?: string } | undefined): boolean {
+  return !listedOf(file);
+}
+
+function basenameOf(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() || filePath;
+}
+
+function versionFromDeskFile(file: DeskFile): FileVersion | undefined {
+  const mtimeMs = typeof file.mtime === 'string' ? Date.parse(file.mtime) : NaN;
+  if (!Number.isFinite(mtimeMs) || typeof file.size !== 'number') return undefined;
+  return { mtimeMs, size: file.size };
+}
+
+function versionFromSessionFile(file: {
+  version?: FileVersion | null;
+  mtimeMs?: number;
+  size?: number | null;
+  resource?: ResourceEnvelope;
+}): FileVersion | undefined {
+  if (isFileVersion(file.version)) return file.version;
+  const mtimeMs = typeof file.mtimeMs === 'number'
+    ? file.mtimeMs
+    : typeof file.resource?.mtimeMs === 'number'
+      ? file.resource.mtimeMs
+      : NaN;
+  const size = typeof file.size === 'number'
+    ? file.size
+    : typeof file.resource?.size === 'number'
+      ? file.resource.size
+      : NaN;
+  if (!Number.isFinite(mtimeMs) || !Number.isFinite(size)) return undefined;
+  return { mtimeMs, size };
+}
+
+function isFileVersion(value: unknown): value is FileVersion {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<FileVersion>;
+  return typeof candidate.mtimeMs === 'number'
+    && Number.isFinite(candidate.mtimeMs)
+    && typeof candidate.size === 'number'
+    && Number.isFinite(candidate.size);
+}
+
+function compactResourceRef(resource: ResourceEnvelope | undefined): FileRef['resource'] | undefined {
+  if (!resource?.resourceId || !resource.studioId || !resource.links?.self) return undefined;
+  return {
+    resourceId: resource.resourceId,
+    studioId: resource.studioId,
+    links: {
+      self: resource.links.self,
+      ...(resource.links.content ? { content: resource.links.content } : {}),
+    },
+  };
+}
+
+function fileIdentityKeys(fileId?: string, filePath?: string): string[] {
+  const keys: string[] = [];
+  if (fileId) keys.push(`id:${fileId}`);
+  if (filePath) keys.push(`path:${filePath}`);
+  return keys;
+}
+
+function pushUniqueFile(result: FileRef[], seen: Set<string>, ref: FileRef): void {
+  const keys = fileIdentityKeys(ref.fileId, ref.path);
+  if (keys.some(key => seen.has(key))) return;
+  for (const key of keys) seen.add(key);
+  result.push(ref);
 }

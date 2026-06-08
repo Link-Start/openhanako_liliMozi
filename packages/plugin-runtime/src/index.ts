@@ -1,0 +1,1066 @@
+export type MaybePromise<T> = T | Promise<T>;
+
+export type JsonSchema = Record<string, unknown>;
+
+export const HANA_BUS_SKIP = Symbol.for('hana.event-bus.skip');
+
+export interface HanaToolResult {
+  content?: Array<Record<string, unknown>>;
+  details?: Record<string, unknown>;
+}
+
+export interface HanaSessionFile {
+  id?: string | null;
+  fileId?: string | null;
+  sessionPath?: string | null;
+  filePath?: string;
+  realPath?: string;
+  displayName?: string;
+  filename?: string;
+  label?: string;
+  ext?: string | null;
+  mime?: string;
+  size?: number;
+  kind?: string;
+  isDirectory?: boolean;
+  origin?: string;
+  operations?: unknown[];
+  createdAt?: number | string;
+  storageKind?: string;
+  status?: string;
+  missingAt?: number | string | null;
+  resource?: HanaResourceEnvelope;
+  [key: string]: unknown;
+}
+
+export interface HanaResourceEnvelope {
+  schemaVersion: 1;
+  resourceId: string;
+  name: string;
+  studioId: string;
+  type: 'file' | string;
+  source: 'session_file' | string;
+  sourceId?: string;
+  fileId?: string;
+  displayName?: string;
+  filename?: string;
+  ext?: string | null;
+  mime?: string;
+  size?: number | null;
+  kind?: string;
+  isDirectory?: boolean;
+  origin?: string;
+  operations?: string[];
+  createdAt?: number | string;
+  mtimeMs?: number;
+  lifecycle: {
+    status: string;
+    missingAt: number | string | null;
+  };
+  storage: {
+    provider: string;
+    storageKind?: string;
+    localOnly?: boolean;
+  };
+  links: {
+    self: string;
+    content?: string;
+  };
+  [key: string]: unknown;
+}
+
+export interface HanaExecutionBoundary {
+  schemaVersion: 1;
+  boundaryId: string;
+  kind: 'local_process' | string;
+  serverNodeId: string;
+  studioId: string;
+  workbench?: {
+    kind: string;
+    root: string | null;
+    [key: string]: unknown;
+  };
+  sandbox?: {
+    kind: string;
+    enforcedBy?: string;
+    [key: string]: unknown;
+  };
+  filesystem?: {
+    policy: string;
+    [key: string]: unknown;
+  };
+  network?: {
+    policy: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface HanaSessionFileMediaItem {
+  type: 'session_file';
+  fileId: string;
+  sessionPath?: string | null;
+  filePath?: string;
+  label?: string;
+  mime?: string;
+  size?: number;
+  kind?: string;
+  [key: string]: unknown;
+}
+
+export interface HanaStagedSessionFile {
+  file?: HanaSessionFile | null;
+  sessionFile?: HanaSessionFile | null;
+  mediaItem: HanaSessionFileMediaItem;
+}
+
+export interface HanaMediaDetails {
+  media: {
+    items: HanaSessionFileMediaItem[];
+  };
+}
+
+export interface HanaToolContext {
+  serverId: string;
+  serverNodeId?: string;
+  userId: string;
+  studioId: string;
+  connectionKind?: 'local' | 'lan' | 'custom_remote' | 'relay' | 'cloud' | string;
+  credentialKind?: 'none' | 'loopback_token' | 'device_credential' | 'user_session' | string;
+  platformAccountId?: string | null;
+  officialServiceKind?: 'relay' | 'cloud_studio' | 'inference' | 'billing' | string | null;
+  executionBoundary?: HanaExecutionBoundary;
+  pluginId: string;
+  pluginDir: string;
+  dataDir: string;
+  capabilities?: string[];
+  sensitiveCapabilities?: string[];
+  sessionPath?: string | null;
+  bus: HanaEventBus;
+  config: HanaPluginConfigStore;
+  log: HanaPluginLogger;
+  registerSessionFile?: (input: Record<string, unknown>) => HanaSessionFile;
+  stageFile?: (input: Record<string, unknown>) => HanaStagedSessionFile;
+  [key: string]: unknown;
+}
+
+export interface HanaToolDefinition<Input = unknown, Output = unknown> {
+  name: string;
+  description: string;
+  parameters?: JsonSchema;
+  promptSnippet?: string;
+  promptGuidelines?: string;
+  metadata?: Record<string, unknown>;
+  invocationStyle?: 'sdk_tool' | 'pi_tool';
+  execute(input: Input, ctx: HanaToolContext): MaybePromise<Output>;
+}
+
+export type HanaSlashPermission = 'anyone' | 'owner' | 'admin';
+export type HanaSlashScope = 'session' | 'global';
+
+export interface HanaCommandContext {
+  [key: string]: unknown;
+}
+
+export interface HanaCommandResult {
+  reply?: string;
+  silent?: boolean;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface HanaCommandDefinition<Context = HanaCommandContext> {
+  name: string;
+  aliases?: string[];
+  description?: string;
+  scope?: HanaSlashScope;
+  permission?: HanaSlashPermission;
+  usage?: string;
+  handler?: (ctx: Context) => MaybePromise<HanaCommandResult | void>;
+  execute?: (ctx: Context) => MaybePromise<unknown>;
+}
+
+export type HanaProviderRuntimeKind = 'http' | 'oauth-http' | 'local-cli' | 'browser-cli' | 'plugin';
+export type HanaMediaCapabilityName = 'imageGeneration' | 'videoGeneration' | 'speechGeneration' | string;
+export type HanaMediaOutputKind = 'file_glob' | 'json_stdout' | 'url_stdout';
+export type HanaCliBindingSource = 'prompt' | 'modelId' | 'inputFile' | 'outputDir' | 'size' | 'duration';
+
+export type HanaCliArgBinding =
+  | { literal: string }
+  | { option: string; from: HanaCliBindingSource };
+
+export interface HanaCliOutputContract {
+  kind: HanaMediaOutputKind;
+  directory?: HanaCliBindingSource | string;
+  pattern?: string;
+  [key: string]: unknown;
+}
+
+export interface HanaCliCommandSpec {
+  executable: string;
+  args: HanaCliArgBinding[];
+  timeoutMs: number;
+  output: HanaCliOutputContract;
+}
+
+export interface HanaProviderRuntime {
+  kind: HanaProviderRuntimeKind;
+  protocolId?: string;
+  command?: HanaCliCommandSpec;
+  [key: string]: unknown;
+}
+
+export interface HanaProviderChatCapability {
+  projection?: 'models-json' | 'sdk-auth-alias' | 'none' | string;
+  runtimeProviderId?: string;
+  displayProviderId?: string;
+  allowListSource?: string;
+  [key: string]: unknown;
+}
+
+export interface HanaProviderMediaModel {
+  id: string;
+  displayName?: string;
+  protocolId: string;
+  inputs?: string[];
+  outputs?: string[];
+  supportsEdit?: boolean;
+  aliases?: string[];
+  credentialLaneId?: string;
+  [key: string]: unknown;
+}
+
+export interface HanaProviderCredentialLane {
+  id: string;
+  kind?: string;
+  label?: string;
+  [key: string]: unknown;
+}
+
+export interface HanaProviderMediaCapability {
+  defaultModelId?: string;
+  models: HanaProviderMediaModel[];
+  credentialLanes?: HanaProviderCredentialLane[];
+  [key: string]: unknown;
+}
+
+export interface HanaProviderCapabilities {
+  chat?: HanaProviderChatCapability;
+  media?: Partial<Record<HanaMediaCapabilityName, HanaProviderMediaCapability>>;
+  [key: string]: unknown;
+}
+
+export interface HanaProviderSource {
+  kind: 'builtin' | 'plugin' | 'user' | string;
+  pluginId?: string;
+  [key: string]: unknown;
+}
+
+export interface HanaProviderDefinition {
+  id: string;
+  displayName?: string;
+  name?: string;
+  authType?: 'api-key' | 'oauth' | 'none' | string;
+  authJsonKey?: string;
+  defaultBaseUrl?: string;
+  defaultApi?: string;
+  api?: string;
+  models?: unknown[];
+  runtime?: HanaProviderRuntime;
+  capabilities?: HanaProviderCapabilities;
+  source?: HanaProviderSource;
+  [key: string]: unknown;
+}
+
+export type HanaExtensionFactory<Pi = unknown> = (pi: Pi) => MaybePromise<void>;
+
+export interface HanaPluginConfigStore {
+  get<T = unknown>(key: string, options?: HanaPluginConfigScopeOptions): MaybePromise<T | undefined>;
+  getAll?(options?: HanaPluginConfigScopeOptions & { redacted?: boolean }): MaybePromise<Record<string, unknown>>;
+  set<T = unknown>(key: string, value: T, options?: HanaPluginConfigScopeOptions): MaybePromise<void>;
+  setMany?(values: Record<string, unknown>, options?: HanaPluginConfigScopeOptions): MaybePromise<Record<string, unknown>>;
+  getSchema?(): JsonSchema;
+}
+
+export interface HanaPluginConfigScopeOptions {
+  scope?: 'global' | 'per-agent' | 'per-session';
+  agentId?: string;
+  sessionPath?: string;
+}
+
+export interface HanaSessionTurnContext {
+  system?: string | Array<string | { text: string; label?: string }>;
+  beforeUser?: string | Array<string | { text: string; label?: string }>;
+  afterUser?: string | Array<string | { text: string; label?: string }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface HanaSessionCreateInput {
+  agentId?: string | null;
+  cwd?: string | null;
+  memoryEnabled?: boolean;
+  model?: string | { id?: string; modelId?: string; provider?: string; providerId?: string };
+  workspaceFolders?: string[];
+  authorizedFolders?: string[];
+  thinkingLevel?: string;
+  permissionMode?: string;
+  ownerPluginId?: string | null;
+  kind?: string | null;
+  sessionKind?: string | null;
+  visibility?: 'public' | 'plugin_private' | 'private' | string;
+}
+
+export interface HanaSessionSendInput {
+  text: string;
+  context?: HanaSessionTurnContext | null;
+  images?: unknown[];
+  videos?: unknown[];
+  audios?: unknown[];
+  imageAttachmentPaths?: string[];
+  videoAttachmentPaths?: string[];
+  audioAttachmentPaths?: string[];
+  [key: string]: unknown;
+}
+
+export interface HanaSessionListFilter {
+  agentId?: string;
+  ownerPluginId?: string;
+  includePluginPrivate?: boolean;
+}
+
+export interface HanaSessionUpdateInput {
+  title?: string;
+  pinned?: boolean;
+  projectId?: string | null;
+  thinkingLevel?: string;
+  permissionMode?: string;
+  ownerPluginId?: string | null;
+  kind?: string | null;
+  visibility?: 'public' | 'plugin_private' | 'private' | string;
+}
+
+export interface HanaAgentCreateInput {
+  id?: string;
+  name: string;
+  yuan?: string;
+  ownerPluginId?: string | null;
+  visibility?: 'public' | 'plugin_private' | 'private' | string;
+  kind?: string | null;
+  initialFiles?: Record<string, string>;
+  initialMemory?: Record<string, unknown>;
+  memoryPolicy?: { enabled?: boolean };
+}
+
+export interface HanaAgentUpdateInput {
+  name?: string;
+  yuan?: string;
+  ownerPluginId?: string | null;
+  visibility?: 'public' | 'plugin_private' | 'private' | string;
+  kind?: string | null;
+  memoryPolicy?: { enabled?: boolean };
+  toolPolicy?: { disabled?: string[] };
+  config?: Record<string, unknown>;
+}
+
+export interface HanaModelSampleInput {
+  systemPrompt?: string;
+  messages: Array<{ role: string; content: unknown }>;
+  sessionPath?: string;
+  agentId?: string;
+  temperature?: number;
+  maxTokens?: number;
+  operation?: string;
+}
+
+export interface HanaMediaProviderFilter {
+  capability?: string;
+}
+
+export interface HanaMediaModelRef {
+  providerId?: string;
+  provider?: string;
+  modelId?: string;
+  model?: string;
+  capability?: string;
+  credentialLaneId?: string;
+}
+
+export interface HanaGenerateImageInput {
+  sessionPath: string;
+  prompt: string;
+  count?: number;
+  image?: string;
+  ratio?: string;
+  resolution?: string;
+  quality?: string;
+  model?: string;
+  provider?: string;
+  input?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  deliveryTarget?: unknown;
+}
+
+export interface HanaEventBus {
+  emit(event: unknown, sessionPath?: string | null): unknown;
+  emit(type: string, payload?: unknown): unknown;
+  subscribe(callback: (event: unknown, sessionPath?: string | null) => void, filter?: HanaBusSubscriptionFilter): () => void;
+  subscribe(type: string, handler: (payload: unknown) => void): () => void;
+  request<T = unknown>(type: string, payload?: unknown, options?: Record<string, unknown>): Promise<T>;
+  hasHandler?(type: string): boolean;
+  handle?(type: string, handler: (payload: unknown) => MaybePromise<unknown>): () => void;
+  listCapabilities?(): HanaEventBusCapability[];
+  getCapability?(type: string): HanaEventBusCapability | null;
+}
+
+export interface HanaBusSubscriptionFilter {
+  types?: string[] | Set<string>;
+  [key: string]: unknown;
+}
+
+export interface HanaEventBusCapability {
+  type: string;
+  title: string;
+  description: string;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+  permission: string;
+  errors: string[];
+  stability: string;
+  owner: string;
+  since?: string;
+  available?: boolean;
+}
+
+export interface HanaNormalizedUsage {
+  input: {
+    totalTokens: number | null;
+    uncachedTokens: number | null;
+  };
+  output: {
+    totalTokens: number | null;
+    reasoningTokens: number | null;
+  };
+  cache: {
+    readTokens: number | null;
+    writeTokens: number | null;
+    missTokens: number | null;
+    hit: boolean | null;
+    created: boolean | null;
+    hitRatio: number | null;
+    support: 'reported' | 'not_reported' | 'not_supported';
+  };
+  totalTokens: number | null;
+  costTotal: number | null;
+}
+
+export type HanaUsageAttribution =
+  | { kind: 'session'; agentId: string | null; sessionPath: string }
+  | { kind: 'phone_conversation'; agentId: string; conversationId: string; conversationType: 'channel' | 'dm'; sessionPath?: string | null }
+  | { kind: 'memory'; agentId: string | null }
+  | { kind: 'automation'; jobId?: string | null; runId?: string | null; agentId?: string | null }
+  | { kind: 'plugin'; pluginId: string; agentId?: string | null; sessionPath?: string | null }
+  | { kind: 'utility'; agentId?: string | null; sessionPath?: string | null }
+  | { kind: 'unknown' };
+
+export interface HanaUsageSource {
+  subsystem: 'session' | 'phone' | 'memory' | 'automation' | 'subagent' | 'compaction' | 'plugin' | 'utility' | 'vision' | 'unknown' | string;
+  operation: string;
+  surface: 'desktop' | 'mobile' | 'bridge' | 'channel' | 'dm' | 'cron' | 'heartbeat' | 'system' | 'plugin' | 'unknown' | string;
+  trigger: 'user' | 'manual' | 'threshold' | 'overflow' | 'daily' | 'scheduled' | 'startup' | 'tool' | 'unknown' | string;
+  actor?: {
+    kind: 'session' | 'phone_conversation' | 'automation' | 'plugin' | 'subagent' | 'unknown' | string;
+    agentId?: string | null;
+    sessionPath?: string | null;
+    taskId?: string | null;
+    [key: string]: unknown;
+  };
+  parent?: {
+    kind: 'session' | 'phone_conversation' | 'automation' | 'plugin' | 'unknown' | string;
+    sessionPath?: string;
+    conversationId?: string;
+    conversationType?: 'channel' | 'dm';
+    taskId?: string;
+    pluginId?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface HanaUsageLedgerEntry {
+  schemaVersion: 1;
+  requestId: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  status: 'ok' | 'error' | 'aborted' | 'usage_missing';
+  source: HanaUsageSource;
+  attribution: HanaUsageAttribution;
+  model: {
+    provider: string | null;
+    modelId: string | null;
+    api: string | null;
+  };
+  usage: HanaNormalizedUsage | null;
+  rawUsageShape: string | null;
+  error: {
+    name: string | null;
+    message: string | null;
+  } | null;
+}
+
+export interface HanaUsageListFilter {
+  since?: string;
+  until?: string;
+  attributionKind?: string;
+  sessionPath?: string;
+  agentId?: string;
+  subsystem?: string;
+  operation?: string;
+  modelId?: string;
+  provider?: string;
+  status?: 'ok' | 'error' | 'aborted' | 'usage_missing' | string;
+  limit?: number;
+}
+
+export interface HanaUsageListResult {
+  entries: HanaUsageLedgerEntry[];
+  nextCursor: string | null;
+}
+
+export interface HanaUsageEventMeta {
+  sessionPath?: string | null;
+}
+
+export interface HanaPluginLogger {
+  debug(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+  error(...args: unknown[]): void;
+}
+
+export interface HanaBusHandlerContext {
+  serverId: string;
+  serverNodeId?: string;
+  userId: string;
+  studioId: string;
+  connectionKind?: 'local' | 'lan' | 'custom_remote' | 'relay' | 'cloud' | string;
+  credentialKind?: 'none' | 'loopback_token' | 'device_credential' | 'user_session' | string;
+  platformAccountId?: string | null;
+  officialServiceKind?: 'relay' | 'cloud_studio' | 'inference' | 'billing' | string | null;
+  executionBoundary?: HanaExecutionBoundary;
+  pluginId: string;
+  bus: HanaEventBus;
+  config?: HanaPluginConfigStore;
+  log?: HanaPluginLogger;
+  [key: string]: unknown;
+}
+
+export interface HanaBusHandlerDefinition<
+  Payload = unknown,
+  Result = unknown,
+  Context extends HanaBusHandlerContext = HanaBusHandlerContext,
+> {
+  type: string;
+  handle(payload: Payload, ctx: Context): MaybePromise<Result>;
+}
+
+export interface HanaPluginContext {
+  serverId: string;
+  serverNodeId?: string;
+  userId: string;
+  studioId: string;
+  connectionKind?: 'local' | 'lan' | 'custom_remote' | 'relay' | 'cloud' | string;
+  credentialKind?: 'none' | 'loopback_token' | 'device_credential' | 'user_session' | string;
+  platformAccountId?: string | null;
+  officialServiceKind?: 'relay' | 'cloud_studio' | 'inference' | 'billing' | string | null;
+  executionBoundary?: HanaExecutionBoundary;
+  pluginId: string;
+  pluginDir: string;
+  dataDir: string;
+  capabilities?: string[];
+  sensitiveCapabilities?: string[];
+  bus: HanaEventBus;
+  config: HanaPluginConfigStore;
+  log: HanaPluginLogger;
+  registerTool?: (tool: HanaToolDefinition) => () => void;
+  registerSessionFile?: (input: Record<string, unknown>) => HanaSessionFile;
+  stageFile?: (input: Record<string, unknown>) => HanaStagedSessionFile;
+  [key: string]: unknown;
+}
+
+export type HanaPluginDisposable = () => void;
+
+export interface HanaPluginLifecycleHelpers {
+  register(disposable: HanaPluginDisposable): void;
+}
+
+export interface HanaPluginLifecycle {
+  onload?(ctx: HanaPluginContext, helpers: HanaPluginLifecycleHelpers): MaybePromise<void>;
+  onunload?(ctx: HanaPluginContext): MaybePromise<void>;
+}
+
+export interface HanaPluginInstance {
+  ctx: HanaPluginContext;
+  register: (disposable: HanaPluginDisposable) => void;
+  onload?(): MaybePromise<void>;
+  onunload?(): MaybePromise<void>;
+}
+
+export type HanaTaskStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'blocked'
+  | 'recovering'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+  | 'aborted';
+
+export interface HanaTaskProgress {
+  current?: number;
+  total?: number;
+  percent?: number;
+  message?: string;
+}
+
+export interface HanaTaskRecord {
+  taskId: string;
+  type: string;
+  parentSessionPath?: string | null;
+  pluginId?: string | null;
+  agentId?: string | null;
+  meta?: Record<string, unknown>;
+  progress?: HanaTaskProgress | null;
+  status: HanaTaskStatus;
+  aborted?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+  completedAt?: number;
+  result?: unknown;
+  error?: string;
+}
+
+export interface HanaTaskSchedule {
+  scheduleId: string;
+  type: string;
+  pluginId?: string | null;
+  agentId?: string | null;
+  parentSessionPath?: string | null;
+  payload?: unknown;
+  meta?: Record<string, unknown>;
+  intervalMs?: number | null;
+  runAt?: number | string | null;
+  enabled?: boolean;
+  nextRunAt?: number | null;
+  lastRunAt?: number | null;
+  lastResult?: unknown;
+  lastError?: string | null;
+  runCount?: number;
+}
+
+export interface HanaTaskRegisterInput {
+  taskId: string;
+  type: string;
+  parentSessionPath?: string | null;
+  pluginId?: string | null;
+  agentId?: string | null;
+  meta?: Record<string, unknown>;
+  persist?: boolean;
+}
+
+export interface HanaTaskUpdateInput {
+  taskId: string;
+  status?: HanaTaskStatus;
+  progress?: HanaTaskProgress | null;
+  meta?: Record<string, unknown>;
+  result?: unknown;
+  error?: unknown;
+  parentSessionPath?: string | null;
+  pluginId?: string | null;
+  agentId?: string | null;
+}
+
+export interface HanaTaskScheduleInput {
+  scheduleId: string;
+  type: string;
+  pluginId?: string | null;
+  agentId?: string | null;
+  parentSessionPath?: string | null;
+  payload?: unknown;
+  meta?: Record<string, unknown>;
+  intervalMs?: number;
+  runAt?: number | string | Date;
+  enabled?: boolean;
+}
+
+const EMPTY_PARAMETERS: JsonSchema = { type: 'object', properties: {} };
+
+export function defineTool<Input = unknown, Output = unknown>(
+  definition: HanaToolDefinition<Input, Output>,
+): HanaToolDefinition<Input, Output> & { parameters: JsonSchema } {
+  return {
+    ...definition,
+    parameters: definition.parameters ?? EMPTY_PARAMETERS,
+  };
+}
+
+export function defineCommand<Context = HanaCommandContext>(
+  definition: HanaCommandDefinition<Context>,
+): HanaCommandDefinition<Context> {
+  return { ...definition };
+}
+
+export function defineProvider<T extends HanaProviderDefinition>(definition: T): T {
+  return definition;
+}
+
+export function defineBusHandler<
+  Payload = unknown,
+  Result = unknown,
+  Context extends HanaBusHandlerContext = HanaBusHandlerContext,
+>(
+  definition: HanaBusHandlerDefinition<Payload, Result, Context>,
+): HanaBusHandlerDefinition<Payload, Result, Context> {
+  return { ...definition };
+}
+
+export function requestBus<Result = unknown, Payload = unknown>(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  type: string,
+  payload?: Payload,
+  options?: Record<string, unknown>,
+): Promise<Result> {
+  if (!ctx.bus || typeof ctx.bus.request !== 'function') {
+    throw new Error('plugin bus request unavailable');
+  }
+  return ctx.bus.request<Result>(type, payload, options);
+}
+
+function pluginIdFromContext(ctx: { pluginId?: string | null }): string | null {
+  return typeof ctx.pluginId === 'string' && ctx.pluginId.length > 0 ? ctx.pluginId : null;
+}
+
+function withOwnerPlugin<T extends Record<string, unknown>>(
+  ctx: { pluginId?: string | null },
+  input: T,
+): T {
+  const pluginId = pluginIdFromContext(ctx);
+  if (!pluginId || input.ownerPluginId) return input;
+  return { ...input, ownerPluginId: pluginId };
+}
+
+function withContextMetadata(
+  ctx: { pluginId?: string | null },
+  context: HanaSessionTurnContext | null | undefined,
+): HanaSessionTurnContext | null | undefined {
+  if (!context) return context;
+  const pluginId = pluginIdFromContext(ctx);
+  if (!pluginId) return context;
+  return {
+    ...context,
+    metadata: {
+      pluginId,
+      ...(context.metadata || {}),
+    },
+  };
+}
+
+export function createSession(
+  ctx: { pluginId?: string | null; bus?: Pick<HanaEventBus, 'request'> | null },
+  input: HanaSessionCreateInput = {},
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'session:create', withOwnerPlugin(ctx, { ...input }), options);
+}
+
+export function getSession(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  sessionPath: string,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'session:get', { sessionPath }, options);
+}
+
+export function listSessions(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  filter: HanaSessionListFilter = {},
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'session:list', filter, options);
+}
+
+export function updateSession(
+  ctx: { pluginId?: string | null; bus?: Pick<HanaEventBus, 'request'> | null },
+  sessionPath: string,
+  patch: HanaSessionUpdateInput,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'session:update', { sessionPath, ...withOwnerPlugin(ctx, { ...patch }) }, options);
+}
+
+export function sendSessionMessage(
+  ctx: { pluginId?: string | null; bus?: Pick<HanaEventBus, 'request'> | null },
+  sessionPath: string,
+  input: HanaSessionSendInput,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'session:send', {
+    ...input,
+    sessionPath,
+    context: withContextMetadata(ctx, input.context),
+  }, options);
+}
+
+export function subscribeSessionEvents(
+  ctx: { bus?: Pick<HanaEventBus, 'subscribe'> | null },
+  sessionPath: string,
+  handler: (event: unknown, meta: { sessionPath: string | null }) => void,
+): () => void {
+  if (!ctx.bus || typeof ctx.bus.subscribe !== 'function') {
+    throw new Error('plugin bus subscribe unavailable');
+  }
+  return ctx.bus.subscribe((event, scopedSessionPath) => {
+    handler(event, { sessionPath: scopedSessionPath || null });
+  }, { sessionPath });
+}
+
+export function listAgents(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  filter: { ownerPluginId?: string; includePluginPrivate?: boolean } = {},
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'agent:list', filter, options);
+}
+
+export function getAgentProfile(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  agentId: string,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'agent:profile', { agentId }, options);
+}
+
+export function createAgent(
+  ctx: { pluginId?: string | null; bus?: Pick<HanaEventBus, 'request'> | null },
+  input: HanaAgentCreateInput,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'agent:create', withOwnerPlugin(ctx, { ...input }), options);
+}
+
+export function updateAgent(
+  ctx: { pluginId?: string | null; bus?: Pick<HanaEventBus, 'request'> | null },
+  agentId: string,
+  patch: HanaAgentUpdateInput,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'agent:update', { agentId, ...withOwnerPlugin(ctx, { ...patch }) }, options);
+}
+
+export function sampleText(
+  ctx: { pluginId?: string | null; bus?: Pick<HanaEventBus, 'request'> | null },
+  input: HanaModelSampleInput,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'model:sample-text', {
+    ...input,
+    ...(pluginIdFromContext(ctx) ? { pluginId: pluginIdFromContext(ctx) } : {}),
+  }, options);
+}
+
+export function listMediaProviders(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  filter: HanaMediaProviderFilter = {},
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'provider:media-providers', filter, options);
+}
+
+export function resolveMediaModel(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  ref: HanaMediaModelRef,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'provider:resolve-media-model', ref, options);
+}
+
+export function generateImage(
+  ctx: { pluginId?: string | null; bus?: Pick<HanaEventBus, 'request'> | null },
+  input: HanaGenerateImageInput,
+  options?: Record<string, unknown>,
+): Promise<unknown> {
+  return requestBus(ctx, 'media:generate-image', {
+    ...input,
+    ...(pluginIdFromContext(ctx) ? { pluginId: pluginIdFromContext(ctx) } : {}),
+  }, options);
+}
+
+export function listUsageEntries(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  filter: HanaUsageListFilter = {},
+  options?: Record<string, unknown>,
+): Promise<HanaUsageListResult> {
+  return requestBus<HanaUsageListResult, HanaUsageListFilter>(ctx, 'usage:list', filter, options);
+}
+
+export function subscribeUsageEvents(
+  ctx: { bus?: Pick<HanaEventBus, 'subscribe'> | null },
+  handler: (entry: HanaUsageLedgerEntry, meta: HanaUsageEventMeta) => void,
+): () => void {
+  if (!ctx.bus || typeof ctx.bus.subscribe !== 'function') {
+    throw new Error('plugin bus subscribe unavailable');
+  }
+  return ctx.bus.subscribe((event, sessionPath) => {
+    if (!event || typeof event !== 'object') return;
+    const typed = event as { type?: unknown; entry?: unknown };
+    if (typed.type !== 'llm_usage') return;
+    handler(typed.entry as HanaUsageLedgerEntry, { sessionPath });
+  }, { types: ['llm_usage'] });
+}
+
+export function registerTask(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  input: HanaTaskRegisterInput,
+): Promise<{ ok: true }> {
+  return requestBus(ctx, 'task:register', input);
+}
+
+export function updateTask(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  input: HanaTaskUpdateInput,
+): Promise<{ ok: true; task: HanaTaskRecord }> {
+  return requestBus(ctx, 'task:update', input);
+}
+
+export function completeTask(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  taskId: string,
+  result?: unknown,
+): Promise<{ ok: true; task: HanaTaskRecord }> {
+  return requestBus(ctx, 'task:complete', { taskId, result });
+}
+
+export function failTask(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  taskId: string,
+  error: unknown,
+): Promise<{ ok: true; task: HanaTaskRecord }> {
+  return requestBus(ctx, 'task:fail', { taskId, error });
+}
+
+export function cancelTask(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  taskId: string,
+  reason?: string,
+): Promise<{ result: string; canceled: boolean }> {
+  return requestBus(ctx, 'task:cancel', { taskId, reason });
+}
+
+export function scheduleTask(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  input: HanaTaskScheduleInput,
+): Promise<{ ok: true; schedule: HanaTaskSchedule }> {
+  return requestBus(ctx, 'task:schedule', input);
+}
+
+export function unscheduleTask(
+  ctx: { bus?: Pick<HanaEventBus, 'request'> | null },
+  scheduleId: string,
+): Promise<{ ok: true; removed: boolean }> {
+  return requestBus(ctx, 'task:unschedule', { scheduleId });
+}
+
+export function sessionFileToMediaItem(file: HanaSessionFile): HanaSessionFileMediaItem {
+  const fileId = firstText(file.fileId, file.id);
+  if (!fileId) {
+    throw new Error('SessionFile media item requires id or fileId');
+  }
+
+  const item: HanaSessionFileMediaItem = {
+    type: 'session_file',
+    fileId,
+  };
+  assignDefined(item, 'sessionPath', file.sessionPath);
+  assignDefined(item, 'filePath', file.filePath);
+  assignDefined(item, 'label', firstText(file.label, file.displayName, file.filename));
+  assignDefined(item, 'mime', file.mime);
+  assignDefined(item, 'size', file.size);
+  assignDefined(item, 'kind', file.kind);
+  return item;
+}
+
+type HanaMediaInput = HanaSessionFile | HanaSessionFileMediaItem | HanaStagedSessionFile;
+
+export function createMediaDetails(items: HanaMediaInput[]): HanaMediaDetails {
+  return {
+    media: {
+      items: items.map(normalizeMediaItem),
+    },
+  };
+}
+
+export function defineExtension<Pi = unknown>(factory: HanaExtensionFactory<Pi>): HanaExtensionFactory<Pi> {
+  return factory;
+}
+
+export function definePlugin(lifecycle: HanaPluginLifecycle): new () => HanaPluginInstance {
+  return class DefinedHanaPlugin implements HanaPluginInstance {
+    ctx!: HanaPluginContext;
+    register!: (disposable: HanaPluginDisposable) => void;
+
+    async onload(): Promise<void> {
+      await lifecycle.onload?.(this.ctx, { register: this.register });
+    }
+
+    async onunload(): Promise<void> {
+      await lifecycle.onunload?.(this.ctx);
+    }
+  };
+}
+
+function normalizeMediaItem(input: HanaMediaInput): HanaSessionFileMediaItem {
+  if (isRecord(input) && isRecord(input.mediaItem)) {
+    return normalizeSessionFileMediaItem(input.mediaItem);
+  }
+  if (isRecord(input) && input.type === 'session_file') {
+    return normalizeSessionFileMediaItem(input);
+  }
+  if (isRecord(input)) {
+    return sessionFileToMediaItem(input);
+  }
+  throw new Error('media details item must be a SessionFile, staged file, or session_file media item');
+}
+
+function normalizeSessionFileMediaItem(input: Record<string, unknown>): HanaSessionFileMediaItem {
+  if (input.type !== 'session_file') {
+    throw new Error('media details item must be a session_file media item');
+  }
+  const fileId = firstText(input.fileId);
+  if (!fileId) {
+    throw new Error('SessionFile media item requires fileId');
+  }
+  return {
+    ...input,
+    type: 'session_file',
+    fileId,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstText(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function assignDefined(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (value !== undefined && value !== null) {
+    target[key] = value;
+  }
+}

@@ -1,6 +1,7 @@
 .overlay {
   position: absolute;
-  inset: var(--titlebar-h, 44px) 0 0 0;
+  /* main-content 已是 titlebar 下方的文档流容器，overlay 填满即可，无需再避让 titlebar */
+  inset: 0;
   pointer-events: none;
   z-index: 64;
   overflow: hidden;

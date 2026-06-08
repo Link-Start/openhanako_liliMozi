@@ -1,0 +1,123 @@
+.slot {
+    flex-shrink: 0;
+    padding: var(--space-sm) 6px;
+    -webkit-app-region: no-drag;
+}
+
+.card {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    width: 100%;
+    padding: var(--space-sm);
+    color: var(--text);
+    background: var(--bg-card);
+    border: 1px solid var(--overlay-light);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    animation: hana-fade-up var(--duration-fast) var(--ease-out);
+    overflow: hidden;
+}
+
+:global(body.paper-texture) .card {
+    background-image: url(../../../assets/textures/rice-paper.png);
+    background-repeat: repeat;
+    background-size: 160px;
+    background-attachment: fixed;
+    background-blend-mode: var(--paper-texture-card-blend-mode);
+}
+
+.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    margin: 0 2px;
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.09);
+    border-radius: var(--radius-sm);
+}
+
+.content {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding-right: var(--space-md);
+}
+
+.title {
+    min-width: 0;
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+}
+
+.actionButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    min-height: 24px;
+    padding: 0 var(--space-sm);
+    color: var(--text);
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    border-radius: 3px;
+    cursor: default;
+    font: inherit;
+    font-size: 0.7rem;
+    transition: color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out),
+                background var(--duration-fast) var(--ease-out);
+}
+
+.actionButton:hover,
+.actionButton:focus-visible {
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.07);
+    border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+    outline: none;
+}
+
+.closeButton {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    cursor: default;
+    opacity: 0.66;
+    transition: opacity var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out),
+                background var(--duration-fast) var(--ease-out);
+}
+
+.closeButton:hover,
+.closeButton:focus-visible {
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.08);
+    opacity: 1;
+    outline: none;
+}

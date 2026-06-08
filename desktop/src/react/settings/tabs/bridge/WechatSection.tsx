@@ -10,7 +10,8 @@ import { SettingsSection } from '../../components/SettingsSection';
 import bridgeStyles from '../BridgeTab.module.css';
 
 interface WechatSectionProps {
-  status: { status?: string; error?: string; enabled?: boolean; token?: string };
+  // undefined 表示 bridge status 还未加载完成；让 Toggle 走加载态而不是"假关"
+  status: { status?: string; error?: string; enabled?: boolean; token?: string } | undefined;
   showToast: (msg: string, type: 'success' | 'error') => void;
   onSaveConfig: (credentials: Record<string, string> | null, enabled?: boolean) => Promise<void>;
   onReload: () => Promise<void>;
@@ -40,15 +41,17 @@ export function WechatSection({ status, showToast, onSaveConfig, onReload, agent
     await onReload();
   };
 
+  const toggleOn = status === undefined ? undefined : !!status.enabled;
+
   /** 状态 + Toggle 作为 section 右上角 context */
   const statusContext = (
     <div className="bridge-platform-header" style={{ margin: 0 }}>
-      <BridgeStatusDot status={status.status} />
-      <BridgeStatusText status={status.status} error={status.error} />
+      <BridgeStatusDot status={status?.status} />
+      <BridgeStatusText status={status?.status} error={status?.error} />
       <Toggle
-        on={!!status.enabled}
+        on={toggleOn}
         onChange={async (on) => {
-          if (on && !status.token) { showToast(t('settings.bridge.wechatNeedScan'), 'error'); return; }
+          if (on && !status?.token) { showToast(t('settings.bridge.wechatNeedScan'), 'error'); return; }
           await onSaveConfig(null, on);
         }}
       />
@@ -58,7 +61,7 @@ export function WechatSection({ status, showToast, onSaveConfig, onReload, agent
   return (
     <SettingsSection title={t('settings.bridge.wechat')} context={statusContext}>
       <div style={{ padding: 'var(--space-sm) var(--space-md)' }}>
-        {status.token ? (
+        {status?.token ? (
           <div className={bridgeStyles['wechat-logged-in']}>
             <span className={bridgeStyles['wechat-login-info']}>
               {t('settings.bridge.wechatLoggedIn')}
@@ -79,14 +82,12 @@ export function WechatSection({ status, showToast, onSaveConfig, onReload, agent
             </button>
           </div>
         )}
-        <div style={{
-          marginTop: 'var(--space-sm)',
-          fontSize: '0.7rem',
-          color: 'var(--text-muted)',
-          lineHeight: 1.4,
-        }}>
+        <div className={bridgeStyles['wechat-hints']}>
           <div>{t('settings.bridge.wechatHint')}</div>
           <div>{t('settings.bridge.wechatExclusive')}</div>
+          <div className={bridgeStyles['wechat-info-reminder']}>
+            {t('settings.bridge.wechatReplyWindowReminder')}
+          </div>
         </div>
       </div>
     </SettingsSection>

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { t } from '../helpers';
+import { Overlay } from '../../ui';
 
 export function BridgeTutorial() {
   const [visible, setVisible] = useState(false);
@@ -10,16 +11,20 @@ export function BridgeTutorial() {
     return () => window.removeEventListener('hana-show-bridge-tutorial', handler);
   }, []);
 
-  const close = () => setVisible(false);
-
-  if (!visible) return null;
+  const close = useCallback(() => setVisible(false), []);
 
   const tgSteps: string[] = t('settings.bridge.tutorialTgSteps') || [];
   const fsSteps: string[] = t('settings.bridge.tutorialFsSteps') || [];
 
   return (
-    <div className="bridge-tutorial-overlay" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="bridge-tutorial-panel">
+    <Overlay
+      open={visible}
+      onClose={close}
+      backdrop="blur"
+      zIndex={100}
+      className="bridge-tutorial-panel"
+      disableContainerAnimation
+    >
         <div className="bridge-tutorial-header">
           <h3 className="bridge-tutorial-title">{t('settings.bridge.tutorialTitle')}</h3>
           <button className="bridge-tutorial-close" onClick={close}>
@@ -46,7 +51,6 @@ export function BridgeTutorial() {
             </ol>
           </section>
         </div>
-      </div>
-    </div>
+    </Overlay>
   );
 }

@@ -6,8 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { ContextMenu } from './ContextMenu';
-import type { ContextMenuItem } from './ContextMenu';
+import { ContextMenu, type ContextMenuItem } from '../ui';
 
 declare function t(key: string): string;
 

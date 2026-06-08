@@ -9,6 +9,7 @@ import { getProviderPresetLabel } from '../../utils/provider-presets';
 import { testConnection, saveProvider as saveProviderAction } from '../onboarding-actions';
 import type { HanaFetch } from '../onboarding-actions';
 import { StepContainer, Multiline } from '../onboarding-ui';
+import { SelectWidget } from '@/ui';
 
 // ── SVG Icons (local to this step) ──
 
@@ -225,14 +226,16 @@ export function ProviderStep({
               />
             </div>
             <div className="custom-field">
-              <select
-                className="ob-input"
+              <SelectWidget
+                className="ob-select-widget"
+                triggerClassName="ob-input"
+                options={[
+                  { value: 'openai-completions', label: 'OpenAI Compatible' },
+                  { value: 'anthropic-messages', label: 'Anthropic Messages' },
+                ]}
                 value={customApi}
-                onChange={e => onCustomInput(customName, customUrl, e.target.value)}
-              >
-                <option value="openai-completions">OpenAI Compatible</option>
-                <option value="anthropic-messages">Anthropic Messages</option>
-              </select>
+                onChange={value => onCustomInput(customName, customUrl, value)}
+              />
             </div>
           </div>
         </div>

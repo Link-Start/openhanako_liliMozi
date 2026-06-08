@@ -16,21 +16,21 @@ export const XING_PROMPT = isZh
   ? `回顾本次对话中我（用户）发送的消息，提取可复用的工作流程、纠正和操作经验。
 
 不要把用户的个人画像、审美喜好、兴趣、生活近况写进技能；这些属于记忆系统。
-只把“以后遇到类似任务应该怎么做”的内容写成自学技能。
+只把“以后遇到类似任务应该怎么做”的内容写成通用技能。
 
 你必须先查阅 skill-creator 技能，按照其中 "Capture Intent" 和 "Write the SKILL.md" 部分的流程操作。
 只做到创建并安装为止，不需要做 eval、benchmark 或 description optimization。
 
-最终调用 install_skill 工具将技能安装为自学技能（skill_content + skill_name 模式）。`
+最终调用 install_skill 工具将技能安装到通用技能池，并默认只为当前 Agent 启用（skill_content + skill_name 模式）。`
   : `Review the messages I (the user) sent in this session and extract reusable workflows, corrections, and operational lessons.
 
 Do not write the user's personal profile, aesthetic tastes, interests, or life/current-state context into a skill; those belong in memory.
-Only turn "how to handle similar tasks in the future" into a learned skill.
+Only turn "how to handle similar tasks in the future" into a reusable skill.
 
 You must first consult the skill-creator skill, following its "Capture Intent" and "Write the SKILL.md" sections.
 Only go as far as creating and installing — do not run evals, benchmarks, or description optimization.
 
-Use the install_skill tool to install the skill as a learned skill (skill_content + skill_name mode).`;
+Use the install_skill tool to install the skill into the shared skill pool, enabled only for the current agent by default (skill_content + skill_name mode).`;
 
 // ── Slash Command Interface ──
 
@@ -75,28 +75,56 @@ export function resolveSlashSubmitSelection({
 
 // ── Command Executors ──
 
+type ToastType = 'success' | 'error' | 'info' | 'warning';
+type AddToast = (
+  text: string,
+  type?: ToastType,
+  duration?: number,
+  opts?: { persistent?: boolean; dedupeKey?: string },
+) => number | null;
+type RemoveToast = (id: number) => void;
+
+const DIARY_WRITE_TIMEOUT_MS = 150_000;
+
 export function executeDiary(
   t: (key: string) => string,
-  showResult: (text: string, type: 'success' | 'error') => void,
-  setBusy: (name: string | null) => void,
+  addToast: AddToast,
+  removeToast: RemoveToast,
   setInput: (text: string) => void,
   setMenuOpen: (open: boolean) => void,
-): () => Promise<void> {
-  return async () => {
-    setBusy('diary');
+): () => void {
+  return () => {
     setInput('');
     setMenuOpen(false);
-    try {
-      const res = await hanaFetch('/api/diary/write', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        showResult(data.error || t('slash.diaryFailed'), 'error');
-        return;
+    const progressToastId = addToast(t('slash.diaryBusy'), 'info', 0, {
+      persistent: true,
+      dedupeKey: 'slash-diary-progress',
+    });
+
+    void (async () => {
+      try {
+        const res = await hanaFetch('/api/diary/write', {
+          method: 'POST',
+          timeout: DIARY_WRITE_TIMEOUT_MS,
+          throwOnHttpError: false,
+        });
+        let data: { error?: string } = {};
+        try {
+          data = await res.json();
+        } catch {
+          data = {};
+        }
+        if (progressToastId !== null) removeToast(progressToastId);
+        if (!res.ok || data.error) {
+          addToast(data.error || t('slash.diaryFailed'), 'error', 6000);
+          return;
+        }
+        addToast(t('slash.diaryDone'), 'success', 5000);
+      } catch {
+        if (progressToastId !== null) removeToast(progressToastId);
+        addToast(t('slash.diaryFailed'), 'error', 6000);
       }
-      showResult(t('slash.diaryDone'), 'success');
-    } catch {
-      showResult(t('slash.diaryFailed'), 'error');
-    }
+    })();
   };
 }
 
@@ -157,7 +185,7 @@ export function executeSlashViaWs(
 
 export function buildSlashCommands(
   t: (key: string) => string,
-  executeDiaryFn: () => Promise<void>,
+  executeDiaryFn: () => Promise<void> | void,
   executeXingFn: () => Promise<void>,
   executeCompactFn: () => Promise<void>,
   slashViaWsFactory?: (cmd: string) => () => Promise<void>,

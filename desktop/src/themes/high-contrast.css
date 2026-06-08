@@ -5,9 +5,9 @@
 
 [data-theme="high-contrast"] {
     /* 背景 */
-    --bg:           #FAF9F6;
-    --bg-card:      #FDFCFA;
-    --bg-glass:     rgba(253, 252, 250, 0.94);
+    --bg:           #FAF8F7;
+    --bg-card:      #FDFBFA;
+    --bg-glass:     rgba(253, 251, 250, 0.94);
 
     /* 主色调 */
     --accent:       #3A6B85;
@@ -20,7 +20,7 @@
     --text-muted:   #6B6F73;
 
     /* 边框与阴影 */
-    --border:       rgba(58, 107, 133, 0.28);
+    --border:       rgba(92, 75, 70, 0.22);
     --shadow:       rgba(26, 28, 30, 0.11);
 
     /* 状态色 */
@@ -29,7 +29,7 @@
     --coral:        #D4716F;
 
     /* 侧边栏 */
-    --sidebar-bg:   #F3F2EF;
+    --sidebar-bg:   #F3F1F0;
 
     /* 便笺 */
     --jian-note-bg:     #FAF5E9;
@@ -43,7 +43,7 @@
     --tool-bg:      rgba(58, 107, 133, 0.06);
     --tool-text:    #4A4E52;
     --user-bg:      rgba(58, 107, 133, 0.08);
-    --drop-overlay-bg: rgba(250, 249, 246, 0.88);
+    --drop-overlay-bg: rgba(250, 248, 247, 0.88);
     --attach-bg:    rgba(0, 0, 0, 0.05);
 
     /* 辅助色 */

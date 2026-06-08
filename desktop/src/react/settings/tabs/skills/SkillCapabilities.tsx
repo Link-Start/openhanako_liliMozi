@@ -5,20 +5,20 @@ import { loadSettingsConfig } from '../../actions';
 import { SettingsSection } from '../../components/SettingsSection';
 import styles from '../../Settings.module.css';
 
-interface LearnConfig {
+interface SkillInstallConfig {
   enabled?: boolean;
   allow_github_fetch?: boolean;
   safety_review?: boolean;
 }
 
 interface SkillCapabilitiesProps {
-  learnCfg: LearnConfig;
+  installCfg: SkillInstallConfig | undefined;
 }
 
-export function SkillCapabilities({ learnCfg }: SkillCapabilitiesProps) {
-  const learnEnabled = learnCfg.enabled === true;
-  const githubEnabled = learnCfg.allow_github_fetch === true;
-  const safetyReviewEnabled = learnCfg.safety_review !== false;
+export function SkillCapabilities({ installCfg }: SkillCapabilitiesProps) {
+  const installEnabled = installCfg ? installCfg.enabled === true : undefined;
+  const githubEnabled = installCfg ? installCfg.allow_github_fetch === true : undefined;
+  const safetyReviewEnabled = installCfg ? installCfg.safety_review !== false : undefined;
 
   const [showGithubWarning, setShowGithubWarning] = useState(false);
   const [showSafetyWarning, setShowSafetyWarning] = useState(false);
@@ -53,7 +53,7 @@ export function SkillCapabilities({ learnCfg }: SkillCapabilitiesProps) {
             <span className={styles['capability-row-desc']}>{t('settings.skills.learnCreateDesc')}</span>
           </div>
           <Toggle
-            on={learnEnabled}
+            on={installEnabled}
             onChange={async (on) => {
               if (!on && githubEnabled) {
                 await autoSaveConfig(
@@ -70,7 +70,7 @@ export function SkillCapabilities({ learnCfg }: SkillCapabilitiesProps) {
             }}
           />
         </div>
-        {learnEnabled && (
+        {installEnabled === true && (
           <div className={`${styles['capability-row']} ${styles['capability-row-nested']}`}>
             <div className={styles['capability-row-label']}>
               <span className={styles['capability-row-name']}>{t('settings.skills.fetchRemote')}</span>
@@ -82,7 +82,7 @@ export function SkillCapabilities({ learnCfg }: SkillCapabilitiesProps) {
             />
           </div>
         )}
-        {learnEnabled && (
+        {installEnabled === true && (
           <div className={`${styles['capability-row']} ${styles['capability-row-nested']}`}>
             <div className={styles['capability-row-label']}>
               <span className={styles['capability-row-name']}>{t('settings.skills.safetyReview')}</span>

@@ -3,88 +3,83 @@ import { useStore } from '../stores';
 import { closeSettingsModal, setSettingsModalActiveTab } from '../stores/settings-modal-actions';
 import { SettingsContent } from '../settings/SettingsContent';
 import { useSettingsStore } from '../settings/store';
+import { useAnimatePresence } from '../hooks/use-animate-presence';
 import styles from './SettingsModalShell.module.css';
 
 declare function t(key: string, vars?: Record<string, string | number>): string;
 
-const CLOSE_ANIMATION_MS = 150;
-type RenderState = 'closed' | 'opening' | 'open' | 'closing';
+const CLOSE_ANIMATION_MS = 150;  // 对齐 --duration-fast（0.15s）
+type VisualState = 'opening' | 'open' | 'closing';
 
 export function SettingsModalShell() {
   const settingsModal = useStore(s => s.settingsModal);
-  const [renderState, setRenderState] = useState<RenderState>(settingsModal.open ? 'opening' : 'closed');
+  const { mounted, stage } = useAnimatePresence(settingsModal.open, { duration: CLOSE_ANIMATION_MS });
+  const [shown, setShown] = useState(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const closeTimerRef = useRef<number | null>(null);
 
-  const clearAnimationFrame = useCallback(() => {
-    if (animationFrameRef.current === null) return;
-    window.cancelAnimationFrame(animationFrameRef.current);
-    animationFrameRef.current = null;
-  }, []);
-
-  const clearCloseTimer = useCallback(() => {
-    if (closeTimerRef.current === null) return;
-    window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = null;
-  }, []);
-
-  const requestClose = useCallback(() => {
-    if (renderState === 'closing' || renderState === 'closed') return;
-    clearAnimationFrame();
-    clearCloseTimer();
-    setRenderState('closing');
-    closeTimerRef.current = window.setTimeout(() => {
-      closeTimerRef.current = null;
-      closeSettingsModal();
-      setRenderState('closed');
-    }, CLOSE_ANIMATION_MS);
-  }, [clearAnimationFrame, clearCloseTimer, renderState]);
-
-  useEffect(() => () => {
-    clearAnimationFrame();
-    clearCloseTimer();
-  }, [clearAnimationFrame, clearCloseTimer]);
-
+  // rAF double-buffer：先以默认（opening）状态渲染一帧，再加 .open class 触发 CSS transition
   useEffect(() => {
-    if (!settingsModal.open) {
-      setRenderState('closed');
+    if (!mounted) {
+      setShown(false);
       return;
     }
+    if (stage === 'exit') {
+      setShown(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, [mounted, stage]);
 
-    clearCloseTimer();
-    setRenderState('opening');
-    clearAnimationFrame();
-    animationFrameRef.current = window.requestAnimationFrame(() => {
-      animationFrameRef.current = null;
-      setRenderState('open');
-    });
-  }, [clearAnimationFrame, clearCloseTimer, settingsModal.open]);
+  const visualState: VisualState =
+    stage === 'exit' ? 'closing' :
+    shown ? 'open' : 'opening';
+  const isWideSettingsPage = settingsModal.activeTab === 'plugin-marketplace';
 
+  const requestClose = useCallback(() => {
+    closeSettingsModal();
+  }, []);
+
+  const handleActiveTabChange = useCallback((tab: string) => {
+    const current = useStore.getState().settingsModal;
+    if (current?.activeTab === tab) return;
+    setSettingsModalActiveTab(tab);
+  }, []);
+
+  // 保存打开前的焦点，关闭后恢复
   useEffect(() => {
-    if (renderState !== 'opening') return;
-    returnFocusRef.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  }, [renderState]);
+    if (mounted && returnFocusRef.current === null) {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    }
+    if (!mounted && returnFocusRef.current) {
+      returnFocusRef.current.focus?.();
+      returnFocusRef.current = null;
+    }
+  }, [mounted]);
 
+  // 同步 activeTab 到 settings store（仅在打开期间）
   useEffect(() => {
-    if (renderState === 'closed') return;
+    if (!mounted) return;
+    if (useSettingsStore.getState().activeTab === settingsModal.activeTab) return;
     useSettingsStore.setState({ activeTab: settingsModal.activeTab });
-  }, [renderState, settingsModal.activeTab]);
+  }, [mounted, settingsModal.activeTab]);
 
+  // 加上 .open class 后立即聚焦到 [data-settings-return] 或第一个可聚焦元素
   useEffect(() => {
-    if (renderState !== 'open') return;
+    if (!shown || stage === 'exit') return;
     requestAnimationFrame(() => {
       const target = cardRef.current?.querySelector<HTMLElement>('[data-settings-return]')
         ?? firstFocusable(cardRef.current);
       target?.focus();
     });
-  }, [renderState]);
+  }, [shown, stage]);
 
+  // ESC 关闭 + Tab 焦点陷阱
   useEffect(() => {
-    if (renderState === 'closed' || renderState === 'closing') return;
+    if (!mounted || stage === 'exit') return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -97,17 +92,9 @@ export function SettingsModalShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [renderState, requestClose]);
+  }, [mounted, stage, requestClose]);
 
-  useEffect(() => {
-    if (settingsModal.open || renderState !== 'closed') return;
-    returnFocusRef.current?.focus?.();
-    returnFocusRef.current = null;
-  }, [renderState, settingsModal.open]);
-
-  const visualState: RenderState = renderState === 'closed' && settingsModal.open ? 'opening' : renderState;
-
-  if (!settingsModal.open && renderState === 'closed') return null;
+  if (!mounted) return null;
 
   return (
     <div
@@ -123,6 +110,7 @@ export function SettingsModalShell() {
       <div
         ref={cardRef}
         className={`${styles.card} ${styles[visualState]}`}
+        data-wide={isWideSettingsPage ? 'true' : undefined}
         data-state={visualState}
         role="dialog"
         aria-modal="true"
@@ -131,7 +119,7 @@ export function SettingsModalShell() {
         <SettingsContent
           variant="modal"
           onClose={requestClose}
-          onActiveTabChange={setSettingsModalActiveTab}
+          onActiveTabChange={handleActiveTabChange}
         />
       </div>
     </div>

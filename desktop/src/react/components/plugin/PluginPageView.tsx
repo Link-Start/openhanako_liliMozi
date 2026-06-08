@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { useStore } from '../../stores';
 import { usePluginIframe } from '../../hooks/use-plugin-iframe';
-import { hanaUrl } from '../../hooks/use-hana-fetch';
+import { usePluginSurfaceUrl } from '../../hooks/use-plugin-surface-url';
 import s from './PluginPageView.module.css';
-import { DEFAULT_THEME } from '../../../shared/theme-registry.cjs';
+
+declare function t(key: string, vars?: Record<string, string | number>): string;
 
 interface Props {
   pluginId: string;
@@ -14,16 +15,20 @@ export function PluginPageView({ pluginId }: Props) {
   const agentId = useStore(st => st.currentAgentId);
   const page = useMemo(() => pages.find(p => p.pluginId === pluginId), [pages, pluginId]);
 
-  const iframeSrc = useMemo(() => {
-    if (!page?.routeUrl) return null;
-    const theme = document.documentElement.dataset.theme || DEFAULT_THEME;
-    const cssUrl = hanaUrl(`/api/plugins/theme.css?theme=${encodeURIComponent(theme)}`);
-    const fullUrl = hanaUrl(page.routeUrl);
-    const sep = fullUrl.includes('?') ? '&' : '?';
-    return `${fullUrl}${sep}agentId=${encodeURIComponent(agentId || '')}&hana-theme=${encodeURIComponent(theme)}&hana-css=${encodeURIComponent(cssUrl)}`;
-  }, [page?.routeUrl, agentId]);
+  const surfaceUrl = usePluginSurfaceUrl(page?.routeUrl ?? null, agentId);
 
-  const { iframeRef, status, postToIframe, retry } = usePluginIframe(iframeSrc);
+  const { iframeRef, status: iframeStatus, postToIframe, retry: retryIframe } = usePluginIframe(surfaceUrl.iframeSrc, {
+    pluginId,
+    agentId,
+    slot: 'page',
+    readyOnTimeout: true,
+    capabilityGrants: page?.hostCapabilities ?? [],
+  });
+  const status = surfaceUrl.status === 'ready' ? iframeStatus : surfaceUrl.status;
+  const retry = () => {
+    surfaceUrl.retry();
+    retryIframe();
+  };
 
   useEffect(() => {
     if (status === 'ready') postToIframe('visibility-changed', { visible: true });
@@ -33,7 +38,7 @@ export function PluginPageView({ pluginId }: Props) {
   if (!page) {
     return (
       <div className={s.container}>
-        <div className={s.error}>插件未找到</div>
+        <div className={s.error}>{t('plugin.page.notFound')}</div>
       </div>
     );
   }
@@ -45,14 +50,14 @@ export function PluginPageView({ pluginId }: Props) {
       )}
       {status === 'error' && (
         <div className={s.overlay}>
-          <p>插件加载失败</p>
-          <button className={s.retryBtn} onClick={retry}>重试</button>
+          <p>{t('plugin.page.loadFailed')}</p>
+          <button className={s.retryBtn} onClick={retry}>{t('plugin.page.retry')}</button>
         </div>
       )}
       <iframe
         ref={iframeRef}
         className={s.iframe}
-        src={iframeSrc || undefined}
+        src={surfaceUrl.iframeSrc || undefined}
         sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
         style={{ opacity: status === 'ready' ? 1 : 0 }}
       />

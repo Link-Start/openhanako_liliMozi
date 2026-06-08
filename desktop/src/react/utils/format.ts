@@ -39,10 +39,14 @@ export function parseCSV(text: string): string[][] {
 
 // 扩展名识别统一走 file-kind 中心表；禁止维护私有 IMAGE_EXTS 表。
 // 保留此 helper 纯粹是 API 形式（传 name，返回 boolean），内部委托给中心表。
-import { isImageOrSvgExt, extOfName } from './file-kind';
+import { inferKindByExt, isImageOrSvgExt, extOfName } from './file-kind';
 
 export function isImageFile(name: string): boolean {
   return isImageOrSvgExt(extOfName(name));
+}
+
+export function isVideoFile(name: string): boolean {
+  return inferKindByExt(extOfName(name)) === 'video';
 }
 
 export function formatSessionDate(isoStr: string): string {
@@ -73,7 +77,7 @@ export function cronToHuman(schedule: number | string): string {
   const s = String(schedule);
   const parts = s.split(' ');
   if (parts.length !== 5) return s;
-  const [min, hour, , , dow] = parts;
+  const [min, hour, dayOfMonth, month, dow] = parts;
   if (min.startsWith('*/') && hour === '*' && dow === '*') {
     return t('cron.everyMinutes', { n: min.slice(2) });
   }
@@ -82,8 +86,11 @@ export function cronToHuman(schedule: number | string): string {
   }
   if (min === '0' && hour === '*' && dow === '*') return t('cron.hourly');
   if (hour === '*' && dow === '*' && /^\d+$/.test(min)) return t('cron.hourly');
-  if (dow === '*' && hour !== '*' && min !== '*') {
+  if (dow === '*' && dayOfMonth === '*' && month === '*' && hour !== '*' && min !== '*') {
     return t('cron.dailyAt', { hour, min: min.padStart(2, '0') });
+  }
+  if (dow === '*' && month === '*' && /^\d+$/.test(dayOfMonth) && hour !== '*' && min !== '*') {
+    return t('cron.monthlyAt', { day: dayOfMonth, hour, min: min.padStart(2, '0') });
   }
   const dayNames: string[] = (window.t as (...args: unknown[]) => unknown)('cron.dayNames') as string[] || ['日', '一', '二', '三', '四', '五', '六'];
   const weekPrefix = t('cron.weekPrefix');
@@ -110,26 +117,74 @@ export function parseMoodFromContent(content: string): { mood: string | null; te
 }
 
 /**
- * 给 md-content 里的代码块注入复制按钮
+ * 给 md-content 里的代码块注入复制按钮。
+ *
+ * 为修复横向滚动时按钮跟随内容漂移的问题，将每个代码块 <pre> 包裹在
+ * <div class="code-block-wrap"> 中，按钮挂到 wrapper 而非 pre 内。
+ * wrapper 是非滚动定位祖先（position:relative），pre 继续作为滚动容器
+ * （overflow-x:auto），两者职责分离。
+ *
+ * 排除 .mermaid-source：该 pre 是 mermaid-diagram 结构的一部分，
+ * 套 wrapper 会破坏渲染，且无需复制按钮。
  */
 export function injectCopyButtons(container: HTMLElement): void {
   const t = window.t ?? ((p: string) => p);
   const pres = container.querySelectorAll('pre');
   for (const pre of pres) {
-    if (pre.querySelector('.copy-btn')) continue;
-    // eslint-disable-next-line no-restricted-syntax -- copy button injected into rendered Markdown HTML, outside React tree
+    // 跳过 mermaid 图表源码 pre（不套 wrapper、不加按钮）
+    if (pre.classList.contains('mermaid-source')) continue;
+    // 判重：已在 wrapper 内则跳过
+    if (pre.parentElement?.classList.contains('code-block-wrap')) continue;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'code-block-wrap';
+
     const btn = document.createElement('button');
     btn.className = 'copy-btn';
-    btn.textContent = t('attach.copy');
+    btn.type = 'button';
+    btn.title = t('attach.copy');
+    btn.setAttribute('aria-label', t('attach.copy'));
+    btn.dataset.copied = 'false';
+    btn.dataset.copiedLabel = t('attach.copied');
+
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('class', 'copy-btn-icon');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('fill', 'none');
+    icon.setAttribute('stroke', 'currentColor');
+    icon.setAttribute('stroke-width', '1.7');
+    icon.setAttribute('stroke-linecap', 'round');
+    icon.setAttribute('stroke-linejoin', 'round');
+    icon.setAttribute('aria-hidden', 'true');
+    const rectBack = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rectBack.setAttribute('x', '8');
+    rectBack.setAttribute('y', '8');
+    rectBack.setAttribute('width', '10');
+    rectBack.setAttribute('height', '10');
+    rectBack.setAttribute('rx', '1.5');
+    const pathFront = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pathFront.setAttribute('d', 'M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1');
+    icon.append(rectBack, pathFront);
+    btn.appendChild(icon);
+
     btn.addEventListener('click', () => {
       const code = pre.querySelector('code');
       const text = code ? code.textContent : pre.textContent;
       navigator.clipboard.writeText(text || '').then(() => {
-        btn.textContent = t('attach.copied');
-        setTimeout(() => { btn.textContent = t('attach.copy'); }, 1500);
+        btn.dataset.copied = 'true';
+        btn.title = t('attach.copied');
+        btn.setAttribute('aria-label', t('attach.copied'));
+        setTimeout(() => {
+          btn.dataset.copied = 'false';
+          btn.title = t('attach.copy');
+          btn.setAttribute('aria-label', t('attach.copy'));
+        }, 1500);
       });
     });
-    pre.style.position = 'relative';
-    pre.appendChild(btn);
+
+    // 将 pre 替换为 wrapper，wrapper 内含 pre 和 btn
+    pre.parentNode?.insertBefore(wrapper, pre);
+    wrapper.appendChild(pre);
+    wrapper.appendChild(btn);
   }
 }

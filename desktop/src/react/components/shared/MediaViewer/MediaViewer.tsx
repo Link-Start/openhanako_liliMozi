@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'motion/react';
+import { spring } from '@/ui/motion';
 import { useStore } from '../../../stores';
 import { isMediaKind } from '../../../utils/file-kind';
+import { fileRefVersionToken } from '../../../services/resource-url';
 import { ImageStage } from './ImageStage';
 import { VideoStage } from './VideoStage';
 import styles from './MediaViewer.module.css';
+
+declare function t(key: string, vars?: Record<string, string | number>): string;
 
 export function MediaViewer() {
   const state = useStore(s => s.mediaViewer);
@@ -117,14 +122,17 @@ export function MediaViewer() {
   };
 
   return (
-    <div
+    <motion.div
       ref={containerRef}
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
-      aria-label="媒体预览"
+      aria-label={t('mediaViewer.ariaLabel')}
       data-testid="media-viewer-overlay"
       onClick={onOverlayClick}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={spring.paperSnap}
     >
       {/* 顶栏 */}
       <div className={`${styles.topbar} ${chromeVisible ? '' : styles.hidden}`}>
@@ -136,7 +144,7 @@ export function MediaViewer() {
         <button
           className={styles.closeBtn}
           data-testid="media-viewer-close"
-          aria-label="关闭"
+          aria-label={t('mediaViewer.close')}
           onClick={(e) => { e.stopPropagation(); closeMediaViewer(); }}
         >×</button>
       </div>
@@ -147,14 +155,14 @@ export function MediaViewer() {
           <button
             className={`${styles.navBtn} ${styles.navPrev} ${chromeVisible ? '' : styles.hidden}`}
             data-testid="media-viewer-prev"
-            aria-label="上一张"
+            aria-label={t('mediaViewer.prev')}
             disabled={!canPrev}
             onClick={(e) => { e.stopPropagation(); goPrev(); }}
           >‹</button>
           <button
             className={`${styles.navBtn} ${styles.navNext} ${chromeVisible ? '' : styles.hidden}`}
             data-testid="media-viewer-next"
-            aria-label="下一张"
+            aria-label={t('mediaViewer.next')}
             disabled={!canNext}
             onClick={(e) => { e.stopPropagation(); goNext(); }}
           >›</button>
@@ -171,7 +179,7 @@ export function MediaViewer() {
             viewport={viewport}
             neighbors={{ prev, next }}
             zoomCmd={zoomCmd}
-            key={current.id}
+            key={`${current.id}:${fileRefVersionToken(current) || ''}`}
           />
         )}
       </div>
@@ -182,6 +190,6 @@ export function MediaViewer() {
       >
         <span className={styles.name} data-testid="media-viewer-name">{current.name}</span>
       </div>
-    </div>
+    </motion.div>
   );
 }

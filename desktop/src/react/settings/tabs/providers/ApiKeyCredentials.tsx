@@ -3,12 +3,72 @@ import { useSettingsStore, type ProviderSummary } from '../../store';
 import { hanaFetch } from '../../api';
 import { invalidateConfigCache } from '../../../hooks/use-config';
 import { t, API_FORMAT_OPTIONS } from '../../helpers';
-import { SelectWidget } from '../../widgets/SelectWidget';
+import { SelectWidget } from '@/ui';
 import { KeyInput } from '../../widgets/KeyInput';
 import { getApiKeySavePlan } from './api-key-save-plan';
+import { parseProviderHeaderLines, ProviderHeadersField, serializeProviderHeaders } from './ProviderHeadersField';
+import { isMaskedSecretValue } from '../../../../../../shared/secret-custody.ts';
 import styles from '../../Settings.module.css';
 
-export function ApiKeyCredentials({ providerId, summary, providerConfig, isPresetSetup, presetInfo, onRefresh }: {
+interface DiscoveredProviderModel {
+  id?: unknown;
+  name?: unknown;
+  context?: unknown;
+  maxOutput?: unknown;
+}
+
+function shouldDiscoverModelsBeforeSave(providerId: string, api: string, payload: Record<string, unknown>) {
+  return payload.seed_default_models === true
+    && (providerId === 'gemini' || api === 'google-generative-ai');
+}
+
+function compactDiscoveredModel(model: DiscoveredProviderModel): string | Record<string, unknown> | null {
+  if (typeof model.id !== 'string' || !model.id.trim()) return null;
+  const entry: Record<string, unknown> = { id: model.id };
+  if (typeof model.name === 'string' && model.name.trim()) entry.name = model.name;
+  if (typeof model.context === 'number' && Number.isFinite(model.context)) entry.context = model.context;
+  if (typeof model.maxOutput === 'number' && Number.isFinite(model.maxOutput)) entry.maxOutput = model.maxOutput;
+  return Object.keys(entry).length === 1 ? model.id : entry;
+}
+
+async function resolveModelsForInitialSave(
+  providerId: string,
+  plan: ReturnType<typeof getApiKeySavePlan>,
+  headers: Record<string, string>,
+  includeHeaders: boolean,
+): Promise<Record<string, unknown>> {
+  const payload = { ...plan.payload };
+  if (includeHeaders) payload.headers = headers;
+  if (!shouldDiscoverModelsBeforeSave(providerId, plan.api, payload)) return payload;
+
+  try {
+    const res = await hanaFetch('/api/providers/fetch-models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: providerId,
+        base_url: plan.effectiveUrl,
+        api: plan.api,
+        api_key: plan.key,
+        headers,
+      }),
+    });
+    const data = await res.json();
+    const models = Array.isArray(data.models)
+      ? data.models.map(compactDiscoveredModel).filter(Boolean)
+      : [];
+    if (!data.error && models.length > 0) {
+      payload.models = models;
+      delete payload.seed_default_models;
+    }
+  } catch {
+    // Keep seed_default_models as the explicit static fallback for initial setup.
+  }
+
+  return payload;
+}
+
+export function ApiKeyCredentials({ providerId, summary, providerConfig: _providerConfig, isPresetSetup, presetInfo, onRefresh }: {
   providerId: string;
   summary: ProviderSummary;
   providerConfig?: Record<string, unknown>;
@@ -16,12 +76,14 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
   presetInfo?: { label: string; value: string; url?: string; api?: string; local?: boolean };
   onRefresh: () => Promise<void>;
 }) {
-  const { showToast } = useSettingsStore();
+  const showToast = useSettingsStore(s => s.showToast);
   const [keyVal, setKeyVal] = useState('');
   const [keyEdited, setKeyEdited] = useState(false);
   const derivedBaseUrl = summary.base_url || presetInfo?.url || '';
   const [urlVal, setUrlVal] = useState(derivedBaseUrl);
   const [urlEdited, setUrlEdited] = useState(false);
+  const [headersText, setHeadersText] = useState('');
+  const [headersEdited, setHeadersEdited] = useState(false);
   const api = summary.api || presetInfo?.api || '';
 
   // 未编辑时，从 summary 同步已保存的 key 到输入框
@@ -35,6 +97,20 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
   useEffect(() => {
     if (!urlEdited) setUrlVal(derivedBaseUrl);
   }, [derivedBaseUrl, urlEdited]);
+
+  useEffect(() => {
+    if (!headersEdited) setHeadersText(serializeProviderHeaders(summary.headers || {}));
+  }, [summary.headers, headersEdited]);
+
+  const parseHeaders = (): Record<string, string> | null => {
+    try {
+      return parseProviderHeaderLines(headersText);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(msg, 'error');
+      return null;
+    }
+  };
 
   const verifyAndSave = async (btn: HTMLButtonElement) => {
     const plan = getApiKeySavePlan({
@@ -51,11 +127,14 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
     if (!plan.shouldSave) return;
     btn.classList.add(styles['spinning']);
     try {
+      const headers = parseHeaders();
+      if (!headers) return;
+      const includeHeaders = headersEdited || Object.keys(headers).length > 0;
       if (plan.shouldVerify) {
         const testRes = await hanaFetch('/api/providers/test', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: providerId, base_url: plan.effectiveUrl, api: plan.api, api_key: plan.key }),
+          body: JSON.stringify({ name: providerId, base_url: plan.effectiveUrl, api: plan.api, api_key: plan.key, headers }),
         });
         const testData = await testRes.json();
         if (!testData.ok) {
@@ -63,16 +142,18 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
           return;
         }
       }
+      const payload = await resolveModelsForInitialSave(providerId, plan, headers, includeHeaders);
       await hanaFetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providers: { [providerId]: plan.payload } }),
+        body: JSON.stringify({ providers: { [providerId]: payload } }),
       });
       invalidateConfigCache();
       showToast(plan.shouldVerify ? t('settings.providers.verifySuccess') : t('settings.saved'), 'success');
       if (isPresetSetup) useSettingsStore.setState({ selectedProviderId: providerId });
       setKeyEdited(false);
       if (urlEdited) setUrlEdited(false);
+      if (headersEdited) setHeadersEdited(false);
       await onRefresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -84,14 +165,22 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
 
   const [connStatus, setConnStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
 
+  const revealSavedApiKey = async () => {
+    const res = await hanaFetch(`/api/providers/${encodeURIComponent(providerId)}/api-key`);
+    const data = await res.json();
+    return typeof data.api_key === 'string' ? data.api_key : '';
+  };
+
   const verifyOnly = async (btn: HTMLButtonElement) => {
     setConnStatus('testing');
     btn.classList.add(styles['spinning']);
     try {
+      const headers = parseHeaders();
+      if (!headers) return;
       const testRes = await hanaFetch('/api/providers/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: providerId, base_url: urlVal.trim() || derivedBaseUrl, api, api_key: keyVal.trim() || undefined }),
+        body: JSON.stringify({ name: providerId, base_url: urlVal.trim() || derivedBaseUrl, api, api_key: keyVal.trim() || undefined, headers }),
       });
       const testData = await testRes.json();
       setConnStatus(testData.ok ? 'ok' : 'fail');
@@ -112,6 +201,12 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
           <KeyInput
             value={keyVal}
             onChange={(v) => { setKeyVal(v); setKeyEdited(true); setConnStatus('idle'); }}
+            onReveal={isMaskedSecretValue(keyVal) ? revealSavedApiKey : undefined}
+            onRevealValue={(v) => { setKeyVal(v); setConnStatus('idle'); }}
+            onRevealError={(err) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              showToast(msg, 'error');
+            }}
             placeholder={isPresetSetup ? t('settings.providers.setupHint') : ''}
           />
           <button
@@ -130,6 +225,32 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
             </svg>
           </button>
+        </div>
+      </div>
+      <div className={`${styles['pv-cred-row']} ${styles['pv-cred-row-top']}`}>
+        <span className={styles['pv-cred-label']}>Headers</span>
+        <div className={styles['pv-cred-url-row']}>
+          <ProviderHeadersField
+            value={headersText}
+            onChange={(value) => { setHeadersText(value); setHeadersEdited(true); setConnStatus('idle'); }}
+            onBlur={async () => {
+              if (!headersEdited || isPresetSetup) return;
+              const headers = parseHeaders();
+              if (!headers) return;
+              try {
+                await hanaFetch('/api/config', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ providers: { [providerId]: { headers } } }),
+                });
+                invalidateConfigCache();
+                showToast(t('settings.saved'), 'success');
+                setHeadersEdited(false);
+                await onRefresh();
+              } catch { /* swallow */ }
+            }}
+            readOnly={!!isPresetSetup}
+          />
         </div>
       </div>
       <div className={styles['pv-cred-row']}>
@@ -166,6 +287,7 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
         <span className={styles['pv-cred-label']}>{t('settings.providers.apiType')}</span>
         <div className={styles['pv-cred-select-wrapper']}>
           <SelectWidget
+            className={styles['pv-cred-select']}
             options={API_FORMAT_OPTIONS}
             value={api || ''}
             onChange={async (val) => {

@@ -24,8 +24,8 @@ vi.mock('../../settings/SettingsContent', () => ({
           返回
         </button>
       )}
-      <button type="button" aria-label="切到使用电脑" onClick={() => onActiveTabChange?.('computer')}>
-        切到使用电脑
+      <button type="button" aria-label="切到实验" onClick={() => onActiveTabChange?.('experiments')}>
+        切到实验
       </button>
       <div data-testid="settings-content" data-variant={variant}>
         settings content
@@ -71,6 +71,17 @@ describe('SettingsModalShell', () => {
     expect(screen.getByTestId('settings-content')).toHaveAttribute('data-variant', 'modal');
   });
 
+  it('widens the settings dialog for the plugin marketplace subpage', async () => {
+    const { SettingsModalShell } = await import('../../components/SettingsModalShell');
+    useStore.setState({
+      settingsModal: { open: true, activeTab: 'plugin-marketplace' },
+    } as never);
+
+    render(<SettingsModalShell />);
+
+    expect(screen.getByRole('dialog', { name: '设置' })).toHaveAttribute('data-wide', 'true');
+  });
+
   it('animates from opening to open on the next frame', async () => {
     const { SettingsModalShell } = await import('../../components/SettingsModalShell');
     vi.useFakeTimers();
@@ -99,21 +110,20 @@ describe('SettingsModalShell', () => {
     render(<SettingsModalShell />);
     fireEvent.click(screen.getByRole('button', { name: '返回' }));
 
+    // 新实现：点击后 store 立即变 open=false，但卡片仍渲染并播退场动画
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByTestId('settings-modal-overlay')).toHaveAttribute('data-state', 'closing');
-    expect(useStore.getState().settingsModal).toEqual({
-      open: true,
-      activeTab: 'work',
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(150);
-    });
-
     expect(useStore.getState().settingsModal).toEqual({
       open: false,
       activeTab: 'work',
     });
+
+    // 退场动画结束后卡片应从 DOM 移除
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(screen.queryByTestId('settings-modal-overlay')).not.toBeInTheDocument();
   });
 
   it('closes on Escape after the close animation', async () => {
@@ -182,11 +192,11 @@ describe('SettingsModalShell', () => {
     } as never);
 
     render(<SettingsModalShell />);
-    fireEvent.click(screen.getByRole('button', { name: '切到使用电脑' }));
+    fireEvent.click(screen.getByRole('button', { name: '切到实验' }));
 
     expect(useStore.getState().settingsModal).toEqual({
       open: true,
-      activeTab: 'computer',
+      activeTab: 'experiments',
     });
   });
 });

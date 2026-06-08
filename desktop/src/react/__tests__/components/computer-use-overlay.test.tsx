@@ -13,6 +13,7 @@ vi.mock('../../services/websocket', () => ({
 describe('ComputerUseOverlay', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.t = ((key: string) => key) as typeof window.t;
     useStore.setState({
       currentSessionPath: '/session/a.jsonl',
       computerOverlayBySession: {},
@@ -79,7 +80,7 @@ describe('ComputerUseOverlay', () => {
     });
 
     render(<ComputerUseOverlay />);
-    expect(document.body.textContent).toContain('前台接管');
+    expect(document.body.textContent).toContain('computerUse.overlay.foregroundTakeover');
 
     fireEvent.keyDown(window, { key: 'Escape' });
 

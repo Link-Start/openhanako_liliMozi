@@ -5,13 +5,19 @@
  * 不用 Virtuoso，不用 Activity，不用快照，不用任何花活。
  */
 
-import { memo, useRef, useEffect, useState, useCallback } from 'react';
+import { memo, useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useStore } from '../../stores';
 import { loadMoreMessages } from '../../stores/session-actions';
+import { getSelectionCommitAnchorRect, scheduleCaptureChatSelection } from '../../stores/selection-actions';
+import { useContinuousBottomScroll } from '../../hooks/use-continuous-bottom-scroll';
+import { useBoxSelection } from '../../hooks/use-box-selection';
 
 const EMPTY_ITEMS: ChatListItem[] = [];
 import type { ChatListItem } from '../../stores/chat-types';
 import { ChatTranscript } from './ChatTranscript';
+import { ChatTimelineNavigator } from './ChatTimelineNavigator';
+import { buildTimelineAnchors } from './timeline-anchors';
 import styles from './Chat.module.css';
 
 const MAX_ALIVE = 5;
@@ -67,6 +73,9 @@ function PanelHost() {
 // ── Panel：一个 session 的原生滚动容器 ──
 
 const SCROLL_THRESHOLD = 50;
+const TIMELINE_HOVER_ZONE_PX = 64;
+const TIMELINE_TOP_OFFSET_PX = 76;
+const TIMELINE_HEIGHT_RATIO = 0.5;
 
 const Panel = memo(function Panel({ path, active }: { path: string; active: boolean }) {
   const items = useStore(s => s.chatSessions[path]?.items || EMPTY_ITEMS);
@@ -74,30 +83,60 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
   const loadingMore = useStore(s => s.chatSessions[path]?.loadingMore ?? false);
   const isSessionStreaming = useStore(s => s.streamingSessions.includes(path));
   const sessionAgentId = useStore(s => s.sessions.find(se => se.path === path)?.agentId ?? null);
+  const sessionReadOnly = useStore(s => s.sessions.find(se => se.path === path)?.agentDeleted === true);
   const ref = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const isAtBottom = useRef(true);
+  const messageElementsRef = useRef(new Map<string, HTMLDivElement>());
+  const [timelineRailVisible, setTimelineRailVisible] = useState(false);
+  const bottomScroll = useContinuousBottomScroll({
+    scrollRef: ref,
+    contentRef,
+    active,
+    stickyThreshold: SCROLL_THRESHOLD,
+  });
+  const timelineAnchors = useMemo(() => buildTimelineAnchors(items), [items]);
+  const registerMessageElement = useCallback((messageId: string, element: HTMLDivElement | null) => {
+    if (element) {
+      messageElementsRef.current.set(messageId, element);
+    } else {
+      messageElementsRef.current.delete(messageId);
+    }
+  }, []);
+  const orderedIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const it of items) {
+      if (it.type === 'message') ids.push(it.data.id);
+    }
+    return ids;
+  }, [items]);
+  const boxSelection = useBoxSelection({ messageElementsRef, orderedIds, sessionPath: path, active });
+  const handleCaptureSelection = useCallback((event: ReactMouseEvent<HTMLDivElement> | ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!active) return;
+    scheduleCaptureChatSelection(path, getSelectionCommitAnchorRect(event.nativeEvent));
+  }, [active, path]);
+  const handleShellPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const xFromRight = rect.right - event.clientX;
+    const yFromTop = event.clientY - rect.top;
+    const inRailX = xFromRight >= 0 && xFromRight <= TIMELINE_HOVER_ZONE_PX;
+    const inRailY = yFromTop >= TIMELINE_TOP_OFFSET_PX
+      && yFromTop <= TIMELINE_TOP_OFFSET_PX + rect.height * TIMELINE_HEIGHT_RATIO;
+    setTimelineRailVisible(inRailX && inRailY);
+  }, []);
+  const handleShellPointerLeave = useCallback(() => {
+    setTimelineRailVisible(false);
+  }, []);
 
-  // 判断是否在底部
-  const checkAtBottom = () => {
-    const el = ref.current;
-    if (!el) return;
-    isAtBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD;
-  };
-
-  // 滚到底
-  const scrollToBottom = () => {
-    const el = ref.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  };
-
-  // scroll 事件维护 isAtBottom 标志 + 上滑加载更多 + 滚动中显现 scrollbar
+  // scroll 事件维护 sticky 标志 + 上滑加载更多 + 滚动中显现 scrollbar
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     const onScroll = () => {
-      checkAtBottom();
+      const sticky = bottomScroll.checkSticky();
+      if (active) setScrollButton(el, !sticky, () => {
+        bottomScroll.scrollToBottom({ mode: 'follow', forceSticky: true });
+      });
       // 触顶加载更多
       if (el.scrollTop < LOAD_MORE_THRESHOLD) {
         const session = useStore.getState().chatSessions[path];
@@ -113,16 +152,22 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
       }, 800);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
+    if (active) {
+      setScrollButton(el, !bottomScroll.checkSticky(), () => {
+        bottomScroll.scrollToBottom({ mode: 'follow', forceSticky: true });
+      });
+    }
     return () => {
       el.removeEventListener('scroll', onScroll);
       if (hideTimer) clearTimeout(hideTimer);
+      if (_scrollBtn.el === el) setScrollButton(null, false, null);
     };
-  }, [path]);
+  }, [active, bottomScroll, path]);
 
   // prepend 后保持滚动位置：监听 items 变化，如果头部变了就修正 scrollTop
   const prevFirstId = useRef<string | undefined>(undefined);
   useEffect(() => {
-    const firstId = items[0]?.type === 'message' ? items[0].data.id : undefined;
+    const firstId = items.find((item) => item.type === 'message')?.data.id;
     const el = ref.current;
     if (el && prevFirstId.current && firstId !== prevFirstId.current) {
       // 头部 id 变了 → prepend 发生，修正 scrollTop 让原来的内容不跳
@@ -142,71 +187,121 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
     }
   }, [loadingMore]);
 
-  // ResizeObserver：内容高度变化 + 在底部 → 自动滚
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-    const ro = new ResizeObserver(() => {
-      if (active && isAtBottom.current) {
-        scrollToBottom();
-      }
-    });
-    ro.observe(content);
-    return () => ro.disconnect();
-  }, [active]);
+  // 切到本面板（active 翻转为 true）时武装一次性 instant 落位：ResizeObserver 因 active 重订阅而
+  // 触发的首次回调（以及切换后首屏媒体 reflow）会瞬时收口到底，而非带动画 follow，消除"先画错位一帧再补跳"。
+  // 后续流式增长仍走平滑 follow。
+  useLayoutEffect(() => {
+    if (active) bottomScroll.armInstantLanding();
+  }, [active, bottomScroll]);
 
-  // 首次有内容 → 滚到底
+  // 首次有内容 → 滚到底（layout 阶段，先于 paint，避免首屏跳动）
   const scrolledOnce = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (scrolledOnce.current) return;
     if (items.length > 0) {
-      scrollToBottom();
-      isAtBottom.current = true;
+      bottomScroll.scrollToBottom({ mode: 'instant', forceSticky: true });
       scrolledOnce.current = true;
     }
-  }, [items.length]);
+  }, [bottomScroll, items.length]);
 
-  // 新消息加入 → 强制 sticky（发送消息后自动跟随）
+  // 只有用户自己发出新消息时才恢复 sticky；assistant/tool 流式追加必须尊重用户上滑。
   const prevLen = useRef(items.length);
   useEffect(() => {
     if (items.length > prevLen.current && active) {
-      isAtBottom.current = true;
-      scrollToBottom();
+      const last = items[items.length - 1];
+      if (last?.type === 'message' && last.data.role === 'user') {
+        bottomScroll.scrollToBottom({ mode: 'instant', forceSticky: true });
+      } else {
+        bottomScroll.followBottom();
+      }
     }
     prevLen.current = items.length;
-  }, [items.length, active]);
+  }, [items, items.length, active, bottomScroll]);
 
   if (items.length === 0) return null;
 
   return (
     <div
-      ref={ref}
-      className={styles.sessionPanel}
+      className={styles.sessionShell}
+      onPointerMove={handleShellPointerMove}
+      onPointerLeave={handleShellPointerLeave}
       style={{
         visibility: active ? 'visible' : 'hidden',
         zIndex: active ? 1 : 0,
         pointerEvents: active ? 'auto' : 'none',
       }}
     >
-      <div ref={contentRef} className={styles.sessionMessages}>
-        {hasMore && (
-          <div className={styles.loadMoreHint}>
-            {loadingMore ? '...' : ''}
-          </div>
-        )}
-        <ChatTranscript items={items} sessionPath={path} agentId={sessionAgentId} />
-        {isSessionStreaming && (
-          <div className={styles.typingIndicator} />
-        )}
-        <div className={styles.sessionFooter} />
+      <div
+        ref={ref}
+        className={styles.sessionPanel}
+        data-chat-selection-root=""
+        data-session-path={path}
+        onPointerDown={boxSelection.onPointerDown}
+        onClickCapture={boxSelection.onClickCapture}
+        onMouseUp={handleCaptureSelection}
+        onKeyUp={handleCaptureSelection}
+      >
+        <div
+          ref={contentRef}
+          className={`${styles.sessionMessages}${boxSelection.selectionModeActive ? ` ${styles.selectionModeActive}` : ''}`}
+        >
+          {hasMore && (
+            <div className={styles.loadMoreHint}>
+              {loadingMore ? '...' : ''}
+            </div>
+          )}
+          <ChatTranscript
+            items={items}
+            sessionPath={path}
+            agentId={sessionAgentId}
+            readOnly={sessionReadOnly}
+            registerMessageElement={registerMessageElement}
+            enableProcessFold
+          />
+          {isSessionStreaming && (
+            <div className={styles.typingIndicator} />
+          )}
+          <div className={styles.sessionFooter} />
+        </div>
       </div>
+      <ChatTimelineNavigator
+        anchors={timelineAnchors}
+        scrollRef={ref}
+        contentRef={contentRef}
+        messageElementsRef={messageElementsRef}
+        active={active}
+        railVisible={timelineRailVisible}
+      />
+      {boxSelection.box && (
+        <div
+          className={styles.selectionBox}
+          style={{
+            left: boxSelection.box.left,
+            top: boxSelection.box.top,
+            width: boxSelection.box.right - boxSelection.box.left,
+            height: boxSelection.box.bottom - boxSelection.box.top,
+          }}
+        />
+      )}
     </div>
   );
 });
 
 // ── ScrollToBottom 按钮 ──
 
-let _scrollBtn = { el: null as HTMLElement | null, visible: false, listeners: [] as (() => void)[] };
+const _scrollBtn = {
+  el: null as HTMLElement | null,
+  visible: false,
+  scrollToBottom: null as (() => void) | null,
+  listeners: [] as (() => void)[],
+};
+
+function setScrollButton(el: HTMLElement | null, visible: boolean, scrollToBottom: (() => void) | null) {
+  _scrollBtn.el = el;
+  _scrollBtn.visible = visible;
+  _scrollBtn.scrollToBottom = scrollToBottom;
+  _scrollBtn.listeners.forEach(listener => listener());
+}
 
 function ScrollToBottomBtn() {
   const [visible, setVisible] = useState(false);
@@ -219,7 +314,7 @@ function ScrollToBottomBtn() {
   if (!visible) return null;
   return (
     <button className={styles.scrollToBottomFab} onClick={() => {
-      _scrollBtn.el?.scrollTo({ top: _scrollBtn.el.scrollHeight, behavior: 'smooth' });
+      _scrollBtn.scrollToBottom?.();
     }}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="6 9 12 15 18 9" />
