@@ -18,6 +18,8 @@ import { extOfName, isImageOrSvgExt } from './file-kind';
 type MarkdownItInstance = ReturnType<typeof markdownit>;
 type MarkdownRenderEnv = {
   markdownImage?: MarkdownImageContext;
+  footnoteIdPrefix?: string;
+  footnotes?: FootnoteState;
 };
 
 export interface MarkdownPreviewOptions {
@@ -46,6 +48,26 @@ export interface ParsedMarkdownImage {
   dimensions: ImageDimensions | null;
 }
 
+interface FootnoteDefinition {
+  label: string;
+  content: string;
+}
+
+interface FootnoteReference {
+  label: string;
+  number: number;
+  footnoteId: string;
+  refIds: string[];
+}
+
+interface FootnoteState {
+  prefix: string;
+  definitions: Map<string, FootnoteDefinition>;
+  references: FootnoteReference[];
+  referenceByLabel: Map<string, FootnoteReference>;
+  renderingDefinitions: boolean;
+}
+
 let _md: MarkdownItInstance | null = null;
 let _previewMd: MarkdownItInstance | null = null;
 
@@ -61,11 +83,42 @@ const ABSOLUTE_WINDOWS_PATH_RE = /^[A-Za-z]:[\\/]/;
 const EXPLICIT_PROTOCOL_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
 const SAFE_IMAGE_URL_PROTOCOLS = new Set(['http:', 'https:', 'file:']);
 const IMAGE_SIZE_RE = /^([1-9]\d{0,4})(?:x([1-9]\d{0,4}))?$/i;
+const FOOTNOTE_DEF_MARKER_RE = /^\[\^([^\]\n]+)\]:[ \t]*/;
 const AUTO_LINK_SUFFIX_BOUNDARY_CHARS = new Set([
   '\u200b', '\u200c', '\u200d', '\ufeff',
   '。', '、', '，', '；', '：', '！', '？',
   '）', '】', '］', '｝', '》', '〉', '」', '』', '〕', '〗',
 ]);
+
+function hashStringBase36(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+function footnoteIdPrefixForSource(src: string): string {
+  return `hana-fn-${hashStringBase36(src)}`;
+}
+
+function normalizeFootnoteLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function ensureFootnoteState(env: MarkdownRenderEnv, src: string): FootnoteState {
+  if (!env.footnotes) {
+    env.footnotes = {
+      prefix: env.footnoteIdPrefix || footnoteIdPrefixForSource(src),
+      definitions: new Map(),
+      references: [],
+      referenceByLabel: new Map(),
+      renderingDefinitions: false,
+    };
+  }
+  return env.footnotes;
+}
 
 const CALLOUT_ALIASES: Record<string, string> = {
   note: 'note',
@@ -543,6 +596,241 @@ function findLineEndingDelimiter(line: string, delimiter: string): number {
   return -1;
 }
 
+function firstNonSpaceLineContent(state: StateBlock, line: number): string {
+  const start = state.bMarks[line] + state.tShift[line];
+  const max = state.eMarks[line];
+  return state.src.slice(start, max);
+}
+
+function isFootnoteContinuationLine(state: StateBlock, line: number): boolean {
+  return state.sCount[line] - state.blkIndent >= 4;
+}
+
+function collectFootnoteDefinitionContent(
+  state: StateBlock,
+  startLine: number,
+  firstLineContent: string,
+): { content: string; nextLine: number } {
+  const lines = [firstLineContent];
+  let nextLine = startLine + 1;
+
+  while (nextLine < state.lineMax) {
+    if (state.isEmpty(nextLine)) {
+      const followingLine = state.skipEmptyLines(nextLine);
+      if (followingLine < state.lineMax && isFootnoteContinuationLine(state, followingLine)) {
+        lines.push('');
+        nextLine += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (!isFootnoteContinuationLine(state, nextLine)) break;
+
+    lines.push(state.getLines(nextLine, nextLine + 1, state.blkIndent + 4, false).replace(/\n$/, ''));
+    nextLine += 1;
+  }
+
+  return {
+    content: lines.join('\n').trimEnd(),
+    nextLine,
+  };
+}
+
+function footnoteDefinitions(md: MarkdownItInstance): void {
+  md.block.ruler.before('reference', 'hana_footnote_definitions', (
+    state: StateBlock,
+    startLine: number,
+    _endLine: number,
+    silent: boolean,
+  ) => {
+    if (state.sCount[startLine] - state.blkIndent >= 4) return false;
+
+    const line = firstNonSpaceLineContent(state, startLine);
+    const match = FOOTNOTE_DEF_MARKER_RE.exec(line);
+    if (!match) return false;
+
+    const label = normalizeFootnoteLabel(match[1]);
+    if (!label) return false;
+    if (silent) return true;
+
+    const markdownEnv = state.env as MarkdownRenderEnv;
+    const footnotes = ensureFootnoteState(markdownEnv, state.src);
+    const { content, nextLine } = collectFootnoteDefinitionContent(
+      state,
+      startLine,
+      line.slice(match[0].length),
+    );
+
+    if (!footnotes.definitions.has(label)) {
+      footnotes.definitions.set(label, {
+        label,
+        content,
+      });
+    }
+
+    state.line = nextLine;
+    return true;
+  }, {
+    alt: ['paragraph', 'reference'],
+  });
+}
+
+function recordFootnoteReference(footnotes: FootnoteState, label: string): {
+  number: number;
+  footnoteId: string;
+  refId: string;
+} {
+  let reference = footnotes.referenceByLabel.get(label);
+  if (!reference) {
+    const number = footnotes.references.length + 1;
+    reference = {
+      label,
+      number,
+      footnoteId: `fn-${footnotes.prefix}-${number}`,
+      refIds: [],
+    };
+    footnotes.referenceByLabel.set(label, reference);
+    footnotes.references.push(reference);
+  }
+
+  const refNumber = reference.refIds.length + 1;
+  const refId = refNumber === 1
+    ? `fnref-${footnotes.prefix}-${reference.number}`
+    : `fnref-${footnotes.prefix}-${reference.number}-${refNumber}`;
+  reference.refIds.push(refId);
+
+  return {
+    number: reference.number,
+    footnoteId: reference.footnoteId,
+    refId,
+  };
+}
+
+function footnoteReferences(md: MarkdownItInstance): void {
+  md.inline.ruler.before('link', 'hana_footnote_refs', (state: StateInline, silent: boolean) => {
+    const start = state.pos;
+    if (state.src.slice(start, start + 2) !== '[^') return false;
+
+    const close = findUnescapedDelimiter(state.src, ']', start + 2, state.posMax);
+    if (close < 0) return false;
+
+    const label = normalizeFootnoteLabel(state.src.slice(start + 2, close));
+    if (!label) return false;
+
+    const markdownEnv = state.env as MarkdownRenderEnv;
+    const footnotes = ensureFootnoteState(markdownEnv, state.src);
+    if (footnotes.renderingDefinitions || !footnotes.definitions.has(label)) return false;
+    if (silent) return true;
+
+    const ref = recordFootnoteReference(footnotes, label);
+    const token = state.push('footnote_ref', '', 0);
+    token.meta = ref;
+    state.pos = close + 1;
+    return true;
+  });
+}
+
+function textToken(state: StateCore, content: string): Token {
+  const token = new state.Token('text', '', 0);
+  token.content = content;
+  return token;
+}
+
+function backrefToken(state: StateCore, refId: string, index: number): Token {
+  const token = new state.Token('footnote_backref', '', 0);
+  token.meta = {
+    refId,
+    index,
+  };
+  return token;
+}
+
+function appendFootnoteBackrefs(state: StateCore, inlineToken: Token, refIds: string[]): void {
+  if (!inlineToken.children) inlineToken.children = [];
+  if (inlineToken.children.length > 0) {
+    inlineToken.children.push(textToken(state, ' '));
+  }
+
+  refIds.forEach((refId, index) => {
+    if (index > 0) inlineToken.children?.push(textToken(state, ' '));
+    inlineToken.children?.push(backrefToken(state, refId, index + 1));
+  });
+}
+
+function appendFootnoteList(md: MarkdownItInstance): void {
+  md.core.ruler.after('inline', 'hana_footnote_tail', (state: StateCore) => {
+    const markdownEnv = state.env as MarkdownRenderEnv;
+    const footnotes = markdownEnv.footnotes;
+    if (!footnotes || footnotes.references.length === 0) return;
+
+    const makeToken = (type: string, tag: string, nesting: -1 | 0 | 1, level: number): Token => {
+      const token = new state.Token(type, tag, nesting);
+      token.block = true;
+      token.level = level;
+      return token;
+    };
+
+    const sectionOpen = makeToken('footnote_block_open', 'section', 1, 0);
+    sectionOpen.attrSet('class', 'footnotes');
+    sectionOpen.attrSet('role', 'doc-endnotes');
+    state.tokens.push(sectionOpen);
+
+    state.tokens.push(makeToken('hr', 'hr', 0, 1));
+    state.tokens.push(makeToken('ordered_list_open', 'ol', 1, 1));
+
+    const references = footnotes.references.slice();
+    for (const reference of references) {
+      const definition = footnotes.definitions.get(reference.label);
+      if (!definition) continue;
+
+      const itemOpen = makeToken('list_item_open', 'li', 1, 2);
+      itemOpen.attrSet('id', reference.footnoteId);
+      state.tokens.push(itemOpen);
+
+      const inline = makeToken('inline', '', 0, 3);
+      inline.content = definition.content;
+      inline.children = [];
+      footnotes.renderingDefinitions = true;
+      try {
+        state.md.inline.parse(inline.content, state.md, state.env, inline.children);
+      } finally {
+        footnotes.renderingDefinitions = false;
+      }
+      appendFootnoteBackrefs(state, inline, reference.refIds);
+      state.tokens.push(inline);
+
+      state.tokens.push(makeToken('list_item_close', 'li', -1, 2));
+    }
+
+    state.tokens.push(makeToken('ordered_list_close', 'ol', -1, 1));
+    state.tokens.push(makeToken('footnote_block_close', 'section', -1, 0));
+  });
+}
+
+function footnoteRenderers(md: MarkdownItInstance): void {
+  md.renderer.rules.footnote_ref = (tokens, idx) => {
+    const meta = tokens[idx].meta as { number: number; footnoteId: string; refId: string };
+    const footnoteId = md.utils.escapeHtml(meta.footnoteId);
+    const refId = md.utils.escapeHtml(meta.refId);
+    return `<sup class="footnote-ref"><a href="#${footnoteId}" id="${refId}" role="doc-noteref">${meta.number}</a></sup>`;
+  };
+
+  md.renderer.rules.footnote_backref = (tokens, idx) => {
+    const meta = tokens[idx].meta as { refId: string; index: number };
+    const refId = md.utils.escapeHtml(meta.refId);
+    const label = meta.index > 1 ? `&#8617;${meta.index}` : '&#8617;';
+    return `<a href="#${refId}" class="footnote-backref" role="doc-backlink" title="Jump back to reference">${label}</a>`;
+  };
+}
+
+function footnotes(md: MarkdownItInstance): void {
+  footnoteDefinitions(md);
+  footnoteReferences(md);
+  appendFootnoteList(md);
+  footnoteRenderers(md);
+}
+
 function texBracketMath(md: MarkdownItInstance): void {
   md.inline.ruler.before('escape', 'tex_parenthesis_math', (state: StateInline, silent: boolean) => {
     const start = state.pos;
@@ -624,6 +912,7 @@ function applyMarkdownPlugins(md: MarkdownItInstance): void {
   md.use(obsidianImageEmbeds);
   md.use(obsidianHighlights);
   md.use(obsidianCallouts);
+  md.use(footnotes);
   md.use(trimAutoLinkifiedSuffixes);
   md.use(mermaidFences);
   md.use(markdownImageRenderer);
@@ -678,8 +967,9 @@ function markdownImageRenderer(md: MarkdownItInstance): void {
   };
 }
 
-function buildMarkdownEnv(options: MarkdownPreviewOptions = {}): MarkdownRenderEnv {
+function buildMarkdownEnv(src: string, options: MarkdownPreviewOptions = {}): MarkdownRenderEnv {
   return {
+    footnoteIdPrefix: footnoteIdPrefixForSource(src),
     markdownImage: {
       filePath: options.filePath,
       getFileUrl: options.getFileUrl,
@@ -714,12 +1004,12 @@ export function getPreviewMd(): MarkdownItInstance {
 }
 
 export function renderMarkdown(src: string): string {
-  return getMd().render(src);
+  return getMd().render(src, buildMarkdownEnv(src));
 }
 
 export function renderMarkdownPreview(src: string, options: MarkdownPreviewOptions = {}): string {
   try {
-    return sanitizeMarkdownPreviewHtml(getPreviewMd().render(src, buildMarkdownEnv(options)));
+    return sanitizeMarkdownPreviewHtml(getPreviewMd().render(src, buildMarkdownEnv(src, options)));
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') {
       console.warn('[markdown] preview sanitizer failed:', err);

@@ -55,6 +55,9 @@ const ALLOWED_CLASS_NAMES = new Set([
   'task-list-item-checkbox',
   'task-list-item-label',
   'contains-task-list',
+  'footnotes',
+  'footnote-ref',
+  'footnote-backref',
 ]);
 const KATEX_CLASS_NAMES = new Set([
   'katex',
@@ -126,6 +129,7 @@ const SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 const SAFE_IMAGE_URL_PROTOCOLS = new Set(['http:', 'https:', 'file:']);
 const EXPLICIT_PROTOCOL_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
 const HTML_DIMENSION_RE = /^[1-9]\d{0,4}$/;
+const FOOTNOTE_ID_RE = /^(?:fn|fnref)-hana-fn-[a-z0-9]+-\d+(?:-\d+)?$/;
 const MATHML_ATTRS = new Set([
   'xmlns',
   'display',
@@ -307,6 +311,27 @@ function normalizeAriaHidden(raw: string): string | null {
   return null;
 }
 
+function normalizeFootnoteId(tagName: string, raw: string): string | null {
+  const value = raw.trim();
+  if (!FOOTNOTE_ID_RE.test(value)) return null;
+  if (tagName === 'a' || tagName === 'li') return value;
+  return null;
+}
+
+function normalizeFootnoteRole(element: Element, tagName: string, raw: string): string | null {
+  const value = raw.trim().toLowerCase();
+  if (tagName === 'section' && value === 'doc-endnotes' && hasClass(element, 'footnotes')) {
+    return value;
+  }
+  if (tagName === 'a' && value === 'doc-noteref' && element.parentElement && hasClass(element.parentElement, 'footnote-ref')) {
+    return value;
+  }
+  if (tagName === 'a' && value === 'doc-backlink' && hasClass(element, 'footnote-backref')) {
+    return value;
+  }
+  return null;
+}
+
 function sanitizeAttributes(element: Element, tagName: string): void {
   for (const attr of Array.from(element.attributes)) {
     const name = attr.name.toLowerCase();
@@ -367,6 +392,20 @@ function sanitizeAttributes(element: Element, tagName: string): void {
 
     if (tagName === 'details' && name === 'open') {
       element.setAttribute('open', 'open');
+      continue;
+    }
+
+    if (name === 'id') {
+      const normalized = normalizeFootnoteId(tagName, attr.value);
+      if (normalized) element.setAttribute('id', normalized);
+      else element.removeAttribute(attr.name);
+      continue;
+    }
+
+    if (name === 'role') {
+      const normalized = normalizeFootnoteRole(element, tagName, attr.value);
+      if (normalized) element.setAttribute('role', normalized);
+      else element.removeAttribute(attr.name);
       continue;
     }
 
@@ -447,7 +486,8 @@ function sanitizeNode(node: ChildNode): void {
     return;
   }
 
-  if (!ALLOWED_TAGS.has(tagName)) {
+  const isFootnoteSection = tagName === 'section' && hasClass(element, 'footnotes');
+  if (!isFootnoteSection && !ALLOWED_TAGS.has(tagName)) {
     sanitizeChildren(element);
     unwrapElement(element);
     return;

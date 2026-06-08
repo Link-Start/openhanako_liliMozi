@@ -64,6 +64,42 @@ describe('renderMarkdown', () => {
     expect(html).not.toContain('<code class="language-mermaid"');
   });
 
+  it('renders markdown footnotes with clickable refs and backrefs', () => {
+    const html = renderMarkdown([
+      '正文引用[^main]。',
+      '',
+      '[^main]: 脚注 **正文**。',
+    ].join('\n'));
+
+    const refMatch = html.match(
+      /<sup class="footnote-ref"><a href="#(?<footnoteId>fn-hana-fn-[a-z0-9]+-1)" id="(?<refId>fnref-hana-fn-[a-z0-9]+-1)" role="doc-noteref">1<\/a><\/sup>/,
+    );
+
+    expect(refMatch?.groups?.footnoteId).toBeTruthy();
+    expect(refMatch?.groups?.refId).toBeTruthy();
+    expect(html).toContain(`<li id="${refMatch?.groups?.footnoteId}">`);
+    expect(html).toContain('脚注 <strong>正文</strong>。');
+    expect(html).toContain(
+      `<a href="#${refMatch?.groups?.refId}" class="footnote-backref" role="doc-backlink" title="Jump back to reference">&#8617;</a>`,
+    );
+    expect(html).not.toContain('[^main]:');
+  });
+
+  it('uses stable but source-scoped footnote ids', () => {
+    const first = renderMarkdown('引用[^1]\n\n[^1]: 第一条');
+    const firstAgain = renderMarkdown('引用[^1]\n\n[^1]: 第一条');
+    const second = renderMarkdown('引用[^1]\n\n[^1]: 第二条');
+
+    const firstId = first.match(/id="(?<id>fn-hana-fn-[a-z0-9]+-1)"/)?.groups?.id;
+    const firstAgainId = firstAgain.match(/id="(?<id>fn-hana-fn-[a-z0-9]+-1)"/)?.groups?.id;
+    const secondId = second.match(/id="(?<id>fn-hana-fn-[a-z0-9]+-1)"/)?.groups?.id;
+
+    expect(firstId).toBeTruthy();
+    expect(firstAgainId).toBe(firstId);
+    expect(secondId).toBeTruthy();
+    expect(secondId).not.toBe(firstId);
+  });
+
   it('trims CJK punctuation from auto-linkified URLs', () => {
     const html = renderMarkdown('看 https://example.com/path。再看 https://example.com/next，');
 
@@ -205,6 +241,46 @@ describe('renderMarkdown', () => {
     expect(html).toContain('class="mermaid-source"');
     expect(html).toContain('class="mermaid-rendered"');
     expect(html).toContain('sequenceDiagram');
+  });
+
+  it('preserves safe generated footnote markup in markdown preview mode', () => {
+    const html = renderMarkdownPreview([
+      '正文引用[^safe]。',
+      '',
+      '[^safe]: 预览脚注。',
+    ].join('\n'));
+
+    expect(html).toMatch(/<section class="footnotes" role="doc-endnotes">/);
+    expect(html).toMatch(/<sup class="footnote-ref"><a href="#fn-hana-fn-[a-z0-9]+-1" id="fnref-hana-fn-[a-z0-9]+-1" role="doc-noteref" rel="noopener noreferrer">1<\/a><\/sup>/);
+    expect(html).toMatch(/<li id="fn-hana-fn-[a-z0-9]+-1">/);
+    expect(html).toMatch(/<a href="#fnref-hana-fn-[a-z0-9]+-1" class="footnote-backref" role="doc-backlink" title="Jump back to reference" rel="noopener noreferrer">(?:↩|&#8617;)<\/a>/);
+  });
+
+  it('strips unsafe raw footnote ids classes and roles in markdown preview mode', () => {
+    const html = renderMarkdownPreview([
+      '<section class="footnotes evil" role="banner">',
+      '<ol>',
+      '<li id="evil" onclick="alert(1)">',
+      '<a id="fnref-hana-fn-safe-1" class="footnote-backref evil" href="javascript:alert(2)" role="button">back</a>',
+      '</li>',
+      '</ol>',
+      '</section>',
+    ].join(''));
+
+    expect(html).toContain('<section class="footnotes">');
+    expect(html).toContain('<a id="fnref-hana-fn-safe-1" class="footnote-backref">back</a>');
+    expect(html).not.toContain('evil');
+    expect(html).not.toContain('role="banner"');
+    expect(html).not.toContain('role="button"');
+    expect(html).not.toContain('id="evil"');
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('onclick');
+  });
+
+  it('does not preserve raw non-footnote section tags in markdown preview mode', () => {
+    const html = renderMarkdownPreview('<section id="plain"><p>正文</p></section>');
+
+    expect(html).toBe('<p>正文</p>');
   });
 
   it('preserves generated KaTeX markup in markdown preview mode', () => {
