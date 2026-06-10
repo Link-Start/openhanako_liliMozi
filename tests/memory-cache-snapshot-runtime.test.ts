@@ -26,6 +26,8 @@ vi.mock("../lib/debug-log.js", () => ({
 
 import { createMemoryTicker } from "../lib/memory/memory-ticker.ts";
 import { readCacheSnapshotObservation } from "../lib/memory/cache-snapshot-observation.ts";
+import { buildSessionCacheSnapshot } from "../core/session-cache-snapshot.ts";
+import { createUsageLedger } from "../lib/llm/usage-ledger.ts";
 
 function writeSession(sessionPath) {
   const lines = [
@@ -43,7 +45,7 @@ function writeSession(sessionPath) {
   fs.writeFileSync(sessionPath, lines.map((line) => JSON.stringify(line)).join("\n") + "\n", "utf-8");
 }
 
-function makeTicker(tmpDir, mode, summaryManager, memoryReflectionRunner) {
+function makeTicker(tmpDir, mode, summaryManager, memoryReflectionRunner, overrides: Record<string, any> = {}) {
   const agentDir = path.join(tmpDir, "agents", "hana");
   const sessionDir = path.join(agentDir, "sessions");
   const memoryDir = path.join(agentDir, "memory");
@@ -55,7 +57,7 @@ function makeTicker(tmpDir, mode, summaryManager, memoryReflectionRunner) {
     quirks: ["enable_thinking"],
     reasoning: true,
   };
-  const usageLedger = { marker: "usage-ledger" };
+  const usageLedger = overrides.usageLedger || { marker: "usage-ledger" };
   fs.mkdirSync(sessionDir, { recursive: true });
   fs.mkdirSync(memoryDir, { recursive: true });
   fs.writeFileSync(path.join(memoryDir, "memory.md"), "# Memory\n\n现有正式记忆。\n", "utf-8");
@@ -78,7 +80,7 @@ function makeTicker(tmpDir, mode, summaryManager, memoryReflectionRunner) {
     isSessionMemoryEnabled: () => true,
     getCacheSnapshotReflectionMode: () => mode,
     memoryReflectionRunner,
-    buildSessionCacheSnapshot: vi.fn((sessionPath, { reason, messages }) => ({
+    buildSessionCacheSnapshot: overrides.buildSessionCacheSnapshot || vi.fn((sessionPath, { reason, messages }) => ({
       strategy: "session_snapshot",
       strict: true,
       sessionPath,
@@ -97,7 +99,7 @@ function makeTicker(tmpDir, mode, summaryManager, memoryReflectionRunner) {
       messages,
       messageCount: messages.length,
     })),
-    getSessionStreamFn: vi.fn(() => vi.fn()),
+    getSessionStreamFn: overrides.getSessionStreamFn || vi.fn(() => vi.fn()),
     sessionDir,
     memoryDir,
     memoryMdPath: path.join(memoryDir, "memory.md"),
@@ -286,11 +288,92 @@ describe("cache snapshot reflection runtime", () => {
     expect(args.snapshot.model).not.toHaveProperty("quirks");
     expect(args.cacheKeyParams).toEqual({ thinkingLevel: "medium" });
     expect(args.usageLedger).toBe(usageLedger);
-    expect(args.usageContext).toMatchObject({
-      subsystem: "memory",
-      operation: "cache_snapshot_reflection",
-      trigger: "manual",
+    expect(args.usageContext).toEqual({
+      source: {
+        subsystem: "memory",
+        operation: "cache_snapshot_reflection",
+        surface: "system",
+        trigger: "manual",
+      },
+      attribution: {
+        kind: "memory",
+        agentId: "hana",
+      },
     });
+  });
+
+  it("records a traceable usage ledger entry for reflection requests (#1621)", async () => {
+    const summaryManager = {
+      rollingSummary: vi.fn(),
+      createRollingSummaryDraft: vi.fn(),
+      saveSummary: vi.fn(),
+      getSummary: vi.fn().mockReturnValue(null),
+    };
+    const ledgerLogger = { warn: vi.fn() };
+    const realLedger = createUsageLedger({
+      logger: ledgerLogger,
+      requestIdFactory: () => "req-reflection",
+    });
+    const requestModelForSnapshot = {
+      id: "memory-model",
+      provider: "deepseek",
+      api: "openai-completions",
+      baseUrl: "http://localhost:1234",
+      quirks: ["enable_thinking"],
+      reasoning: true,
+    };
+    const streamFn = vi.fn(async () => ({
+      result: async () => ({
+        content: [{ type: "text", text: "ledger reflection summary" }],
+        stopReason: "stop",
+        usage: { input_tokens: 120, cache_read_input_tokens: 100, output_tokens: 16 },
+      }),
+    }));
+    // 不注入 memoryReflectionRunner：走真实 runMemoryReflection → runSessionSnapshotSideTask → ledger 落账链路
+    const { ticker, sessionPath } = makeTicker(tmpDir, "write", summaryManager, undefined, {
+      usageLedger: realLedger,
+      buildSessionCacheSnapshot: vi.fn((snapshotSessionPath, { reason, messages }) => buildSessionCacheSnapshot({
+        sessionPath: snapshotSessionPath,
+        reason,
+        model: requestModelForSnapshot,
+        cacheKeyParams: { thinkingLevel: "medium" },
+        systemPrompt: "You are Hana.",
+        tools: [{ name: "read", description: "Read files", parameters: { type: "object" } }],
+        messages,
+      })),
+      getSessionStreamFn: vi.fn(() => streamFn),
+    });
+    writeSession(sessionPath);
+
+    await ticker.flushSession(sessionPath);
+
+    expect(streamFn).toHaveBeenCalledOnce();
+    const { entries } = realLedger.list({});
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      requestId: "req-reflection",
+      status: "ok",
+      source: {
+        subsystem: "memory",
+        operation: "cache_snapshot_reflection",
+        surface: "system",
+        trigger: "manual",
+      },
+      attribution: {
+        kind: "memory",
+        agentId: "hana",
+      },
+      metadata: {
+        cacheStrategy: "session_snapshot",
+        cacheGroup: "memory.reflection",
+        strict: true,
+      },
+    });
+    // source/attribution 可解析时，账本不应再告警 unknown usage context
+    expect(ledgerLogger.warn).not.toHaveBeenCalled();
+    // 账本按 source/attribution 过滤要能找回这笔 reflection 账单（可追溯性）
+    expect(realLedger.list({ subsystem: "memory", operation: "cache_snapshot_reflection" }).entries).toHaveLength(1);
+    expect(realLedger.list({ attributionKind: "memory", agentId: "hana" }).entries).toHaveLength(1);
   });
 
   it("writes bounded failure diagnostics for shadow reflection errors", async () => {

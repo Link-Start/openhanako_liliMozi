@@ -311,10 +311,16 @@ export function createMemoryTicker(opts) {
         },
         usageLedger: resolvedModel?.usageLedger,
         usageContext: {
-          subsystem: "memory",
-          operation: "cache_snapshot_reflection",
-          surface: "system",
-          trigger,
+          source: {
+            subsystem: "memory",
+            operation: "cache_snapshot_reflection",
+            surface: "system",
+            trigger,
+          },
+          attribution: {
+            kind: "memory",
+            agentId: agentId || resolvedModel?.usageAgentId || null,
+          },
         },
       });
       const metadata = reflection?.metadata || {};
