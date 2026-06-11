@@ -5,7 +5,7 @@
  * 每种 previewItem 类型对应一个 JSX 分支或子组件。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import { renderMarkdownPreview } from '../../utils/markdown';
 import {
   parseMarkdownCover,
@@ -89,30 +89,10 @@ interface PreviewRendererProps {
 }
 
 // ── HtmlPreview ──
-// HTML 内容由 server 注册为 token 化短期文档；renderer 只负责把该 URL
-// 和 Preview 面板里的占位矩形交给主进程，实际渲染跑在专用 WebContentsView。
-
-function readHtmlPreviewBounds(element: HTMLElement | null) {
-  if (!element) return null;
-  const rect = element.getBoundingClientRect();
-  if (!Number.isFinite(rect.x) || !Number.isFinite(rect.y) || !Number.isFinite(rect.width) || !Number.isFinite(rect.height)) {
-    return null;
-  }
-  if (rect.width <= 0 || rect.height <= 0) {
-    return null;
-  }
-  return {
-    x: Math.round(rect.x),
-    y: Math.round(rect.y),
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
-  };
-}
+// HTML 内容由 server 注册为 token 化短期文档；右侧 Preview 只承载本地
+// artifact/file-backed HTML，用 DOM iframe 渲染，外部网页访问交给内置浏览器。
 
 function HtmlPreview({ previewItem }: { previewItem: PreviewItem }) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const shownRef = useRef(false);
-  const settingsModalOpen = useStore(s => s.settingsModal.open);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,7 +100,6 @@ function HtmlPreview({ previewItem }: { previewItem: PreviewItem }) {
     let cancelled = false;
     setPreviewUrl(null);
     setError(null);
-    shownRef.current = false;
 
     hanaFetch('/api/preview/html', {
       method: 'POST',
@@ -148,57 +127,18 @@ function HtmlPreview({ previewItem }: { previewItem: PreviewItem }) {
     };
   }, [previewItem.content, previewItem.filePath, previewItem.title]);
 
-  useLayoutEffect(() => {
-    if (!previewUrl || settingsModalOpen || !window.platform?.showHtmlPreview) return undefined;
-
-    let closed = false;
-    const syncBounds = () => {
-      if (closed) return;
-      const bounds = readHtmlPreviewBounds(hostRef.current);
-      if (!bounds) return;
-      if (!shownRef.current) {
-        const showResult = window.platform.showHtmlPreview?.({
-          previewId: previewItem.id,
-          previewUrl,
-          bounds,
-        });
-        void Promise.resolve(showResult).then((ok) => {
-          if (!closed && ok) shownRef.current = true;
-        });
-        return;
-      }
-      void window.platform.updateHtmlPreviewBounds?.(previewItem.id, bounds);
-    };
-
-    syncBounds();
-    const host = hostRef.current;
-    const resizeObserver = host && typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(syncBounds)
-      : null;
-    if (host && resizeObserver) resizeObserver.observe(host);
-    window.addEventListener('resize', syncBounds);
-    window.addEventListener('scroll', syncBounds, true);
-
-    return () => {
-      closed = true;
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', syncBounds);
-      window.removeEventListener('scroll', syncBounds, true);
-      shownRef.current = false;
-      void window.platform?.closeHtmlPreview?.(previewItem.id);
-    };
-  }, [previewItem.id, previewUrl, settingsModalOpen]);
-
   if (error) {
     return <pre className="preview-code">{error}</pre>;
   }
 
   return (
-    <div
-      ref={hostRef}
-      className="preview-html-native-host"
-      data-html-preview-host=""
-      aria-label={previewItem.title}
+    <iframe
+      className="preview-html-frame"
+      data-html-preview-frame=""
+      title={previewItem.title}
+      src={previewUrl || 'about:blank'}
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
     />
   );
 }

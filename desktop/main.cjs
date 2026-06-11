@@ -351,7 +351,6 @@ let _currentBrowserSession = null; // 当前浏览器绑定的 sessionPath
 let _currentBrowserTabId = null;   // 当前浏览器绑定的 tabId
 let _browserAcceptCookies = true;
 let _browserCookiePolicyInstalled = false;
-const _htmlPreviewViews = new Map(); // previewId -> { view, ownerWebContentsId, ownerWindow }
 
 /** Vite 入口页面统一加载（dev → Vite dev server，其他优先 dist-renderer，最后才回退 src） */
 const _isDev = process.argv.includes("--dev");
@@ -434,129 +433,6 @@ function isAllowedBrowserUrl(url) {
     const p = new URL(url);
     return p.protocol === "http:" || p.protocol === "https:";
   } catch { return false; }
-}
-
-function _htmlPreviewPartition(previewId) {
-  const digest = crypto.createHash("sha256").update(String(previewId || "")).digest("hex").slice(0, 16);
-  return `hana-html-preview:${digest}`;
-}
-
-function _isAllowedHtmlPreviewUrl(previewUrl) {
-  if (!serverPort) return false;
-  try {
-    const url = new URL(previewUrl);
-    const localHost = url.hostname === "127.0.0.1" || url.hostname === "localhost";
-    return url.protocol === "http:"
-      && localHost
-      && url.port === String(serverPort)
-      && url.pathname.startsWith("/preview/html/");
-  } catch {
-    return false;
-  }
-}
-
-function _sanitizeHtmlPreviewBounds(bounds, ownerWindow) {
-  if (!bounds || typeof bounds !== "object" || !ownerWindow || ownerWindow.isDestroyed()) return null;
-  const rawX = Number(bounds.x);
-  const rawY = Number(bounds.y);
-  const rawWidth = Number(bounds.width);
-  const rawHeight = Number(bounds.height);
-  if (![rawX, rawY, rawWidth, rawHeight].every(Number.isFinite)) return null;
-
-  const [contentWidth, contentHeight] = ownerWindow.getContentSize();
-  const x = Math.max(0, Math.min(Math.round(rawX), contentWidth));
-  const y = Math.max(0, Math.min(Math.round(rawY), contentHeight));
-  const width = Math.max(0, Math.min(Math.round(rawWidth), contentWidth - x));
-  const height = Math.max(0, Math.min(Math.round(rawHeight), contentHeight - y));
-  if (width <= 0 || height <= 0) return null;
-  return { x, y, width, height };
-}
-
-function _isHtmlPreviewViewDestroyed(view) {
-  return !view || !view.webContents || view.webContents.isDestroyed();
-}
-
-function _createHtmlPreviewWebContentsView(previewId) {
-  const view = new WebContentsView({
-    webPreferences: {
-      session: session.fromPartition(_htmlPreviewPartition(previewId)),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-  view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  view.webContents.on("will-navigate", (event, url) => {
-    if (!_isAllowedHtmlPreviewUrl(url)) event.preventDefault();
-  });
-  return view;
-}
-
-function _detachHtmlPreviewView(record) {
-  if (!record?.ownerWindow || record.ownerWindow.isDestroyed() || _isHtmlPreviewViewDestroyed(record.view)) return;
-  try { record.ownerWindow.contentView.removeChildView(record.view); } catch {}
-}
-
-function _closeHtmlPreviewView(previewId, ownerWebContentsId = null) {
-  const record = _htmlPreviewViews.get(previewId);
-  if (!record) return true;
-  if (ownerWebContentsId != null && record.ownerWebContentsId !== ownerWebContentsId) return false;
-  _detachHtmlPreviewView(record);
-  try {
-    if (!_isHtmlPreviewViewDestroyed(record.view)) record.view.webContents.close();
-  } catch {}
-  _htmlPreviewViews.delete(previewId);
-  return true;
-}
-
-function _closeAllHtmlPreviewViews(ownerWebContentsId = null) {
-  for (const [previewId, record] of _htmlPreviewViews.entries()) {
-    if (ownerWebContentsId != null && record.ownerWebContentsId !== ownerWebContentsId) continue;
-    _closeHtmlPreviewView(previewId, ownerWebContentsId);
-  }
-}
-
-function _showHtmlPreviewView(event, payload) {
-  const previewId = typeof payload?.previewId === "string" ? payload.previewId : "";
-  const previewUrl = typeof payload?.previewUrl === "string" ? payload.previewUrl : "";
-  if (!previewId || !_isAllowedHtmlPreviewUrl(previewUrl)) return false;
-
-  const ownerWindow = BrowserWindow.fromWebContents(event.sender);
-  const bounds = _sanitizeHtmlPreviewBounds(payload.bounds, ownerWindow);
-  if (!ownerWindow || ownerWindow.isDestroyed() || !bounds) return false;
-
-  let record = _htmlPreviewViews.get(previewId);
-  if (record && (record.ownerWebContentsId !== event.sender.id || _isHtmlPreviewViewDestroyed(record.view))) {
-    _closeHtmlPreviewView(previewId);
-    record = null;
-  }
-
-  if (!record) {
-    const view = _createHtmlPreviewWebContentsView(previewId);
-    record = { view, ownerWebContentsId: event.sender.id, ownerWindow };
-    _htmlPreviewViews.set(previewId, record);
-    event.sender.once("destroyed", () => {
-      _closeAllHtmlPreviewViews(event.sender.id);
-    });
-  }
-
-  if (record.view.webContents.getURL() !== previewUrl) {
-    void record.view.webContents.loadURL(previewUrl);
-  }
-  try { ownerWindow.contentView.removeChildView(record.view); } catch {}
-  ownerWindow.contentView.addChildView(record.view);
-  record.view.setBounds(bounds);
-  return true;
-}
-
-function _updateHtmlPreviewBounds(event, previewId, bounds) {
-  if (typeof previewId !== "string" || !previewId) return false;
-  const record = _htmlPreviewViews.get(previewId);
-  if (!record || record.ownerWebContentsId !== event.sender.id || _isHtmlPreviewViewDestroyed(record.view)) return false;
-  const nextBounds = _sanitizeHtmlPreviewBounds(bounds, record.ownerWindow);
-  if (!nextBounds) return false;
-  record.view.setBounds(nextBounds);
-  return true;
 }
 
 let _browserViewerTheme = themeRegistry.DEFAULT_THEME; // 当前主题（用于 backgroundColor）
@@ -3876,12 +3752,7 @@ wrapIpcBestEffortHandler("quick-chat-open-session", (_event, sessionPath) => {
 
 wrapIpcBestEffortHandler("open-settings", (_event, tab, theme) => createSettingsWindow(tab, theme));
 
-// HTML Preview 原生承载面：renderer 只上报 URL + bounds，实际页面跑在独立 WebContentsView。
-wrapIpcBestEffortHandler("html-preview-show", (event, payload) => _showHtmlPreviewView(event, payload));
-wrapIpcBestEffortHandler("html-preview-update-bounds", (event, previewId, bounds) => _updateHtmlPreviewBounds(event, previewId, bounds));
-wrapIpcBestEffortHandler("html-preview-close", (event, previewId) => _closeHtmlPreviewView(previewId, event.sender.id));
-
-  // 浏览器查看器窗口
+// 浏览器查看器窗口
 wrapIpcBestEffortHandler("open-browser-viewer", async (_event, theme, url) => {
   if (theme) _browserViewerTheme = theme;
   createBrowserViewerWindow();

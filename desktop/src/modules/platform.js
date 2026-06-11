@@ -61,9 +61,6 @@
     readFileBase64: (p) => apiFetch(`/api/fs/read-base64?path=${encodeURIComponent(p)}`).then(r => r.ok ? r.text() : null),
     readDocxHtml: (p) => apiFetch(`/api/fs/docx-html?path=${encodeURIComponent(p)}`).then(r => r.ok ? r.text() : null),
     readXlsxHtml: (p) => apiFetch(`/api/fs/xlsx-html?path=${encodeURIComponent(p)}`).then(r => r.ok ? r.text() : null),
-    showHtmlPreview: async () => false,
-    updateHtmlPreviewBounds: async () => false,
-    closeHtmlPreview: async () => false,
 
     // 文件写入 / 监听 / 派生 viewer 窗口 → Web 不支持
     writeFile: async () => false,

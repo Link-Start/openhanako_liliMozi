@@ -353,19 +353,6 @@ export interface BrowserViewerUpdate {
   tabs?: BrowserViewerTab[];
 }
 
-export interface HtmlPreviewBounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface HtmlPreviewShowPayload {
-  previewId: string;
-  previewUrl: string;
-  bounds: HtmlPreviewBounds;
-}
-
 // ── Platform API 类型声明 ──
 export interface PlatformApi {
   getServerPort(): Promise<string>;
@@ -394,9 +381,6 @@ export interface PlatformApi {
   getFileUrl?(path: string): string;
   readDocxHtml(path: string): Promise<string | null>;
   readXlsxHtml(path: string): Promise<string | null>;
-  showHtmlPreview?(payload: HtmlPreviewShowPayload): Promise<boolean>;
-  updateHtmlPreviewBounds?(previewId: string, bounds: HtmlPreviewBounds): Promise<boolean>;
-  closeHtmlPreview?(previewId: string): Promise<boolean>;
   /** 派生一个只读 Viewer 窗口展示指定文件。返回 windowId（主进程 BrowserWindow.id）。 */
   spawnViewer(data: { filePath: string; title: string; type: string; language?: string | null }): Promise<number | null>;
   /** Viewer 窗口接收文件元信息（viewer-window-entry 调用）。 */

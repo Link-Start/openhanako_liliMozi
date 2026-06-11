@@ -49,28 +49,23 @@ describe('PreviewRenderer HTML isolation', () => {
     filePath: '/tmp/demo.html',
     ext: 'html',
   };
+  let legacyNativePreviewApi: {
+    showHtmlPreview: ReturnType<typeof vi.fn>;
+    updateHtmlPreviewBounds: ReturnType<typeof vi.fn>;
+    closeHtmlPreview: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     window.t = ((key: string) => key) as typeof window.t;
     useStore.setState({
       settingsModal: { open: false, activeTab: 'agent' },
     } as never);
-    window.platform = {
+    legacyNativePreviewApi = {
       showHtmlPreview: vi.fn(async () => true),
       updateHtmlPreviewBounds: vi.fn(async () => true),
       closeHtmlPreview: vi.fn(async () => true),
-    } as unknown as typeof window.platform;
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      x: 11,
-      y: 22,
-      width: 333,
-      height: 444,
-      top: 22,
-      right: 344,
-      bottom: 466,
-      left: 11,
-      toJSON: () => ({}),
-    } as DOMRect);
+    };
+    window.platform = legacyNativePreviewApi as unknown as typeof window.platform;
     mocks.hanaFetch.mockReset();
     mocks.hanaFetch.mockResolvedValue(new Response(JSON.stringify({
       previewUrl: 'http://127.0.0.1:14500/preview/html/pv_123?previewToken=preview_only_token',
@@ -86,8 +81,8 @@ describe('PreviewRenderer HTML isolation', () => {
     cleanup();
   });
 
-  it('registers HTML and delegates rendering to the native HTML preview host instead of an iframe', async () => {
-    const { container, unmount } = render(<PreviewRenderer previewItem={previewItem} />);
+  it('registers HTML and renders the local preview document in a sandboxed iframe', async () => {
+    const { container } = render(<PreviewRenderer previewItem={previewItem} />);
 
     expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/preview/html', {
       method: 'POST',
@@ -99,64 +94,52 @@ describe('PreviewRenderer HTML isolation', () => {
       }),
     });
 
-    expect(container.querySelector('iframe')).toBeNull();
-    expect(container.querySelector('[data-html-preview-host]')).toBeTruthy();
+    const iframe = container.querySelector<HTMLIFrameElement>('[data-html-preview-frame]');
+    expect(iframe).toBeTruthy();
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
 
     await waitFor(() => {
-      expect(window.platform.showHtmlPreview).toHaveBeenCalledWith({
-        previewId: 'html-demo',
-        previewUrl: 'http://127.0.0.1:14500/preview/html/pv_123?previewToken=preview_only_token',
-        bounds: {
-          x: 11,
-          y: 22,
-          width: 333,
-          height: 444,
-        },
-      });
+      expect(iframe).toHaveAttribute(
+        'src',
+        'http://127.0.0.1:14500/preview/html/pv_123?previewToken=preview_only_token',
+      );
     });
 
-    unmount();
-
-    expect(window.platform.closeHtmlPreview).toHaveBeenCalledWith('html-demo');
+    expect(legacyNativePreviewApi.showHtmlPreview).not.toHaveBeenCalled();
+    expect(legacyNativePreviewApi.closeHtmlPreview).not.toHaveBeenCalled();
   });
 
-  it('suppresses the native HTML preview host while the in-window settings modal is open', async () => {
+  it('keeps the iframe preview visible while the in-window settings modal is open', async () => {
     useStore.setState({
       settingsModal: { open: true, activeTab: 'skills' },
     } as never);
 
-    const { rerender } = render(<PreviewRenderer previewItem={previewItem} />);
+    const { container } = render(<PreviewRenderer previewItem={previewItem} />);
 
-    expect(screen.queryByLabelText('demo.html')).toBeInTheDocument();
+    const iframe = container.querySelector<HTMLIFrameElement>('[data-html-preview-frame]');
+    expect(iframe).toBeTruthy();
     await waitFor(() => {
-      expect(mocks.hanaFetch).toHaveBeenCalled();
+      expect(iframe).toHaveAttribute(
+        'src',
+        'http://127.0.0.1:14500/preview/html/pv_123?previewToken=preview_only_token',
+      );
     });
-    expect(window.platform.showHtmlPreview).not.toHaveBeenCalled();
 
-    useStore.setState({
-      settingsModal: { open: false, activeTab: 'skills' },
-    } as never);
-    rerender(<PreviewRenderer previewItem={previewItem} />);
-
-    await waitFor(() => {
-      expect(window.platform.showHtmlPreview).toHaveBeenCalledWith({
-        previewId: 'html-demo',
-        previewUrl: 'http://127.0.0.1:14500/preview/html/pv_123?previewToken=preview_only_token',
-        bounds: {
-          x: 11,
-          y: 22,
-          width: 333,
-          height: 444,
-        },
-      });
-    });
+    expect(legacyNativePreviewApi.showHtmlPreview).not.toHaveBeenCalled();
+    expect(legacyNativePreviewApi.closeHtmlPreview).not.toHaveBeenCalled();
   });
 
-  it('closes an already shown native HTML preview host when the in-window settings modal opens', async () => {
-    const { rerender } = render(<PreviewRenderer previewItem={previewItem} />);
+  it('does not close the iframe preview when the in-window settings modal toggles', async () => {
+    const { container, rerender } = render(<PreviewRenderer previewItem={previewItem} />);
+
+    const iframe = container.querySelector<HTMLIFrameElement>('[data-html-preview-frame]');
+    expect(iframe).toBeTruthy();
 
     await waitFor(() => {
-      expect(window.platform.showHtmlPreview).toHaveBeenCalledTimes(1);
+      expect(iframe).toHaveAttribute(
+        'src',
+        'http://127.0.0.1:14500/preview/html/pv_123?previewToken=preview_only_token',
+      );
     });
 
     useStore.setState({
@@ -164,18 +147,18 @@ describe('PreviewRenderer HTML isolation', () => {
     } as never);
     rerender(<PreviewRenderer previewItem={previewItem} />);
 
-    await waitFor(() => {
-      expect(window.platform.closeHtmlPreview).toHaveBeenCalledWith('html-demo');
-    });
+    expect(container.querySelector('[data-html-preview-frame]')).toBeTruthy();
+    expect(legacyNativePreviewApi.showHtmlPreview).not.toHaveBeenCalled();
+    expect(legacyNativePreviewApi.closeHtmlPreview).not.toHaveBeenCalled();
 
     useStore.setState({
       settingsModal: { open: false, activeTab: 'skills' },
     } as never);
     rerender(<PreviewRenderer previewItem={previewItem} />);
 
-    await waitFor(() => {
-      expect(window.platform.showHtmlPreview).toHaveBeenCalledTimes(2);
-    });
+    expect(container.querySelector('[data-html-preview-frame]')).toBeTruthy();
+    expect(legacyNativePreviewApi.showHtmlPreview).not.toHaveBeenCalled();
+    expect(legacyNativePreviewApi.closeHtmlPreview).not.toHaveBeenCalled();
   });
 
   it('applies a workspace image dropped on the markdown cover', async () => {
