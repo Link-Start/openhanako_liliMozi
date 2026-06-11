@@ -1,6 +1,6 @@
 {
   "name": "hanako",
-  "version": "0.311.0",
+  "version": "0.312.0",
   "type": "module",
   "description": "HanaAgent - a personal AI agent with memory and soul",
   "license": "Apache-2.0",
@@ -94,6 +94,7 @@
     "react-dom": "^19.2.4",
     "typebox": "1.1.34",
     "undici": "7.24.7",
+    "unpdf": "1.6.2",
     "ws": "^8.18.0",
     "zustand": "^5.0.11"
   },

@@ -64,7 +64,7 @@ search:
 
 # Skills（per-agent 技能开关）
 skills:
-  enabled: ["skill-creator", "office-documents"]         # 启用的 skill 名称，如 ["pdf", "literary-craft"]
+  enabled: ["skill-creator"]                             # 启用的 skill 名称，如 ["pdf", "literary-craft"]
 
 # 工作书桌
 desk:

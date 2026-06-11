@@ -10,6 +10,58 @@ import { execute as listCapabilities } from "../plugins/office/tools/list-capabi
 import { renderHtmlToPdf } from "../plugins/office/lib/html-to-pdf.ts";
 import { isOfficeEnabledForAgentConfig } from "../plugins/office/lib/availability.ts";
 
+function escapePdfText(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function makeTextPdf(pages: string[]) {
+  const objects = [];
+  const pageObjectIds = pages.map((_, index) => 4 + index * 2);
+  const contentObjectIds = pages.map((_, index) => 5 + index * 2);
+
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objects.push(`<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`);
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+
+  for (let index = 0; index < pages.length; index += 1) {
+    const pageId = pageObjectIds[index];
+    const contentId = contentObjectIds[index];
+    objects[pageId - 1] = [
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]",
+      "/Resources << /Font << /F1 3 0 R >> >>",
+      `/Contents ${contentId} 0 R >>`,
+    ].join(" ");
+
+    const lines = pages[index].split("\n");
+    const commands = [
+      "BT",
+      "/F1 18 Tf",
+      "72 720 Td",
+      ...lines.flatMap((line, lineIndex) => [
+        lineIndex === 0 ? "" : "0 -24 Td",
+        `(${escapePdfText(line)}) Tj`,
+      ]).filter(Boolean),
+      "ET",
+    ].join("\n");
+    objects[contentId - 1] = `<< /Length ${Buffer.byteLength(commands, "utf-8")} >>\nstream\n${commands}\nendstream`;
+  }
+
+  const chunks = ["%PDF-1.4\n"];
+  const offsets = [0];
+  for (let index = 0; index < objects.length; index += 1) {
+    offsets.push(Buffer.byteLength(chunks.join(""), "utf-8"));
+    chunks.push(`${index + 1} 0 obj\n${objects[index]}\nendobj\n`);
+  }
+  const xrefOffset = Buffer.byteLength(chunks.join(""), "utf-8");
+  chunks.push(`xref\n0 ${objects.length + 1}\n`);
+  chunks.push("0000000000 65535 f \n");
+  for (const offset of offsets.slice(1)) {
+    chunks.push(`${String(offset).padStart(10, "0")} 00000 n \n`);
+  }
+  chunks.push(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+  return chunks.join("");
+}
+
 describe("office plugin tools", () => {
   let tempDir;
 
@@ -26,7 +78,11 @@ describe("office plugin tools", () => {
 
     expect(result.content[0].text).toContain("Office tools are available");
     expect(result.details.capabilities).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "read-document", tool: "office_read-document" }),
+      expect.objectContaining({
+        id: "read-document",
+        tool: "office_read-document",
+        supportedInputs: expect.arrayContaining([".pdf", ".xlsm"]),
+      }),
       expect.objectContaining({ id: "html-to-pdf", tool: "office_html-to-pdf" }),
     ]));
   });
@@ -58,16 +114,110 @@ describe("office plugin tools", () => {
     expect(result.content[0].text).toContain('"sheetCount": 1');
   });
 
-  it("fails unsupported document formats explicitly", async () => {
-    const filePath = path.join(tempDir, "legacy.pdf");
-    fs.writeFileSync(filePath, "%PDF-1.4\n", "utf-8");
+  it("reads xlsm workbooks through the same structured workbook path", async () => {
+    const filePath = path.join(tempDir, "macro-report.xlsm");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("MacroData");
+    sheet.addRow(["Name", "Value"]);
+    sheet.addRow(["Approved", true]);
+    await workbook.xlsx.writeFile(filePath);
+
+    const result = await readDocument({ filePath, outputFormat: "json" });
+
+    expect(result.details.office).toMatchObject({
+      ext: ".xlsm",
+      kind: "xlsx",
+      format: "json",
+    });
+    expect(result.details.office.workbook.sheets[0]).toMatchObject({
+      name: "MacroData",
+      rows: [
+        ["Name", "Value"],
+        ["Approved", "true"],
+      ],
+    });
+  });
+
+  it("reads selected PDF pages as Markdown with pagination metadata", async () => {
+    const filePath = path.join(tempDir, "travel.pdf");
+    fs.writeFileSync(filePath, makeTextPdf([
+      "Opening page alpha",
+      "Second page beta\nE = mc^2",
+    ]), "utf-8");
+
+    const result = await readDocument({ filePath, pageRange: "2", maxChars: 2000 });
+
+    expect(result.details.office).toMatchObject({
+      kind: "pdf",
+      format: "markdown",
+      totalPages: 2,
+      pages: [2],
+      truncated: false,
+    });
+    expect(result.content[0].text).toContain("## Page 2");
+    expect(result.content[0].text).toContain("Second page beta");
+    expect(result.content[0].text).toContain("E = mc^2");
+    expect(result.content[0].text).not.toContain("Opening page alpha");
+    expect(result.details.office.warnings).toEqual(expect.arrayContaining(["math_may_be_degraded"]));
+  });
+
+  it("stops long PDF reads at page boundaries and reports the next page range", async () => {
+    const filePath = path.join(tempDir, "long.pdf");
+    fs.writeFileSync(filePath, makeTextPdf([
+      "Page one ".repeat(30),
+      "Page two ".repeat(30),
+      "Page three ".repeat(30),
+    ]), "utf-8");
+
+    const result = await readDocument({ filePath, maxChars: 100 });
+
+    expect(result.details.office).toMatchObject({
+      kind: "pdf",
+      totalPages: 3,
+      pages: [1],
+      truncated: true,
+      nextPageRange: "2-3",
+    });
+    expect(result.content[0].text).toContain("## Page 1");
+    expect(result.content[0].text).toContain("[PDF read truncated at page 1; continue with pageRange=\"2-3\".]");
+    expect(result.content[0].text).not.toContain("## Page 2");
+  });
+
+  it("continues long PDF reads after the maxPages window", async () => {
+    const filePath = path.join(tempDir, "many-pages.pdf");
+    fs.writeFileSync(filePath, makeTextPdf([
+      "Page one",
+      "Page two",
+      "Page three",
+      "Page four",
+    ]), "utf-8");
+
+    const result = await readDocument({ filePath, maxPages: 2, maxChars: 2000 });
+
+    expect(result.details.office).toMatchObject({
+      kind: "pdf",
+      totalPages: 4,
+      pages: [1, 2],
+      truncated: true,
+      nextPageRange: "3-4",
+      totalRequestedPages: 4,
+    });
+    expect(result.content[0].text).toContain("## Page 1");
+    expect(result.content[0].text).toContain("## Page 2");
+    expect(result.content[0].text).toContain("[PDF read truncated at page 2; continue with pageRange=\"3-4\".]");
+  });
+
+  it("reports image-only PDFs as unsupported without OCR fallback", async () => {
+    const filePath = path.join(tempDir, "blank.pdf");
+    fs.writeFileSync(filePath, makeTextPdf([""]), "utf-8");
 
     const result = await readDocument({ filePath });
 
     expect(result.details.error).toMatchObject({
       code: "OFFICE_READ_FAILED",
+      message: expect.stringContaining("no extractable text"),
     });
-    expect(result.content[0].text).toContain("unsupported Office read format");
+    expect(result.content[0].text).toContain("OCR is not supported");
   });
 
   it("renders HTML to PDF through the desktop helper contract and stages the output", async () => {

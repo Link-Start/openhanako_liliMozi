@@ -117,6 +117,35 @@ describe("bundled plugin runtime dependencies", () => {
       .resolves.toContain("js-yaml");
   });
 
+  it("collects the Office PDF reader package import for packaged server installs", async () => {
+    fs.mkdirSync(path.join(rootDir, "plugins", "office", "lib"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "plugins", "office", "tools"), { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDir, "plugins", "office", "tools", "read-document.ts"),
+      'import { readPdfDocument } from "../lib/read-pdf.ts";\nexport const read = readPdfDocument;\n',
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(rootDir, "plugins", "office", "lib", "read-pdf.ts"),
+      'export async function readPdfDocument() { const { getDocumentProxy } = await import("unpdf"); return getDocumentProxy; }\n',
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(rootDir, "node_modules", "unpdf"), { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDir, "node_modules", "unpdf", "package.json"),
+      JSON.stringify({ name: "unpdf", version: "1.6.2", type: "module", exports: "./index.mjs" }),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(rootDir, "node_modules", "unpdf", "index.mjs"),
+      "export function getDocumentProxy() {}\n",
+      "utf-8",
+    );
+
+    await expect(collectBundledPluginPackageDependencies({ rootDir }))
+      .resolves.toContain("unpdf");
+  });
+
   it("collects npm packages imported by host modules reached from bundled plugins", async () => {
     fs.mkdirSync(path.join(rootDir, "lib", "i18n"), { recursive: true });
     fs.writeFileSync(

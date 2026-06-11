@@ -6,8 +6,9 @@ export const name = "read-document";
 
 export const description = [
   "Read supported Office/text documents into structured text for the Agent.",
-  "Use for .docx, .xlsx, .txt, .md, .csv, .tsv, and .html files.",
-  "Requires an absolute filePath. Does not modify files. Unsupported legacy formats such as .doc, .xls, .ppt, .pptx, and .pdf fail explicitly.",
+  "Use for .docx, .xlsx, .xlsm, .pdf, .txt, .md, .csv, .tsv, and .html files.",
+  "PDF output is Markdown text with 1-based pageRange continuation metadata; OCR for scanned/image-only PDFs is not supported.",
+  "Requires an absolute filePath. Does not modify files. Unsupported legacy formats such as .doc, .xls, .ppt, and .pptx fail explicitly.",
 ].join(" ");
 
 export const parameters = {
@@ -19,12 +20,20 @@ export const parameters = {
     },
     outputFormat: {
       type: "string",
-      enum: ["text", "html", "json"],
-      description: "text by default. docx also supports html; xlsx also supports json.",
+      enum: ["text", "markdown", "html", "json"],
+      description: "text by default. pdf returns markdown text; docx also supports html; xlsx also supports json.",
     },
     maxChars: {
       type: "number",
-      description: "Maximum characters returned for text/html output. Default 20000.",
+      description: "Maximum characters returned for text/markdown/html output. PDF stops at page boundaries when possible. Default 20000.",
+    },
+    pageRange: {
+      type: "string",
+      description: "pdf only. 1-based pages/ranges to read, such as \"1-3,8\". Use nextPageRange from a truncated PDF result to continue.",
+    },
+    maxPages: {
+      type: "number",
+      description: "pdf only. Maximum selected pages to inspect in one call. Default 25.",
     },
     sheetLimit: {
       type: "number",

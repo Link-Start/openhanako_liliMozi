@@ -1,9 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
 
+import { readPdfDocument } from "./read-pdf.ts";
+
 const TEXT_EXTS = new Set([".txt", ".md", ".markdown", ".csv", ".tsv", ".html", ".htm"]);
 const DOCX_EXTS = new Set([".docx"]);
-const XLSX_EXTS = new Set([".xlsx"]);
+const XLSX_EXTS = new Set([".xlsx", ".xlsm"]);
+const PDF_EXTS = new Set([".pdf"]);
 const DEFAULT_MAX_CHARS = 20000;
 const DEFAULT_SHEET_LIMIT = 8;
 const DEFAULT_ROW_LIMIT = 200;
@@ -136,32 +139,37 @@ async function readTextLike(filePath, ext) {
 export async function readOfficeDocument(input: any = {}) {
   const filePath = normalizePath(input);
   const ext = path.extname(filePath).toLowerCase();
-  const outputFormat = input.outputFormat === "html" || input.outputFormat === "json"
+  const outputFormat = input.outputFormat === "html" || input.outputFormat === "json" || input.outputFormat === "markdown"
     ? input.outputFormat
     : "text";
   const maxChars = asPositiveInt(input.maxChars, DEFAULT_MAX_CHARS, 200000);
 
   let result;
   if (DOCX_EXTS.has(ext)) {
-    if (outputFormat === "json") {
-      throw new Error("docx JSON output is not supported; use text or html");
+    if (outputFormat === "json" || outputFormat === "markdown") {
+      throw new Error("docx JSON/Markdown output is not supported; use text or html");
     }
     result = await readDocx(filePath, outputFormat);
   } else if (XLSX_EXTS.has(ext)) {
-    if (outputFormat === "html") {
-      throw new Error("xlsx HTML output is not supported by office_read-document; use text or json");
+    if (outputFormat === "html" || outputFormat === "markdown") {
+      throw new Error("xlsx HTML/Markdown output is not supported by office_read-document; use text or json");
     }
     result = await readXlsx(filePath, { ...input, outputFormat });
+  } else if (PDF_EXTS.has(ext)) {
+    if (outputFormat === "html" || outputFormat === "json") {
+      throw new Error("pdf HTML/JSON output is not supported; use markdown or text");
+    }
+    result = await readPdfDocument(filePath, { ...input, outputFormat, maxChars });
   } else if (TEXT_EXTS.has(ext) || !ext) {
-    if (outputFormat === "json") {
-      throw new Error(`${ext || "text"} JSON output is not supported; use text`);
+    if (outputFormat === "html" || outputFormat === "json" || outputFormat === "markdown") {
+      throw new Error(`${ext || "text"} HTML/JSON/Markdown output is not supported; use text`);
     }
     result = await readTextLike(filePath, ext);
   } else {
-    throw new Error(`unsupported Office read format "${ext || "(none)"}"; supported: .docx, .xlsx, .txt, .md, .csv, .tsv, .html`);
+    throw new Error(`unsupported Office read format "${ext || "(none)"}"; supported: .docx, .xlsx, .xlsm, .pdf, .txt, .md, .csv, .tsv, .html`);
   }
 
-  if (typeof result.content === "string") {
+  if (typeof result.content === "string" && result.kind !== "pdf") {
     const truncated = truncateText(result.content, maxChars);
     result.content = truncated.text;
     result.truncated = truncated.truncated;
