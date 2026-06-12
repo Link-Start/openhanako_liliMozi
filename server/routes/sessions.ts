@@ -151,6 +151,24 @@ function routeError(message, code, status) {
   return err;
 }
 
+function classifySessionCreationError(err) {
+  const message = err?.message || String(err);
+  if (err?.status && Number.isInteger(err.status)) {
+    return { status: err.status, body: { error: message, code: err.code || "session_create_failed" } };
+  }
+  if (
+    /no available model/i.test(message)
+    || /no available models/i.test(message)
+    || /没有可用的模型/.test(message)
+    || /沒有可用的模型/.test(message)
+    || /利用可能なモデルがありません/.test(message)
+    || /사용 가능한 모델이 없/.test(message)
+  ) {
+    return { status: 409, body: { error: message, code: "no_available_model" } };
+  }
+  return { status: 500, body: { error: message } };
+}
+
 const TODO_COMPLETE_MESSAGE =
   "[Hana Todo] The user marked the current todo list as completed and removed it from the session UI. Treat every item in that list as completed. Create a new todo list only if new work needs tracking.";
 
@@ -1218,7 +1236,8 @@ export function createSessionsRoute(engine, hub = null) {
       }, newSessionPath);
       return c.json(response);
     } catch (err) {
-      return c.json({ error: err.message }, 500);
+      const classified = classifySessionCreationError(err);
+      return c.json(classified.body, classified.status);
     }
   });
 

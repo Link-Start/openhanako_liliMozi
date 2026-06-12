@@ -758,6 +758,7 @@ export async function ensureSession(): Promise<boolean> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      throwOnHttpError: false,
     });
     const data = await res.json();
     if (data.error) {

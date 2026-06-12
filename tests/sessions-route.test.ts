@@ -177,6 +177,35 @@ describe("sessions route", () => {
     );
   });
 
+  it("returns a structured no-model error instead of a generic 500 when new session creation cannot select a model (#1643)", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const app = new Hono();
+    const engine = {
+      currentAgentId: "hana",
+      config: {},
+      cwd: "/tmp/workspace",
+      createSession: vi.fn(async () => {
+        throw new Error("No available model");
+      }),
+      createSessionForAgent: vi.fn(),
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request("/api/sessions/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/tmp/workspace" }),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(data).toMatchObject({
+      error: "No available model",
+      code: "no_available_model",
+    });
+  });
+
   it("resolves workspaceMountId on the server when creating a new session", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const app = new Hono();
