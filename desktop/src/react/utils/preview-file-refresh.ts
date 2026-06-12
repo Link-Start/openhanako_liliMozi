@@ -48,6 +48,7 @@ export async function refreshPreviewItemsFromFile(filePath: string): Promise<voi
     upsertPreviewItem({
       ...item,
       content: read.content,
+      sourceUrl: read.sourceUrl ?? item.sourceUrl,
       fileVersion: read.fileVersion ?? item.fileVersion,
       status: 'available',
       missingAt: null,

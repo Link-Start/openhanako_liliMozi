@@ -38,6 +38,7 @@ describe('desk-actions workspace roots', () => {
           content: `content:${filePath}`,
           version: { mtimeMs: 1, size: 10, sha256: 'hash' },
         })),
+        getFileUrl: vi.fn((filePath: string) => `file://${filePath}`),
       },
     };
     useStore.setState({
@@ -571,6 +572,47 @@ describe('desk-actions workspace roots', () => {
       }),
     ]);
     expect(window.platform?.readFileSnapshot).toHaveBeenCalledWith('/workspace/src/react/App.tsx');
+  });
+
+  it('hydrates persisted preview metadata needed by PDF and HTML renderers', async () => {
+    const { hydratePersistedPreviewItems } = await import('../../stores/workspace-ui-state-actions');
+
+    const items = await hydratePersistedPreviewItems('/workspace', {
+      previewTabs: [
+        {
+          id: 'file-docs/report.pdf',
+          relativePath: 'docs/report.pdf',
+          title: 'report.pdf',
+          type: 'pdf',
+          ext: 'pdf',
+        },
+        {
+          id: 'file-pages/demo.html',
+          relativePath: 'pages/demo.html',
+          title: 'demo.html',
+          type: 'html',
+          ext: 'html',
+        },
+      ],
+    });
+
+    expect(window.platform?.getFileUrl).toHaveBeenCalledWith('/workspace/docs/report.pdf');
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: 'file-docs/report.pdf',
+        type: 'pdf',
+        filePath: '/workspace/docs/report.pdf',
+        content: '',
+        sourceUrl: 'file:///workspace/docs/report.pdf',
+      }),
+      expect.objectContaining({
+        id: 'file-pages/demo.html',
+        type: 'html',
+        filePath: '/workspace/pages/demo.html',
+        content: 'content:/workspace/pages/demo.html',
+        sourceRootPath: '/workspace',
+      }),
+    ]);
   });
 
   it('renames a tree item by explicit parent subdir and updates that tree cache', async () => {

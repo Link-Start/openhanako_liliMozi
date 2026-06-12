@@ -31,6 +31,7 @@ describe('file-preview IPC error handling', () => {
       readDocxHtml: vi.fn(),
       readXlsxHtml: vi.fn(),
       readFileBase64: vi.fn(),
+      getFileUrl: vi.fn((filePath: string) => `file://${filePath}`),
       openSkillViewer: vi.fn(),
     };
   });
@@ -92,5 +93,44 @@ describe('file-preview IPC error handling', () => {
     expect(mocks.showError).toHaveBeenCalledWith('skill preview path missing');
     expect(mocks.openPreview).not.toHaveBeenCalled();
     expect((window as any).platform.openSkillViewer).not.toHaveBeenCalled();
+  });
+
+  it('PDF 预览使用本地 file URL，不因 base64 读取失败回退成文件信息卡', async () => {
+    (window as any).platform.readFileBase64.mockResolvedValue(null);
+
+    await expect(openFilePreview('/tmp/Report.PDF', 'Report.PDF', 'PDF', { origin: 'desk' })).resolves.toBeUndefined();
+
+    expect((window as any).platform.getFileUrl).toHaveBeenCalledWith('/tmp/Report.PDF');
+    expect((window as any).platform.readFileBase64).not.toHaveBeenCalled();
+    expect(mocks.openPreview).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'file-/tmp/Report.PDF',
+      type: 'pdf',
+      title: 'Report.PDF',
+      content: '',
+      filePath: '/tmp/Report.PDF',
+      ext: 'pdf',
+      sourceUrl: 'file:///tmp/Report.PDF',
+    }));
+  });
+
+  it('HTML 预览保留调用方提供的安全资源根', async () => {
+    (window as any).platform.readFile.mockResolvedValue('<img src="../assets/pic.png">');
+
+    await expect(openFilePreview(
+      '/workspace/pages/demo.html',
+      'demo.html',
+      'HTML',
+      { origin: 'desk', sourceRootPath: '/workspace' } as Parameters<typeof openFilePreview>[3] & { sourceRootPath: string },
+    )).resolves.toBeUndefined();
+
+    expect(mocks.openPreview).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'file-/workspace/pages/demo.html',
+      type: 'html',
+      title: 'demo.html',
+      content: '<img src="../assets/pic.png">',
+      filePath: '/workspace/pages/demo.html',
+      ext: 'html',
+      sourceRootPath: '/workspace',
+    }));
   });
 });

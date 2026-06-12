@@ -210,6 +210,8 @@ export interface PreviewItem {
   mime?: string;
   kind?: string;
   storageKind?: string;
+  sourceUrl?: string;
+  sourceRootPath?: string;
   status?: 'available' | 'expired' | string;
   missingAt?: number | null;
   fileVersion?: FileVersion | null;

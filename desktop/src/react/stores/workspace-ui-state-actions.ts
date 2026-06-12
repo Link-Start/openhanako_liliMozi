@@ -13,6 +13,7 @@ interface PersistedPreviewTab {
   type?: string;
   ext?: string;
   language?: string | null;
+  sourceRootPath?: string;
 }
 
 export interface PersistedWorkspaceUiState {
@@ -69,7 +70,14 @@ function previewTabFromItem(root: string, item: PreviewItem): PersistedPreviewTa
     type: item.type,
     ext: item.ext,
     language: item.language ?? null,
+    ...(item.sourceRootPath ? { sourceRootPath: item.sourceRootPath } : {}),
   };
+}
+
+function restoredSourceRootPath(tab: PersistedPreviewTab, normalizedRoot: string, type: string): string | undefined {
+  const explicitRoot = normalizeRoot(tab.sourceRootPath);
+  if (explicitRoot) return explicitRoot;
+  return type === 'html' && tab.relativePath ? normalizedRoot : undefined;
 }
 
 export function resolveWorkspaceUiSurface(): WorkspaceUiSurface {
@@ -154,6 +162,8 @@ export async function hydratePersistedPreviewItems(
         filePath,
         ext: tab.ext,
         language: tab.language,
+        sourceUrl: read.sourceUrl,
+        sourceRootPath: restoredSourceRootPath(tab, normalizedRoot, type),
         fileVersion: read.fileVersion,
       });
     } catch (err) {

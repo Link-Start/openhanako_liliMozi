@@ -344,7 +344,7 @@ function TreeNode({
     }
     const path = fullPath(deskBasePath, subdir);
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
-    openFilePreview(path, file.name, ext, { origin: 'desk' });
+    openFilePreview(path, file.name, ext, { origin: 'desk', sourceRootPath: deskBasePath });
   }, [deskBasePath, deskWorkspaceMountId, file, parent, subdir]);
 
   const handleClick = useCallback((event: React.MouseEvent) => {

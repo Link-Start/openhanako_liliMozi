@@ -30,6 +30,7 @@ describe('refreshPreviewItemsFromFile', () => {
       readDocxHtml: vi.fn(async (filePath: string) => `<p>docx:${filePath}</p>`),
       readXlsxHtml: vi.fn(async (filePath: string) => `<table><tr><td>${filePath}</td></tr></table>`),
       readFileBase64: vi.fn(async (filePath: string) => `pdf:${filePath}`),
+      getFileUrl: vi.fn((filePath: string) => `file://${filePath}`),
     } as unknown as PlatformApi;
   });
 
@@ -63,6 +64,33 @@ describe('refreshPreviewItemsFromFile', () => {
     expect(mockUpsertPreviewItem).toHaveBeenCalledWith({
       ...mockState.previewItems[0],
       content: '<p>docx:/tmp/report.docx</p>',
+      fileVersion: undefined,
+      status: 'available',
+      missingAt: null,
+    });
+  });
+
+  it('refreshes PDF previews through their source URL instead of reading the file into base64', async () => {
+    mockState.previewItems = [{
+      id: 'pdf',
+      type: 'pdf',
+      title: 'report.pdf',
+      content: 'old-base64',
+      filePath: '/tmp/report.pdf',
+      ext: 'pdf',
+      sourceUrl: 'file:///old/report.pdf',
+    }];
+
+    const { __resetPreviewFileRefreshStateForTests, refreshPreviewItemsFromFile } = await import('../../utils/preview-file-refresh');
+    __resetPreviewFileRefreshStateForTests();
+    await refreshPreviewItemsFromFile('/tmp/report.pdf');
+
+    expect(window.platform?.getFileUrl).toHaveBeenCalledWith('/tmp/report.pdf');
+    expect(window.platform?.readFileBase64).not.toHaveBeenCalled();
+    expect(mockUpsertPreviewItem).toHaveBeenCalledWith({
+      ...mockState.previewItems[0],
+      content: '',
+      sourceUrl: 'file:///tmp/report.pdf',
       fileVersion: undefined,
       status: 'available',
       missingAt: null,

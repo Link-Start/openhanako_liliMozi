@@ -17,6 +17,7 @@ export const BINARY_PREVIEW_TYPES = new Set(['pdf']);
 
 export interface PreviewReadResult {
   content: string;
+  sourceUrl?: string;
   fileVersion?: PreviewItem['fileVersion'];
 }
 
@@ -33,6 +34,8 @@ export async function readFileForPreviewType(filePath: string, previewType: stri
     return content == null ? null : { content };
   }
   if (BINARY_PREVIEW_TYPES.has(previewType)) {
+    const sourceUrl = p.getFileUrl?.(filePath);
+    if (sourceUrl) return { content: '', sourceUrl };
     const content = await p.readFileBase64?.(filePath);
     return content == null ? null : { content };
   }
@@ -45,7 +48,8 @@ export async function readFileForPreviewType(filePath: string, previewType: stri
 }
 
 export async function readFileForPreviewWithVersion(filePath: string, ext: string): Promise<PreviewReadResult | null> {
-  const previewType = PREVIEWABLE_EXTS[ext];
+  const normalizedExt = ext.replace(/^\./, '').toLowerCase();
+  const previewType = PREVIEWABLE_EXTS[normalizedExt];
   if (!previewType) return null;
   return readFileForPreviewType(filePath, previewType);
 }

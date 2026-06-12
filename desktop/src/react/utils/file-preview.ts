@@ -60,12 +60,14 @@ export async function openFilePreview(
     messageId?: string;
     fileId?: string;
     blockIdx?: number;
+    sourceRootPath?: string;
   },
 ): Promise<void> {
   const fileName = label || filePath.split('/').pop() || filePath;
+  const normalizedExt = ext.replace(/^\./, '').toLowerCase();
 
   try {
-    if (ext === 'skill') {
+    if (normalizedExt === 'skill') {
       // .skill 文件可能是纯文本也可能是 zip，先尝试读取内容在预览面板展示
       const name = fileName.replace(/\.skill$/, '');
       const content = await window.platform?.readFile?.(filePath);
@@ -86,10 +88,10 @@ export async function openFilePreview(
     }
 
     // Media 类型（image / svg / video）分流到 MediaViewer，不经过 Preview 面板。
-    const mediaKind = inferKindByExt(ext);
+    const mediaKind = inferKindByExt(normalizedExt);
     if (isMediaKind(mediaKind)) {
       openMediaViewerFromContext({
-        ext,
+        ext: normalizedExt,
         filePath,
         label: fileName,
         kind: mediaKind,
@@ -102,20 +104,22 @@ export async function openFilePreview(
       return;
     }
 
-    const canPreview = ext in PREVIEWABLE_EXTS;
+    const canPreview = normalizedExt in PREVIEWABLE_EXTS;
     if (canPreview) {
-      const readResult = await readFileForPreviewWithVersion(filePath, ext);
+      const readResult = await readFileForPreviewWithVersion(filePath, normalizedExt);
       if (readResult != null) {
-        const previewType = PREVIEWABLE_EXTS[ext];
+        const previewType = PREVIEWABLE_EXTS[normalizedExt];
         const previewItem: PreviewItem = {
           id: `file-${filePath}`,
           type: previewType,
           title: fileName,
           content: readResult.content,
           filePath,
-          ext,
+          ext: normalizedExt,
+          sourceUrl: readResult.sourceUrl,
+          sourceRootPath: context?.sourceRootPath,
           fileVersion: readResult.fileVersion,
-          language: previewType === 'code' ? ext : undefined,
+          language: previewType === 'code' ? normalizedExt : undefined,
         };
         openPreview(previewItem);
         return;
@@ -129,7 +133,7 @@ export async function openFilePreview(
       title: fileName,
       content: '',
       filePath,
-      ext,
+      ext: normalizedExt,
     };
     openPreview(previewItem);
   } catch (err) {

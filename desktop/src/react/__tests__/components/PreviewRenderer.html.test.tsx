@@ -109,6 +109,25 @@ describe('PreviewRenderer HTML isolation', () => {
     expect(legacyNativePreviewApi.closeHtmlPreview).not.toHaveBeenCalled();
   });
 
+  it('passes the HTML preview asset root to the server registration route', () => {
+    const rootedItem = {
+      ...previewItem,
+      sourceRootPath: '/tmp/workspace',
+    } as PreviewItem & { sourceRootPath: string };
+
+    render(<PreviewRenderer previewItem={rootedItem} />);
+
+    expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/preview/html', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'demo.html',
+        content: htmlContent,
+        sourceFilePath: '/tmp/demo.html',
+        sourceRootPath: '/tmp/workspace',
+      }),
+    }));
+  });
+
   it('keeps the iframe preview visible while the in-window settings modal is open', async () => {
     useStore.setState({
       settingsModal: { open: true, activeTab: 'skills' },
@@ -159,6 +178,24 @@ describe('PreviewRenderer HTML isolation', () => {
     expect(container.querySelector('[data-html-preview-frame]')).toBeTruthy();
     expect(legacyNativePreviewApi.showHtmlPreview).not.toHaveBeenCalled();
     expect(legacyNativePreviewApi.closeHtmlPreview).not.toHaveBeenCalled();
+  });
+
+  it('renders PDF previews from a source URL without requiring base64 content', () => {
+    const pdfItem = {
+      id: 'pdf-demo',
+      type: 'pdf',
+      title: 'Report.PDF',
+      content: '',
+      filePath: '/tmp/Report.PDF',
+      ext: 'pdf',
+      sourceUrl: 'file:///tmp/Report.PDF',
+    } as PreviewItem & { sourceUrl: string };
+
+    const { container } = render(<PreviewRenderer previewItem={pdfItem} />);
+    const iframe = container.querySelector<HTMLIFrameElement>('.preview-pdf');
+
+    expect(iframe).toBeTruthy();
+    expect(iframe).toHaveAttribute('src', 'file:///tmp/Report.PDF#toolbar=0&navpanes=0');
   });
 
   it('applies a workspace image dropped on the markdown cover', async () => {
