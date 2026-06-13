@@ -70,8 +70,9 @@ function resolveRequestReasoningLevel(models, prefs, ctx) {
     ? models.getModelDefaultThinkingLevel(ctx?.model || null, prefs.getThinkingLevel())
     : prefs.getThinkingLevel();
   const preferenceThinkingLevel = models.resolveThinkingLevel(defaultThinkingLevel);
-  return preferenceThinkingLevel === "xhigh" && sessionThinkingLevel === "high"
-    ? "xhigh"
+  const preferenceRequestsMax = preferenceThinkingLevel === "xhigh" || preferenceThinkingLevel === "max";
+  return preferenceRequestsMax && sessionThinkingLevel === "high"
+    ? preferenceThinkingLevel
     : (sessionThinkingLevel || preferenceThinkingLevel);
 }
 

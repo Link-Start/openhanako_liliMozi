@@ -1409,6 +1409,7 @@
         "medium": "標準",
         "high": "高",
         "auto": "自動",
+        "max": "最大",
         "xhigh": "最大"
       },
       "addedModels": "追加済みモデル",

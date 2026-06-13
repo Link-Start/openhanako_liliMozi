@@ -1549,6 +1549,7 @@
         "medium": "Medium",
         "high": "High",
         "auto": "Auto",
+        "max": "Max",
         "xhigh": "Max"
       },
       "addedModels": "Added models",

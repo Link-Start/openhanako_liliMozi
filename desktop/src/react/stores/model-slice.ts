@@ -1,9 +1,11 @@
 import type { Model } from '../types';
 
-export type ThinkingLevel = 'off' | 'auto' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ThinkingLevel = 'off' | 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export function normalizeThinkingLevel(level: ThinkingLevel): ThinkingLevel {
-  return level === 'auto' ? 'medium' : level;
+  if (level === 'auto') return 'medium';
+  if (level === 'xhigh') return 'max';
+  return level;
 }
 
 export interface ModelSlice {

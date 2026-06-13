@@ -41,7 +41,15 @@ export function matches(model) {
   if (!model || typeof model !== "object") return false;
   const provider = lower(model.provider);
   const baseUrl = lower(model.baseUrl || model.base_url);
-  return provider === "zhipu" || baseUrl.includes("open.bigmodel.cn");
+  return provider === "zhipu"
+    || baseUrl.includes("open.bigmodel.cn")
+    || (
+      baseUrl.includes("api.z.ai")
+      && (
+        baseUrl.includes("/api/paas/v4")
+        || baseUrl.includes("/api/coding/paas/v4")
+      )
+    );
 }
 
 function normalizeMaxTokenField(payload) {

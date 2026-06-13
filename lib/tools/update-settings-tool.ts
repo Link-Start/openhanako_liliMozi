@@ -35,6 +35,7 @@ const THINKING_I18N = {
   "low": "settings.agent.thinkingLevels.low",
   "medium": "settings.agent.thinkingLevels.medium",
   "high": "settings.agent.thinkingLevels.high",
+  "max": "settings.agent.thinkingLevels.max",
   "xhigh": "settings.agent.thinkingLevels.xhigh",
 };
 
@@ -181,7 +182,7 @@ const SETTINGS_REGISTRY = {
   thinking_level: {
     type: "list",
     get label() { return t("toolDef.updateSettings.thinkingBudget"); },
-    options: ["auto", "off", "low", "medium", "high", "xhigh"],
+    options: ["auto", "off", "low", "medium", "high", "max"],
     get optionLabels() { return i18nLabels(THINKING_I18N); },
     searchTerms: ["reasoning", "推理", "思考", "推論"],
     get: (engine, _agent) => {

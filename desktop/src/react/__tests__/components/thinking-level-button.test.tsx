@@ -89,4 +89,23 @@ describe('ThinkingLevelButton', () => {
     expect(screen.getByRole('option', { name: 'high' })).toBeTruthy();
     expect(screen.queryByRole('option', { name: 'xhigh' })).toBeNull();
   });
+
+  it('shows and saves Max for models that support the deep thinking tier', async () => {
+    vi.mocked(hanaFetch).mockResolvedValueOnce(jsonResponse({ ok: true, thinkingLevel: 'max' }));
+    const onChange = vi.fn();
+
+    const { container } = render(<ThinkingLevelButton level="medium" onChange={onChange} modelXhigh />);
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+
+    expect(screen.getByRole('option', { name: 'max' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'xhigh' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('option', { name: 'max' }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('max'));
+    expect(hanaFetch).toHaveBeenCalledWith('/api/session-thinking-level', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ level: 'max' }),
+    }));
+  });
 });

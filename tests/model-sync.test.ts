@@ -395,6 +395,34 @@ describe("syncModels", () => {
     expect(model.compat.thinkingFormat).toBe("qwen");
   });
 
+  it("preserves user-declared max thinking capability for local model objects", async () => {
+    const syncModels = await loadSync();
+
+    const providers = {
+      zhipu: {
+        base_url: "https://open.bigmodel.cn/api/paas/v4",
+        api: "openai-completions",
+        api_key: "sk-test",
+        models: [{
+          id: "local-max-capable-model",
+          name: "Local Max Capable Model",
+          reasoning: true,
+          xhigh: true,
+          defaultThinkingLevel: "max",
+        }],
+      },
+    };
+
+    syncModels(providers, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    const model = result.providers.zhipu.models[0];
+    expect(model.id).toBe("local-max-capable-model");
+    expect(model.reasoning).toBe(true);
+    expect(model.xhigh).toBe(true);
+    expect(model.defaultThinkingLevel).toBe("max");
+  });
+
   it("projects native and prompted visual grounding family formats", async () => {
     const syncModels = await loadSync();
 
@@ -532,7 +560,7 @@ describe("syncModels", () => {
         base_url: "https://api.kimi.com/coding/",
         api: "anthropic-messages",
         api_key: "sk-test",
-        models: [{ id: "kimi-for-coding", name: "Kimi 自定义显示名", maxOutput: 16000, image: true, video: true }],
+        models: [{ id: "kimi-for-coding", name: "Kimi 自定义显示名", maxOutput: 16000, image: true, video: true, xhigh: true }],
       },
     };
 
@@ -543,6 +571,7 @@ describe("syncModels", () => {
     expect(result.providers["kimi-coding"].modelOverrides["kimi-for-coding"]).toEqual({
       name: "Kimi 自定义显示名",
       maxTokens: 16000,
+      xhigh: true,
       input: ["text", "image"],
       compat: { hanaVideoInput: true },
     });

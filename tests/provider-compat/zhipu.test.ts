@@ -11,12 +11,23 @@ const zhipuModel = {
   maxTokens: 131072,
 };
 
+const glm52Model = {
+  ...zhipuModel,
+  id: "glm-5.2",
+  baseUrl: "https://api.z.ai/api/coding/paas/v4",
+  contextWindow: 1000000,
+};
+
 describe("provider-compat/zhipu — matches", () => {
   it("matches official provider and BigModel OpenAI-compatible endpoints", () => {
     expect(zhipu.matches({ provider: "zhipu" })).toBe(true);
     expect(zhipu.matches({
       provider: "custom",
       baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+    })).toBe(true);
+    expect(zhipu.matches({
+      provider: "custom",
+      baseUrl: "https://api.z.ai/api/coding/paas/v4",
     })).toBe(true);
   });
 
@@ -115,6 +126,26 @@ describe("provider-compat/zhipu — apply", () => {
     expect(result).not.toHaveProperty("enable_thinking");
     expect(result.messages[1]).toMatchObject({ content: "" });
     expect(result.messages[1]).not.toHaveProperty("reasoning_content");
+  });
+
+  it("GLM-5.2 Max keeps thinking enabled instead of being normalized as off", () => {
+    const payload = {
+      model: "glm-5.2",
+      messages: [{ role: "user", content: "hi" }],
+      reasoning_effort: "max",
+      max_completion_tokens: 131072,
+    };
+
+    const result = normalizeProviderPayload(payload, glm52Model, {
+      mode: "chat",
+      reasoningLevel: "max",
+      outputBudgetSource: "system",
+    });
+
+    expect(result.thinking).toEqual({ type: "enabled" });
+    expect(result).not.toHaveProperty("reasoning_effort");
+    expect(result).not.toHaveProperty("max_completion_tokens");
+    expect(result.max_tokens).toBe(131072);
   });
 
   it("chat thinking off disables GLM thinking and strips stale reasoning_content", () => {

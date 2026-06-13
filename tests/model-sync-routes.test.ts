@@ -1502,7 +1502,7 @@ describe("model sync related routes", () => {
           api: "openai-completions",
         }),
         getAuthJsonKey: (id) => id,
-        getDefaultModels: (id) => id === "zhipu" ? ["glm-5.1", "glm-5", "glm-4.7-flash"] : [],
+        getDefaultModels: (id) => id === "zhipu" ? ["glm-5.2", "glm-5.1", "glm-5", "glm-4.7-flash"] : [],
       },
       hanakoHome: "/tmp",
     });
@@ -1517,7 +1517,12 @@ describe("model sync related routes", () => {
 
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.models.slice(0, 3).map(m => m.id)).toEqual(["glm-5", "glm-5.1", "glm-4.7-flash"]);
+    expect(data.models.slice(0, 4).map(m => m.id)).toEqual(["glm-5", "glm-5.2", "glm-5.1", "glm-4.7-flash"]);
+    expect(data.models.find(m => m.id === "glm-5.2")).toMatchObject({
+      name: "GLM-5.2",
+      context: 1000000,
+      maxOutput: 131072,
+    });
     expect(data.models.map(m => m.id)).toEqual(expect.arrayContaining(["glm-5-turbo", "glm-4-flash"]));
   });
 

@@ -15,6 +15,16 @@ describe("session thinking level capabilities", () => {
     expect(normalizeSessionThinkingLevel(undefined)).toBe("medium");
   });
 
+  it("accepts Max as the canonical deep thinking level", () => {
+    const model = { id: "glm-5.2", provider: "zhipu", reasoning: true };
+
+    expect(normalizeSessionThinkingLevel("max")).toBe("max");
+    expect(normalizeRequestThinkingLevel("max")).toBe("max");
+    expect(modelSupportsXhigh(model)).toBe(true);
+    expect(normalizeThinkingLevelForModel("max", model)).toBe("max");
+    expect(normalizeThinkingLevelForModel("max", { id: "plain-model", provider: "test" })).toBe("high");
+  });
+
   it("shows the unified Max level for GPT-5.5", () => {
     const model = { id: "gpt-5.5", provider: "openai", reasoning: true };
 
@@ -73,6 +83,11 @@ describe("session thinking level capabilities", () => {
       { id: "plain-model", provider: "test", defaultThinkingLevel: "xhigh" },
       "low",
     )).toBe("high");
+
+    expect(resolveModelDefaultThinkingLevel(
+      { id: "glm-5.2", provider: "zhipu", defaultThinkingLevel: "max" },
+      "medium",
+    )).toBe("max");
 
     expect(resolveModelDefaultThinkingLevel(
       { id: "plain-model", provider: "test" },

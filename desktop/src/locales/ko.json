@@ -1409,6 +1409,7 @@
         "medium": "보통",
         "high": "높음",
         "auto": "자동",
+        "max": "최대",
         "xhigh": "최대"
       },
       "addedModels": "추가된 모델",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import defaultModels from "../lib/default-models.json";
 import { listKnownProviderModels, lookupKnown } from "../shared/known-models.ts";
 
 describe("known-models dictionary", () => {
@@ -115,6 +116,14 @@ describe("known-models dictionary", () => {
       image: false,
       reasoning: true,
     });
+    expect(lookupKnown("zhipu", "glm-5.2")).toMatchObject({
+      name: "GLM-5.2",
+      context: 1000000,
+      maxOutput: 131072,
+      image: false,
+      reasoning: true,
+      xhigh: true,
+    });
     expect(lookupKnown("zhipu", "glm-4.7-flash")).toMatchObject({
       context: 200000,
       maxOutput: 128000,
@@ -136,10 +145,15 @@ describe("known-models dictionary", () => {
 
   it("lists provider-specific known model ids without exposing the raw dictionary", () => {
     expect(listKnownProviderModels("zhipu")).toEqual(expect.arrayContaining([
+      "glm-5.2",
       "glm-5.1",
       "glm-4.7-flash",
     ]));
     expect(listKnownProviderModels("missing-provider")).toEqual([]);
+  });
+
+  it("lists GLM-5.2 first in the curated Zhipu defaults", () => {
+    expect(defaultModels.zhipu[0]).toBe("glm-5.2");
   });
 
   it("uses generic model fallbacks when a provider has no provider-specific entry", () => {

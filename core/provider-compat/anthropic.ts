@@ -150,7 +150,8 @@ export function matches(model) {
 }
 
 function shouldUseAnthropicMaxEffort(model, options) {
-  return options?.reasoningLevel === "xhigh" && modelSupportsAnthropicMaxEffort(model);
+  return (options?.reasoningLevel === "xhigh" || options?.reasoningLevel === "max")
+    && modelSupportsAnthropicMaxEffort(model);
 }
 
 function isAdaptiveOnlyProfile(model) {

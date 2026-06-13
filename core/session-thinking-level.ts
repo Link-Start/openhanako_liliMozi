@@ -1,7 +1,7 @@
 import { lookupKnown } from "../shared/known-models.ts";
 
 export const DEFAULT_SESSION_THINKING_LEVEL = "medium";
-const VALID_THINKING_LEVELS = new Set(["off", "low", "medium", "high", "xhigh"]);
+const VALID_THINKING_LEVELS = new Set(["off", "low", "medium", "high", "xhigh", "max"]);
 const OPENAI_XHIGH_MODEL_MARKERS = [
   "gpt-5.2",
   "gpt-5.3",
@@ -26,6 +26,7 @@ function lower(value) {
 function canonicalThinkingLevel(level) {
   const normalized = lower(level);
   if (normalized === "auto") return "medium";
+  if (normalized === "ultracode") return "max";
   return VALID_THINKING_LEVELS.has(normalized) ? normalized : null;
 }
 
@@ -69,7 +70,8 @@ export function modelSupportsXhigh(model) {
 
 export function normalizeThinkingLevelForModel(level, model) {
   const normalized = normalizeSessionThinkingLevel(level);
-  if (normalized === "xhigh" && !modelSupportsXhigh(model)) return "high";
+  const requestsMax = normalized === "xhigh" || normalized === "max";
+  if (requestsMax && !modelSupportsXhigh(model)) return "high";
   return normalized;
 }
 

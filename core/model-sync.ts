@@ -115,6 +115,7 @@ function buildModelOverride(modelEntry, modelDefaults = {}) {
     });
   }
   if (modelEntry.reasoning !== undefined) override.reasoning = modelEntry.reasoning;
+  if (modelEntry.xhigh !== undefined) override.xhigh = modelEntry.xhigh;
   const compat = normalizeModelProtocolCompat(modelEntry.compat);
   if (compat) override.compat = compat;
   const visionCapabilities = image === true
@@ -149,6 +150,8 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
   const userAudio = isObj ? modelEntry.audio : undefined;
   const knownAudio = known?.audio;
   const audio = userAudio !== undefined ? userAudio : (knownAudio === true);
+  const userXhigh = isObj ? modelEntry.xhigh : undefined;
+  const xhigh = userXhigh !== undefined ? userXhigh : (known?.xhigh === true);
   const entry: Record<string, any> = {
     id,
     name: (isObj && modelEntry.name) || known?.name || humanizeName(id),
@@ -156,6 +159,7 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
     contextWindow: (isObj && modelEntry.context) || known?.context || DEFAULT_CONTEXT_WINDOW,
     reasoning: (isObj && modelEntry.reasoning !== undefined) ? modelEntry.reasoning : (known?.reasoning === true),
   };
+  if (xhigh === true) entry.xhigh = true;
 
   const maxOutput = (isObj && modelEntry.maxOutput) || known?.maxOutput;
   if (maxOutput) entry.maxTokens = maxOutput;

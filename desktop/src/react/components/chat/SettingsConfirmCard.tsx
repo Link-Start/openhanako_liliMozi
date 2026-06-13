@@ -35,6 +35,8 @@ const THINKING_I18N: Record<string, string> = {
   'low': 'settings.agent.thinkingLevels.low',
   'medium': 'settings.agent.thinkingLevels.medium',
   'high': 'settings.agent.thinkingLevels.high',
+  'max': 'settings.agent.thinkingLevels.max',
+  'xhigh': 'settings.agent.thinkingLevels.xhigh',
 };
 
 function buildLocaleLabels(t: (k: string) => string): Record<string, string> {

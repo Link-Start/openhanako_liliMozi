@@ -127,7 +127,16 @@ function isOfficialZhipuEndpoint(model: any, context: any = {}) {
   if (provider === "zhipu") return true;
 
   const host = getBaseHost(model, context);
-  return host === "open.bigmodel.cn" || host.endsWith(".open.bigmodel.cn");
+  const baseUrl = getBaseUrl(model, context);
+  return host === "open.bigmodel.cn"
+    || host.endsWith(".open.bigmodel.cn")
+    || (
+      host === "api.z.ai"
+      && (
+        baseUrl.includes("/api/paas/v4")
+        || baseUrl.includes("/api/coding/paas/v4")
+      )
+    );
 }
 
 function isDeepSeekV4ModelId(id: string): boolean {

@@ -6,7 +6,7 @@ import { normalizeThinkingLevel, type ThinkingLevel } from '../../stores/model-s
 import { SelectWidget, type SelectOption } from '@/ui';
 import styles from './InputArea.module.css';
 
-const ALL_THINKING_LEVELS: ThinkingLevel[] = ['off', 'medium', 'high', 'xhigh'];
+const ALL_THINKING_LEVELS: ThinkingLevel[] = ['off', 'medium', 'high', 'max'];
 
 export function ThinkingLevelButton({ level, onChange, modelXhigh }: {
   level: ThinkingLevel;
@@ -19,7 +19,7 @@ export function ThinkingLevelButton({ level, onChange, modelXhigh }: {
   const activeLevel = normalizeThinkingLevel(level);
 
   const availableLevels = useMemo(() => {
-    return ALL_THINKING_LEVELS.filter(lv => lv !== 'xhigh' || modelXhigh);
+    return ALL_THINKING_LEVELS.filter(lv => lv !== 'max' || modelXhigh);
   }, [modelXhigh]);
 
   const selectLevel = useCallback(async (next: ThinkingLevel) => {
