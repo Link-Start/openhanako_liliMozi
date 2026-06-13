@@ -4,7 +4,10 @@ import { createModuleLogger } from "../../lib/debug-log.ts";
 import { t } from "../../lib/i18n.ts";
 import { MediaAdapterRegistry } from "../media-adapter-registry.ts";
 import { createPluginConfigStore, normalizePluginConfigSchema } from "../plugin-config.ts";
-import { normalizeImageGenerationConfig } from "../preferences-manager.ts";
+import {
+  normalizeImageGenerationConfig,
+  normalizeVideoGenerationConfig,
+} from "../preferences-manager.ts";
 import { TaskStore } from "../../plugins/image-gen/lib/task-store.ts";
 import { Poller } from "../../plugins/image-gen/lib/poller.ts";
 import { submitImageGeneration } from "../../plugins/image-gen/lib/submit-image.ts";
@@ -13,6 +16,7 @@ import {
   normalizeMediaDelivery,
   retryImageTask,
 } from "../../plugins/image-gen/lib/image-task-runner.ts";
+import { resolveMediaParameters } from "./media-parameters.ts";
 import { volcengineImageAdapter } from "../../plugins/image-gen/adapters/volcengine.ts";
 import { openaiImageAdapter } from "../../plugins/image-gen/adapters/openai.ts";
 import { openaiCodexImageAdapter } from "../../plugins/image-gen/adapters/openai-codex.ts";
@@ -30,6 +34,23 @@ const IMAGE_GENERATION_CONFIG_SCHEMA = normalizePluginConfigSchema("image-gen", 
     defaultImageModel: {
       type: "object",
       title: "默认图片模型",
+      properties: {
+        id: { type: "string" },
+        provider: { type: "string" },
+      },
+    },
+    providerDefaults: {
+      type: "object",
+      title: "per-provider 默认参数",
+    },
+  },
+});
+
+const VIDEO_GENERATION_CONFIG_SCHEMA = normalizePluginConfigSchema("video-gen", {
+  properties: {
+    defaultVideoModel: {
+      type: "object",
+      title: "默认视频模型",
       properties: {
         id: { type: "string" },
         provider: { type: "string" },
@@ -60,6 +81,35 @@ function normalizeConfigPatch(patch) {
       next.defaultImageModel = { provider, id };
     } else {
       throw new Error("defaultImageModel must be an object with provider and id");
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(values, "providerDefaults")) {
+    const value = values.providerDefaults;
+    if (value === undefined || value === null) {
+      next.providerDefaults = undefined;
+    } else if (isObject(value)) {
+      next.providerDefaults = structuredClone(value);
+    } else {
+      throw new Error("providerDefaults must be an object");
+    }
+  }
+  return next;
+}
+
+function normalizeVideoConfigPatch(patch) {
+  const values = isObject(patch) ? patch : {};
+  const next: Record<string, any> = {};
+  if (Object.prototype.hasOwnProperty.call(values, "defaultVideoModel")) {
+    const value = values.defaultVideoModel;
+    if (value === undefined || value === null) {
+      next.defaultVideoModel = undefined;
+    } else if (isObject(value)) {
+      const provider = typeof value.provider === "string" ? value.provider.trim() : "";
+      const id = typeof value.id === "string" ? value.id.trim() : "";
+      if (!provider || !id) throw new Error("defaultVideoModel requires provider and id");
+      next.defaultVideoModel = { provider, id };
+    } else {
+      throw new Error("defaultVideoModel must be an object with provider and id");
     }
   }
   if (Object.prototype.hasOwnProperty.call(values, "providerDefaults")) {
@@ -163,6 +213,19 @@ function resolveImageReference(reference, {
 
 function normalizeMediaKind(payload) {
   return textOrNull(payload?.kind) || textOrNull(payload?.type) || textOrNull(payload?.mediaKind) || "image";
+}
+
+function projectMediaProviderModel(model, adapterAvailable) {
+  const name = model.displayName || model.name || model.id;
+  return {
+    ...model,
+    id: model.id,
+    name,
+    displayName: name,
+    protocolId: model.protocolId,
+    credentialLaneId: model.credentialLaneId,
+    adapterAvailable,
+  };
 }
 
 export class UniversalMediaManager {
@@ -277,6 +340,22 @@ export class UniversalMediaManager {
     };
   }
 
+  _createVideoConfigBridge() {
+    return {
+      get: (key) => {
+        const config = this.getVideoConfig();
+        if (!key) return structuredClone(config);
+        return config[key];
+      },
+      getAll: () => {
+        return structuredClone(this.getVideoConfig());
+      },
+      getSchema() {
+        return structuredClone(VIDEO_GENERATION_CONFIG_SCHEMA);
+      },
+    };
+  }
+
   _migrateLegacyImageConfig() {
     if (this._preferences.hasImageGenerationLegacyConfigMigrated?.()) return;
     if (typeof this._preferences.migrateImageGenerationConfigFromLegacy !== "function") return;
@@ -303,6 +382,37 @@ export class UniversalMediaManager {
     this._preferences.setImageGenerationConfig?.(normalized);
     this._legacyConfig.setMany?.(updates);
     return structuredClone(normalized);
+  }
+
+  getVideoConfig() {
+    return normalizeVideoGenerationConfig(this._preferences.getVideoGenerationConfig?.() || {});
+  }
+
+  setVideoConfig(patch) {
+    const updates = normalizeVideoConfigPatch(patch);
+    this._validateVideoConfigPatch(updates);
+    const current = this.getVideoConfig();
+    const next = { ...current };
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+    }
+    const normalized = normalizeVideoGenerationConfig(next);
+    this._preferences.setVideoGenerationConfig?.(normalized);
+    return structuredClone(normalized);
+  }
+
+  _validateVideoConfigPatch(updates) {
+    if (!Object.prototype.hasOwnProperty.call(updates, "defaultVideoModel")) return;
+    const value = updates.defaultVideoModel;
+    if (value === undefined || value === null) return;
+    this.resolveVideoModelRef({ providerId: value.provider, modelId: value.id });
+  }
+
+  async validateVideoConfigPatch(updates) {
+    const patch = normalizeVideoConfigPatch(updates);
+    this._validateVideoConfigPatch(patch);
+    return null;
   }
 
   _validateImageConfigPatch(updates) {
@@ -427,6 +537,7 @@ export class UniversalMediaManager {
       log: this._log,
       generatedDir: this._generatedDir,
       config: this._config,
+      videoConfig: this._createVideoConfigBridge(),
     };
   }
 
@@ -436,6 +547,7 @@ export class UniversalMediaManager {
       bus: this._bus,
       log: this._log,
       config: this._config,
+      videoConfig: this._createVideoConfigBridge(),
       sessionPath,
       bridgeContext,
       _mediaGen: this.runtime,
@@ -513,15 +625,23 @@ export class UniversalMediaManager {
 
   async generateVideoFromBus(payload: any = {}) {
     const sessionPath = textOrNull(payload.sessionPath);
-    const input = payload.input && isObject(payload.input)
+    const inputSource = payload.input && isObject(payload.input)
       ? {
         ...payload.input,
         ...(payload.delivery !== undefined ? { delivery: payload.delivery } : {}),
         ...(payload.deliveryMode !== undefined ? { deliveryMode: payload.deliveryMode } : {}),
       }
       : payload;
-    const delivery = normalizeMediaDelivery(input);
+    const delivery = normalizeMediaDelivery(inputSource);
     if (!sessionPath && !isResponseDelivery(delivery)) throw new Error("sessionPath is required");
+    const input = normalizeImageInput({
+      ...inputSource,
+      delivery,
+    }, {
+      sessionPath,
+      sessionFiles: this._sessionFiles,
+      allowRawReferences: false,
+    });
     return this.submitVideo({ input, sessionPath });
   }
 
@@ -534,14 +654,23 @@ export class UniversalMediaManager {
     const target = this._resolveVideoTarget(input);
     const adapter = target?.adapter || null;
     if (!adapter) throw new Error(t("toolDef.generateVideo.noProvider"));
+    const providerDefaults = this.getVideoConfig()?.providerDefaults?.[target.providerId] || {};
+    const parameterResolution = resolveMediaParameters({
+      kind: "video",
+      input,
+      providerId: target.providerId,
+      model: target.model,
+      providerDefaults,
+    });
 
     const batchId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const params = {
       type: "video",
       prompt: input.prompt,
+      ...parameterResolution.resolvedParameters,
       ...(input.image && { image: input.image }),
-      ...(input.duration && { duration: input.duration }),
-      ...(input.ratio && { ratio: input.ratio }),
+      mode: parameterResolution.modeId,
+      resolvedParameters: parameterResolution.resolvedParameters,
       ...(target?.providerId ? { providerId: target.providerId } : {}),
       ...(target?.modelId ? { modelId: target.modelId, model: target.modelId } : (input.model ? { model: input.model } : {})),
       ...(target?.protocolId ? { protocolId: target.protocolId } : {}),
@@ -619,6 +748,7 @@ export class UniversalMediaManager {
             adapter: legacyAdapter,
             providerId,
             modelId,
+            model: null,
             protocolId: legacyAdapter.protocolId || null,
             credentialLaneId: null,
             credentialProviderId: providerId,
@@ -641,6 +771,7 @@ export class UniversalMediaManager {
           adapter,
           providerId,
           modelId: null,
+          model: null,
           protocolId: adapter.protocolId || null,
           credentialLaneId: null,
           credentialProviderId: providerId,
@@ -661,6 +792,14 @@ export class UniversalMediaManager {
       throw new Error(`Video model "${modelId}" not found`);
     }
 
+    const defaultModel = this.getVideoConfig()?.defaultVideoModel;
+    if (defaultModel?.provider && defaultModel.id) {
+      return this._videoTargetFromMediaRef({
+        providerId: defaultModel.provider,
+        modelId: defaultModel.id,
+      });
+    }
+
     for (const provider of this._providers.getMediaProviders(VIDEO_CAPABILITY) || []) {
       for (const model of provider.models || []) {
         const target = this._videoTargetFromMediaRef({ providerId: provider.providerId, modelId: model.id }, { strict: false });
@@ -674,6 +813,7 @@ export class UniversalMediaManager {
       adapter,
       providerId: adapter.id || null,
       modelId: null,
+      model: null,
       protocolId: adapter.protocolId || null,
       credentialLaneId: null,
       credentialProviderId: adapter.id || null,
@@ -706,9 +846,24 @@ export class UniversalMediaManager {
       adapter,
       providerId: resolved.providerId,
       modelId: resolved.model.id,
+      model: resolved.model,
       protocolId,
       credentialLaneId: resolved.credentialLane?.id || null,
       credentialProviderId: resolved.credentialLane?.providerId || resolved.providerId,
+    };
+  }
+
+  resolveVideoModelRef(ref: any = {}) {
+    const providerId = ref.providerId || ref.provider;
+    const modelId = ref.modelId || ref.id || ref.model;
+    const target = this._videoTargetFromMediaRef({ providerId, modelId });
+    return {
+      providerId: target.providerId,
+      modelId: target.modelId,
+      protocolId: target.protocolId,
+      adapterId: target.adapter?.id || null,
+      credentialLaneId: target.credentialLaneId || null,
+      credentialProviderId: target.credentialProviderId || target.providerId,
     };
   }
 
@@ -776,14 +931,10 @@ export class UniversalMediaManager {
     for (const provider of this._providers.getMediaProviders(IMAGE_CAPABILITY) || []) {
       const credentialStatus = this._providers.getMediaProviderCredentialStatus?.(provider.providerId, IMAGE_CAPABILITY) || {};
       const models = (provider.models || [])
-        .map((model) => ({
-          id: model.id,
-          name: model.displayName || model.name || model.id,
-          displayName: model.displayName || model.name || model.id,
-          protocolId: model.protocolId,
-          credentialLaneId: model.credentialLaneId,
-          adapterAvailable: this.hasAdapterForImageModel(provider.providerId, model),
-        }))
+        .map((model) => projectMediaProviderModel(
+          model,
+          this.hasAdapterForImageModel(provider.providerId, model),
+        ))
         .filter((model) => {
           if (model.adapterAvailable) return true;
           this._log.warn(
@@ -821,6 +972,52 @@ export class UniversalMediaManager {
     return Boolean(this._registry.getProtocol?.(model.protocolId) || this._registry.get(providerId));
   }
 
+  async listVideoProviders() {
+    const providers: any = {};
+    for (const provider of this._providers.getMediaProviders(VIDEO_CAPABILITY) || []) {
+      const credentialStatus = this._providers.getMediaProviderCredentialStatus?.(provider.providerId, VIDEO_CAPABILITY) || {};
+      const models = (provider.models || [])
+        .map((model) => projectMediaProviderModel(
+          model,
+          this.hasAdapterForVideoModel(provider.providerId, model),
+        ))
+        .filter((model) => {
+          if (model.adapterAvailable) return true;
+          this._log.warn(
+            `[media] settings hide video model "${provider.providerId}/${model.id}": `
+            + (model.protocolId
+              ? `no adapter registered for protocol "${model.protocolId}"`
+              : "protocol unrecognized (model has no protocolId)"),
+          );
+          return false;
+        });
+      if (!models.length) continue;
+      const modelIds = new Set(models.map((model) => model.id));
+      providers[provider.providerId] = {
+        ...provider,
+        ...credentialStatus,
+        hasCredentials: credentialStatus.hasCredentials === true,
+        unavailableReason: credentialStatus.unavailableReason || null,
+        credentialLanes: credentialStatus.lanes,
+        activeCredentialLaneId: credentialStatus.activeLaneId || null,
+        activeCredentialProviderId: credentialStatus.activeProviderId || null,
+        models,
+        availableModels: Array.isArray(provider.availableModels)
+          ? provider.availableModels.filter((model) => modelIds.has(model.id))
+          : [],
+      };
+    }
+    return {
+      providers,
+      config: this.getVideoConfig(),
+    };
+  }
+
+  hasAdapterForVideoModel(providerId, model) {
+    if (!model?.protocolId) return false;
+    return Boolean(this._registry.getProtocol?.(model.protocolId) || this._registry.get(providerId));
+  }
+
   resolveImageModelRef(ref: any = {}) {
     const providerId = ref.providerId || ref.provider;
     const modelId = ref.modelId || ref.id || ref.model;
@@ -852,6 +1049,18 @@ export class UniversalMediaManager {
 
   async removeImageProviderModel(providerId, modelId) {
     this._providers.removeMediaModel(providerId, IMAGE_CAPABILITY, modelId);
+    await this._onProviderChanged();
+    return { ok: true };
+  }
+
+  async setVideoProviderModel(providerId, model) {
+    this._providers.addMediaModel(providerId, VIDEO_CAPABILITY, model);
+    await this._onProviderChanged();
+    return { ok: true };
+  }
+
+  async removeVideoProviderModel(providerId, modelId) {
+    this._providers.removeMediaModel(providerId, VIDEO_CAPABILITY, modelId);
     await this._onProviderChanged();
     return { ok: true };
   }

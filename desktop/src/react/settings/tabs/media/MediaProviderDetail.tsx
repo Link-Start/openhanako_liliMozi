@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useSettingsStore } from '../../store';
 import { hanaFetch } from '../../api';
@@ -13,19 +13,74 @@ interface Props {
   provider: {
     displayName?: string;
     hasCredentials: boolean;
-    models: { id: string; name: string; protocolId?: string }[];
+    models: MediaModel[];
     availableModels: { id: string; name: string }[];
   };
-  config: { defaultImageModel?: { id: string; provider: string }; providerDefaults?: Record<string, any> };
+  capability?: 'imageGeneration' | 'videoGeneration';
+  config: {
+    defaultImageModel?: { id: string; provider: string };
+    defaultVideoModel?: { id: string; provider: string };
+    providerDefaults?: Record<string, any>;
+  };
   onSaveConfig: (updates: any) => Promise<void>;
   onRefresh: () => Promise<void>;
 }
 
-export function MediaProviderDetail({ providerId, provider, config, onSaveConfig, onRefresh }: Props) {
+type JsonSchemaProperty = {
+  type?: string | string[];
+  enum?: Array<string | number | boolean>;
+  default?: any;
+  minimum?: number;
+  maximum?: number;
+  description?: string;
+  title?: string;
+};
+
+type MediaMode = {
+  id: string;
+  label?: string;
+  parameterSchema?: {
+    type?: string;
+    properties?: Record<string, JsonSchemaProperty>;
+  };
+  defaults?: Record<string, any>;
+};
+
+type MediaModel = {
+  id: string;
+  name: string;
+  displayName?: string;
+  protocolId?: string;
+  modes?: MediaMode[];
+};
+
+function isPlainObject(value: any): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function modeDefaultsForProvider(defaults: Record<string, any>, modelId: string, modeId: string) {
+  return defaults?.models?.[modelId]?.modes?.[modeId] || {};
+}
+
+function clearEmptyObject(value: any) {
+  if (!isPlainObject(value)) return value;
+  for (const key of Object.keys(value)) {
+    if (isPlainObject(value[key])) {
+      clearEmptyObject(value[key]);
+      if (Object.keys(value[key]).length === 0) delete value[key];
+    }
+  }
+  return value;
+}
+
+export function MediaProviderDetail({ providerId, provider, capability = 'imageGeneration', config, onSaveConfig, onRefresh }: Props) {
   const showToast = useSettingsStore(s => s.showToast);
+  const mediaRoute = capability === 'videoGeneration' ? 'video' : 'image';
+  const defaultModel = capability === 'videoGeneration' ? config.defaultVideoModel : config.defaultImageModel;
   const defaults = config.providerDefaults?.[providerId] || {};
-  const isDefault = (modelId: string) =>
-    config.defaultImageModel?.id === modelId && config.defaultImageModel?.provider === providerId;
+  const isDefault = useCallback((modelId: string) =>
+    defaultModel?.id === modelId && defaultModel?.provider === providerId,
+  [defaultModel?.id, defaultModel?.provider, providerId]);
 
   const updateDefault = (key: string, value: any) => {
     const current = config.providerDefaults || {};
@@ -33,12 +88,107 @@ export function MediaProviderDetail({ providerId, provider, config, onSaveConfig
     onSaveConfig({ providerDefaults: { ...current, [providerId]: provDefaults } });
   };
 
+  const initialDefaultsModelId = provider.models.find(m => isDefault(m.id))?.id || provider.models[0]?.id || '';
+  const [defaultsModelId, setDefaultsModelId] = useState(initialDefaultsModelId);
+  const defaultsModel = provider.models.find(m => m.id === defaultsModelId) || provider.models[0] || null;
+  const modelModes = useMemo(() => (
+    Array.isArray(defaultsModel?.modes) ? defaultsModel.modes.filter(m => m?.id) : []
+  ), [defaultsModel]);
+  const [defaultsModeId, setDefaultsModeId] = useState(modelModes[0]?.id || '');
+  const defaultsMode = modelModes.find(m => m.id === defaultsModeId) || modelModes[0] || null;
+  const schemaProperties = defaultsMode?.parameterSchema?.properties || {};
+  const schemaEntries = Object.entries(schemaProperties);
+  const schemaDrivenDefaults = schemaEntries.length > 0;
+  const savedModeDefaults = defaultsModel && defaultsMode
+    ? modeDefaultsForProvider(defaults, defaultsModel.id, defaultsMode.id)
+    : {};
+
+  useEffect(() => {
+    const nextModelId = provider.models.find(m => m.id === defaultsModelId)?.id
+      || provider.models.find(m => isDefault(m.id))?.id
+      || provider.models[0]?.id
+      || '';
+    if (nextModelId !== defaultsModelId) setDefaultsModelId(nextModelId);
+  }, [provider.models, defaultsModelId, defaultModel?.id, defaultModel?.provider, isDefault]);
+
+  useEffect(() => {
+    const nextModeId = modelModes.find(m => m.id === defaultsModeId)?.id || modelModes[0]?.id || '';
+    if (nextModeId !== defaultsModeId) setDefaultsModeId(nextModeId);
+  }, [modelModes, defaultsModeId]);
+
+  const updateModeDefault = (key: string, value: any) => {
+    if (!defaultsModel || !defaultsMode) return;
+    const current = config.providerDefaults || {};
+    const providerDefaults = { ...(current[providerId] || {}) };
+    const models = { ...(providerDefaults.models || {}) };
+    const modelDefaults = { ...(models[defaultsModel.id] || {}) };
+    const modes = { ...(modelDefaults.modes || {}) };
+    const modeDefaults = { ...(modes[defaultsMode.id] || {}) };
+    if (value === undefined || value === null || value === '') delete modeDefaults[key];
+    else modeDefaults[key] = value;
+    modes[defaultsMode.id] = modeDefaults;
+    modelDefaults.modes = modes;
+    models[defaultsModel.id] = modelDefaults;
+    providerDefaults.models = models;
+    clearEmptyObject(providerDefaults);
+    onSaveConfig({ providerDefaults: { ...current, [providerId]: providerDefaults } });
+  };
+
+  const renderSchemaControl = (key: string, property: JsonSchemaProperty) => {
+    const value = savedModeDefaults[key] ?? '';
+    const label = property.title || key;
+    const description = property.description || label;
+    if (Array.isArray(property.enum)) {
+      return (
+        <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }} title={description}>
+            {label}
+          </span>
+          <SelectWidget
+            value={value === undefined || value === null ? '' : String(value)}
+            onChange={(v) => updateModeDefault(key, v || undefined)}
+            options={[
+              { value: '', label: t('settings.media.defaultOption') },
+              ...property.enum.map(item => ({ value: String(item), label: String(item) })),
+            ]}
+          />
+        </div>
+      );
+    }
+    const isNumber = property.type === 'number' || property.type === 'integer'
+      || (Array.isArray(property.type) && (property.type.includes('number') || property.type.includes('integer')));
+    return (
+      <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }} title={description}>
+          {label}
+        </span>
+        <input
+          className={styles['settings-input']}
+          type={isNumber ? 'number' : 'text'}
+          min={property.minimum}
+          max={property.maximum}
+          step={property.type === 'integer' ? 1 : undefined}
+          value={value === undefined || value === null ? '' : String(value)}
+          placeholder={property.default === undefined ? t('settings.media.defaultOption') : String(property.default)}
+          onChange={(event) => {
+            const raw = event.currentTarget.value;
+            if (!raw) {
+              updateModeDefault(key, undefined);
+              return;
+            }
+            updateModeDefault(key, isNumber ? Number(raw) : raw);
+          }}
+        />
+      </div>
+    );
+  };
+
   // ── Model add/remove through the native media provider routes ──
 
   const addModel = async (modelId: string) => {
     try {
       const candidate = allModels.find(m => m.id === modelId) || { id: modelId };
-      await hanaFetch(`/api/media/image/providers/${encodeURIComponent(providerId)}/models`, {
+      await hanaFetch(`/api/media/${mediaRoute}/providers/${encodeURIComponent(providerId)}/models`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: candidate }),
@@ -54,7 +204,7 @@ export function MediaProviderDetail({ providerId, provider, config, onSaveConfig
 
   const removeModel = async (modelId: string) => {
     try {
-      await hanaFetch(`/api/media/image/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, {
+      await hanaFetch(`/api/media/${mediaRoute}/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, {
         method: 'DELETE',
       });
       invalidateConfigCache();
@@ -76,9 +226,15 @@ export function MediaProviderDetail({ providerId, provider, config, onSaveConfig
   const allModels = [...provider.models, ...provider.availableModels];
   const trimmedSearch = search.trim();
   const query = trimmedSearch.toLowerCase();
-  const filtered = query ? allModels.filter(m => m.id.toLowerCase().includes(query) || m.name.toLowerCase().includes(query)) : allModels;
+  const filtered = query ? allModels.filter(m => m.id.toLowerCase().includes(query) || (m.name || m.id).toLowerCase().includes(query)) : allModels;
   const hasExactCandidate = allModels.some(m => m.id.toLowerCase() === query);
   const canAddCustom = !!trimmedSearch && !hasExactCandidate && !addedIds.has(trimmedSearch);
+  const modelsLabel = capability === 'videoGeneration'
+    ? t('settings.media.videoModels')
+    : t('settings.media.models');
+  const addModelLabel = capability === 'videoGeneration'
+    ? t('settings.media.addVideoModel')
+    : t('settings.media.addModel');
 
   const panelStyle = useAnchoredDropdown({
     open: dropdownOpen,
@@ -107,9 +263,9 @@ export function MediaProviderDetail({ providerId, provider, config, onSaveConfig
       <div className={styles['pv-models']}>
         {/* Added model list */}
         {provider.models.length > 0 && (
-          <div className={styles['pv-fav-section']}>
-            <div className={styles['pv-fav-title']}>
-              {t('settings.media.models')}
+            <div className={styles['pv-fav-section']}>
+              <div className={styles['pv-fav-title']}>
+              {modelsLabel}
               <span className={styles['pv-models-count']}>{provider.models.length}</span>
             </div>
             <div className={styles['pv-fav-list']}>
@@ -142,7 +298,7 @@ export function MediaProviderDetail({ providerId, provider, config, onSaveConfig
         {/* Add model dropdown */}
         <div className={styles['pv-models-action-row']}>
           <button ref={triggerRef} className={styles['pv-model-dropdown-trigger']} onClick={() => setDropdownOpen(!dropdownOpen)}>
-            <span>{t('settings.media.addModel')}</span>
+            <span>{addModelLabel}</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
@@ -201,71 +357,148 @@ export function MediaProviderDetail({ providerId, provider, config, onSaveConfig
           <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '10px' }}>
             {t('settings.media.providerDefaults')}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {t('settings.media.size')}
-              </span>
-              <SelectWidget
-                value={defaults.size || ''}
-                onChange={(v) => updateDefault('size', v || undefined)}
-                options={[
-                  { value: '2K', label: '2K' },
-                  { value: '4K', label: '4K' },
-                ]}
-              />
+          {schemaDrivenDefaults ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: modelModes.length > 1 ? '1fr 1fr' : '1fr', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {capability === 'videoGeneration' ? t('settings.media.videoModels') : t('settings.media.models')}
+                  </span>
+                  <SelectWidget
+                    value={defaultsModel?.id || ''}
+                    onChange={(v) => setDefaultsModelId(v)}
+                    options={provider.models.map(model => ({
+                      value: model.id,
+                      label: model.name || model.id,
+                    }))}
+                  />
+                </div>
+                {modelModes.length > 1 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Mode
+                    </span>
+                    <SelectWidget
+                      value={defaultsMode?.id || ''}
+                      onChange={(v) => setDefaultsModeId(v)}
+                      options={modelModes.map(mode => ({
+                        value: mode.id,
+                        label: mode.label || mode.id,
+                      }))}
+                    />
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {schemaEntries.map(([key, property]) => renderSchemaControl(key, property))}
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {t('settings.media.aspectRatio')}
-              </span>
-              <SelectWidget
-                value={defaults.aspect_ratio || ''}
-                onChange={(v) => updateDefault('aspect_ratio', v || undefined)}
-                options={[
-                  { value: '',     label: t('settings.media.defaultOption') },
-                  { value: '1:1',  label: '1:1' },
-                  { value: '4:3',  label: '4:3' },
-                  { value: '3:4',  label: '3:4' },
-                  { value: '16:9', label: '16:9' },
-                  { value: '9:16', label: '9:16' },
-                  { value: '3:2',  label: '3:2' },
-                  { value: '2:3',  label: '2:3' },
-                  { value: '21:9', label: '21:9' },
-                ]}
-              />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {capability === 'imageGeneration' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {t('settings.media.size')}
+                  </span>
+                  <SelectWidget
+                    value={defaults.size || ''}
+                    onChange={(v) => updateDefault('size', v || undefined)}
+                    options={[
+                      { value: '2K', label: '2K' },
+                      { value: '4K', label: '4K' },
+                    ]}
+                  />
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {t('settings.media.aspectRatio')}
+                </span>
+                <SelectWidget
+                  value={defaults.aspect_ratio || ''}
+                  onChange={(v) => updateDefault('aspect_ratio', v || undefined)}
+                  options={[
+                    { value: '',     label: t('settings.media.defaultOption') },
+                    { value: '1:1',  label: '1:1' },
+                    { value: '4:3',  label: '4:3' },
+                    { value: '3:4',  label: '3:4' },
+                    { value: '16:9', label: '16:9' },
+                    { value: '9:16', label: '9:16' },
+                    { value: '3:2',  label: '3:2' },
+                    { value: '2:3',  label: '2:3' },
+                    { value: '21:9', label: '21:9' },
+                  ]}
+                />
+              </div>
+              {capability === 'videoGeneration' ? (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {t('settings.media.duration')}
+                    </span>
+                    <SelectWidget
+                      value={defaults.duration ? String(defaults.duration) : ''}
+                      onChange={(v) => updateDefault('duration', v ? Number(v) : undefined)}
+                      options={[
+                        { value: '',   label: t('settings.media.defaultOption') },
+                        { value: '5',  label: '5s' },
+                        { value: '10', label: '10s' },
+                        { value: '15', label: '15s' },
+                      ]}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {t('settings.media.frameRate')}
+                    </span>
+                    <SelectWidget
+                      value={defaults.frame_rate ? String(defaults.frame_rate) : ''}
+                      onChange={(v) => updateDefault('frame_rate', v ? Number(v) : undefined)}
+                      options={[
+                        { value: '',   label: t('settings.media.defaultOption') },
+                        { value: '24', label: '24 fps' },
+                        { value: '30', label: '30 fps' },
+                        { value: '60', label: '60 fps' },
+                      ]}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {t('settings.media.format')}
+                  </span>
+                  <SelectWidget
+                    value={defaults.format || ''}
+                    onChange={(v) => updateDefault('format', v || undefined)}
+                    options={[
+                      { value: '',     label: t('settings.media.defaultOption') },
+                      { value: 'png',  label: 'PNG' },
+                      { value: 'jpeg', label: 'JPEG' },
+                      { value: 'webp', label: 'WebP' },
+                    ]}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {t('settings.media.quality')}
+                  </span>
+                  <SelectWidget
+                    value={defaults.quality || ''}
+                    onChange={(v) => updateDefault('quality', v || undefined)}
+                    options={[
+                      { value: '',       label: t('settings.media.defaultOption') },
+                      { value: 'low',    label: t('settings.media.qualityLow') },
+                      { value: 'medium', label: t('settings.media.qualityMedium') },
+                      { value: 'high',   label: t('settings.media.qualityHigh') },
+                    ]}
+                  />
+                </div>
+                </>
+              )}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {t('settings.media.format')}
-              </span>
-              <SelectWidget
-                value={defaults.format || ''}
-                onChange={(v) => updateDefault('format', v || undefined)}
-                options={[
-                  { value: '',     label: t('settings.media.defaultOption') },
-                  { value: 'png',  label: 'PNG' },
-                  { value: 'jpeg', label: 'JPEG' },
-                  { value: 'webp', label: 'WebP' },
-                ]}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {t('settings.media.quality')}
-              </span>
-              <SelectWidget
-                value={defaults.quality || ''}
-                onChange={(v) => updateDefault('quality', v || undefined)}
-                options={[
-                  { value: '',       label: t('settings.media.defaultOption') },
-                  { value: 'low',    label: t('settings.media.qualityLow') },
-                  { value: 'medium', label: t('settings.media.qualityMedium') },
-                  { value: 'high',   label: t('settings.media.qualityHigh') },
-                ]}
-              />
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

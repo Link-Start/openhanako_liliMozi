@@ -342,6 +342,38 @@ describe("openai adapter", () => {
     expect(body.background).toBe("transparent");
   });
 
+  it("uses DALL-E 3-specific response fields instead of GPT Image fields", async () => {
+    const { openaiImageAdapter } = await import("../plugins/image-gen/adapters/openai.ts");
+
+    const fakeB64 = Buffer.from("dalle").toString("base64");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: fakeB64 }] }),
+    });
+
+    const ctx = makeBusCtx("key", "https://api.openai.com/v1", "openai");
+    await openaiImageAdapter.submit({
+      prompt: "a poster",
+      model: "dall-e-3",
+      ratio: "16:9",
+      quality: "hd",
+      style: "natural",
+      n: 1,
+    }, ctx);
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body).toMatchObject({
+      model: "dall-e-3",
+      response_format: "b64_json",
+      size: "1792x1024",
+      quality: "hd",
+      style: "natural",
+      n: 1,
+    });
+    expect(body).not.toHaveProperty("output_format");
+    expect(body).not.toHaveProperty("background");
+  });
+
   it("throws on API error", async () => {
     const { openaiImageAdapter } = await import("../plugins/image-gen/adapters/openai.ts");
 
@@ -475,6 +507,49 @@ describe("agnes adapters", () => {
 
     expect(mockFetch.mock.calls[1][0]).toBe("https://apihub.agnes-ai.com/agnesapi?video_id=video_123");
     expect(mockFetch.mock.calls[2][0]).toBe("https://storage.example.com/agnes.mp4");
+    expect(queryResult).toMatchObject({
+      status: "success",
+      files: ["video_123.mp4"],
+    });
+  });
+
+  it("falls back to the Agnes legacy task_id result endpoint when video_id query is unavailable", async () => {
+    const { agnesVideoAdapter } = await import("../plugins/image-gen/adapters/agnes.ts");
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: { message: "not found" } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "task_123",
+          task_id: "task_123",
+          video_id: "video_123",
+          status: "completed",
+          remixed_from_video_id: "https://storage.example.com/legacy-agnes.mp4",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => Buffer.from("legacy-video-bytes"),
+      });
+
+    const ctx = {
+      ...makeBusCtx("agnes-key", "https://apihub.agnes-ai.com/v1", "agnes"),
+      task: {
+        taskId: "task_123",
+        adapterTaskId: "video_123",
+        modelId: "agnes-video-v2.0",
+      },
+    };
+
+    const queryResult = await agnesVideoAdapter.query("video_123", ctx);
+
+    expect(mockFetch.mock.calls[0][0]).toBe("https://apihub.agnes-ai.com/agnesapi?video_id=video_123&model_name=agnes-video-v2.0");
+    expect(mockFetch.mock.calls[1][0]).toBe("https://apihub.agnes-ai.com/v1/videos/task_123");
     expect(queryResult).toMatchObject({
       status: "success",
       files: ["video_123.mp4"],
@@ -777,6 +852,40 @@ describe("minimax adapter", () => {
     }, ctx)).rejects.toThrow(/MiniMax.*resolution/i);
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it("passes MiniMax model-level generation controls through to image_generation", async () => {
+    const { minimaxImageAdapter } = await import("../plugins/image-gen/adapters/minimax.ts");
+
+    const fakeB64 = Buffer.from("minimax-controls").toString("base64");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { image_base64: [fakeB64] },
+        base_resp: { status_code: 0, status_msg: "success" },
+      }),
+    });
+
+    const ctx = makeBusCtx("minimax-key", "https://api.minimaxi.com/anthropic", "minimax");
+    await minimaxImageAdapter.submit({
+      prompt: "a glass teapot",
+      modelId: "image-01",
+      width: 1024,
+      height: 768,
+      seed: 123,
+      n: 2,
+      prompt_optimizer: true,
+      providerId: "minimax",
+    }, ctx);
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body).toMatchObject({
+      width: 1024,
+      height: 768,
+      seed: 123,
+      n: 2,
+      prompt_optimizer: true,
+    });
+  });
 });
 
 describe("gemini image adapter", () => {
@@ -882,6 +991,19 @@ describe("gemini image adapter", () => {
       size: "1024x1024",
       providerId: "gemini",
     }, ctx)).rejects.toThrow(/Gemini.*size/i);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps Gemini 2.5 to aspect-ratio-only image config", async () => {
+    const { geminiImageAdapter } = await import("../plugins/image-gen/adapters/gemini.ts");
+
+    const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
+    await expect(geminiImageAdapter.submit({
+      prompt: "a quiet library",
+      modelId: "gemini-2.5-flash-image",
+      size: "2K",
+      providerId: "gemini",
+    }, ctx)).rejects.toThrow(/Gemini.*2.5.*size/i);
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });
@@ -1023,5 +1145,18 @@ describe("dashscope image adapter", () => {
       parameters: { size: "1664*928", n: 1 },
     });
     expect(submitted).toEqual({ taskId: "qwen-task-1" });
+  });
+
+  it("rejects reference images for DashScope text-only Qwen models", async () => {
+    const { dashscopeImageAdapter } = await import("../plugins/image-gen/adapters/dashscope.ts");
+
+    const ctx = makeBusCtx("dash-key", "https://dashscope.aliyuncs.com/compatible-mode/v1", "dashscope");
+    await expect(dashscopeImageAdapter.submit({
+      prompt: "a product poster",
+      modelId: "qwen-image-plus",
+      image: ["https://example.com/ref.png"],
+      providerId: "dashscope",
+    }, ctx)).rejects.toThrow(/reference images/);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

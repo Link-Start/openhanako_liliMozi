@@ -64,6 +64,7 @@ function getModelCapabilities(modelId) {
     supportsOutputFormat: isSeedream5,
     supportsGuidanceScale: isSeedream3,
     supportsSeed: isSeedream3,
+    supportsReferenceImages: !isSeedream3,
   };
 }
 
@@ -145,6 +146,9 @@ export const volcengineImageAdapter = {
 
     // 5. Handle reference image (local path → base64 data URL)
     if (params.image) {
+      if (!modelCapabilities.supportsReferenceImages) {
+        throw new Error(`Volcengine model "${modelId}" does not support reference images`);
+      }
       const images = Array.isArray(params.image) ? params.image : [params.image];
       body.image = await Promise.all(images.map(async img => {
         if (path.isAbsolute(img) && fs.existsSync(img)) {
@@ -158,13 +162,15 @@ export const volcengineImageAdapter = {
     }
 
     // Apply provider-specific defaults (watermark defaults to false)
-    body.watermark = providerDefaults?.watermark ?? false;
-    if (providerDefaults) {
-      if (modelCapabilities.supportsGuidanceScale && providerDefaults.guidance_scale !== undefined) {
-        body.guidance_scale = providerDefaults.guidance_scale;
+    body.watermark = params.watermark ?? providerDefaults?.watermark ?? false;
+    if (providerDefaults || params) {
+      const guidanceScale = params.guidance_scale ?? params.guidanceScale ?? providerDefaults.guidance_scale ?? providerDefaults.guidanceScale;
+      if (modelCapabilities.supportsGuidanceScale && guidanceScale !== undefined) {
+        body.guidance_scale = guidanceScale;
       }
-      if (modelCapabilities.supportsSeed && providerDefaults.seed !== undefined) {
-        body.seed = providerDefaults.seed;
+      const seed = params.seed ?? providerDefaults.seed;
+      if (modelCapabilities.supportsSeed && seed !== undefined) {
+        body.seed = seed;
       }
     }
 

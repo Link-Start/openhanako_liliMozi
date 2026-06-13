@@ -21,6 +21,7 @@ interface MediaProvider {
 
 interface MediaConfig {
   defaultImageModel?: { id: string; provider: string };
+  defaultVideoModel?: { id: string; provider: string };
   providerDefaults?: Record<string, any>;
 }
 
@@ -53,6 +54,7 @@ type SpeechConfigPatch = {
 
 type MediaSelection =
   | { kind: 'imageGeneration'; providerId: string }
+  | { kind: 'videoGeneration'; providerId: string }
   | { kind: 'speechRecognition'; providerId: string };
 
 const LOADING_SELECT_VALUE = '__loading';
@@ -183,6 +185,9 @@ export function MediaTab() {
   const [providers, setProviders] = useState<Record<string, MediaProvider>>({});
   const [config, setConfig] = useState<MediaConfig | null>(null);
   const [imageConfigLoading, setImageConfigLoading] = useState(true);
+  const [videoProviders, setVideoProviders] = useState<Record<string, MediaProvider>>({});
+  const [videoConfig, setVideoConfig] = useState<MediaConfig | null>(null);
+  const [videoConfigLoading, setVideoConfigLoading] = useState(true);
   const [speechProviders, setSpeechProviders] = useState<Record<string, SpeechProvider>>({});
   const [speechConfig, setSpeechConfig] = useState<SpeechConfig | null>(() => (
     snapshotSpeechConfig ? mergeSpeechConfig({ enabled: false }, snapshotSpeechConfig) : null
@@ -205,7 +210,7 @@ export function MediaTab() {
       setProviders(nextProviders);
       setConfig(data.config || {});
       setSelected(current => {
-        if (current?.kind === 'speechRecognition') return current;
+        if (current && current.kind !== 'imageGeneration') return current;
         if (current?.kind === 'imageGeneration' && nextProviders[current.providerId]) return current;
         const ids = Object.keys(nextProviders);
         const providerId = ids.find(id => nextProviders[id]?.hasCredentials) || ids[0] || null;
@@ -216,6 +221,29 @@ export function MediaTab() {
       setConfig({});
     } finally {
       setImageConfigLoading(false);
+    }
+  }, []);
+
+  const loadVideoProviders = useCallback(async () => {
+    setVideoConfigLoading(true);
+    try {
+      const res = await hanaFetch('/api/media/video/providers');
+      const data = await res.json();
+      const nextProviders = data.providers || {};
+      setVideoProviders(nextProviders);
+      setVideoConfig(data.config || {});
+      setSelected(current => {
+        if (current && current.kind !== 'videoGeneration') return current;
+        if (current?.kind === 'videoGeneration' && nextProviders[current.providerId]) return current;
+        const ids = Object.keys(nextProviders);
+        const providerId = ids.find(id => nextProviders[id]?.hasCredentials) || ids[0] || null;
+        return providerId ? { kind: 'videoGeneration', providerId } : null;
+      });
+    } catch {
+      setVideoProviders({});
+      setVideoConfig({});
+    } finally {
+      setVideoConfigLoading(false);
     }
   }, []);
 
@@ -241,13 +269,18 @@ export function MediaTab() {
 
   useEffect(() => {
     loadImageProviders();
+    loadVideoProviders();
     loadSpeechProviders();
-  }, [loadImageProviders, loadSpeechProviders]);
+  }, [loadImageProviders, loadVideoProviders, loadSpeechProviders]);
 
   const providerIds = Object.keys(providers);
+  const videoProviderIds = Object.keys(videoProviders);
   const speechProviderIds = Object.keys(speechProviders);
   const allImageModels = providerIds.flatMap(pid =>
     (providers[pid].models || []).map(m => ({ ...m, provider: pid }))
+  );
+  const allVideoModels = videoProviderIds.flatMap(pid =>
+    (videoProviders[pid].models || []).map(m => ({ ...m, provider: pid }))
   );
   const allSpeechModels = speechProviderIds.flatMap(pid =>
     getRunnableSpeechModels(speechProviders[pid]).map(m => ({ ...m, provider: pid }))
@@ -256,11 +289,16 @@ export function MediaTab() {
   const speechRecognitionEnabledLabel = textOrFallback('settings.media.speechRecognitionEnabled', '发送语音条时转录');
   const defaultSpeechModelLabel = textOrFallback('settings.media.defaultSpeechModel', '语音条转录模型');
   const selectedImageProviderId = selected?.kind === 'imageGeneration' ? selected.providerId : null;
+  const selectedVideoProviderId = selected?.kind === 'videoGeneration' ? selected.providerId : null;
   const selectedSpeechProviderId = selected?.kind === 'speechRecognition' ? selected.providerId : null;
   const imageConfigReady = !imageConfigLoading && config !== null;
   const imageDefaultValue = imageConfigReady && config?.defaultImageModel
     ? `${config.defaultImageModel.provider}/${config.defaultImageModel.id}`
     : imageConfigReady ? '' : LOADING_SELECT_VALUE;
+  const videoConfigReady = !videoConfigLoading && videoConfig !== null;
+  const videoDefaultValue = videoConfigReady && videoConfig?.defaultVideoModel
+    ? `${videoConfig.defaultVideoModel.provider}/${videoConfig.defaultVideoModel.id}`
+    : videoConfigReady ? '' : LOADING_SELECT_VALUE;
   const speechConfigReady = !speechConfigLoading && speechConfig !== null;
   const speechDefaultValue = speechConfigReady && speechConfig?.defaultModel
     ? `${speechConfig.defaultModel.provider}/${speechConfig.defaultModel.id}`
@@ -276,6 +314,22 @@ export function MediaTab() {
       const data = await res.json().catch(() => null);
       if (data?.values) setConfig(data.values);
       else setConfig(prev => applyConfigPatch(prev || {}, updates));
+      showToast(t('settings.saved'), 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Save failed', 'error');
+    }
+  };
+
+  const saveVideoConfig = async (updates: Partial<MediaConfig>) => {
+    try {
+      const res = await hanaFetch('/api/media/video/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: encodeConfigPatch(updates) }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.values) setVideoConfig(data.values);
+      else setVideoConfig(prev => applyConfigPatch(prev || {}, updates));
       showToast(t('settings.saved'), 'success');
     } catch (err: any) {
       showToast(err.message || 'Save failed', 'error');
@@ -332,7 +386,23 @@ export function MediaTab() {
               );
             })}
 
-            {/* Placeholder sections for future capabilities */}
+            <div className={styles['pv-list-divider']} />
+            <div className={styles['pv-list-group-label']}>{t('settings.media.videoGeneration')}</div>
+            {videoProviderIds.map(pid => {
+              const p = videoProviders[pid];
+              return (
+                <button
+                  key={pid}
+                  className={`${styles['pv-list-item']}${selectedVideoProviderId === pid ? ' ' + styles['selected'] : ''}${!p.hasCredentials ? ' ' + styles['dim'] : ''}`}
+                  onClick={() => setSelected({ kind: 'videoGeneration', providerId: pid })}
+                >
+                  <span className={`${styles['pv-status-dot']}${p.hasCredentials ? ' ' + styles['on'] : ''}`} />
+                  <span className={styles['pv-list-item-name']}>{p.displayName || pid}</span>
+                  <span className={styles['pv-list-item-count']}>{p.models.length}</span>
+                </button>
+              );
+            })}
+
             <div className={styles['pv-list-divider']} />
             <div className={styles['pv-list-group-label']}>
               {t('settings.media.speechRecognition')}
@@ -373,9 +443,19 @@ export function MediaTab() {
               <MediaProviderDetail
                 providerId={selectedImageProviderId}
                 provider={providers[selectedImageProviderId]}
+                capability="imageGeneration"
                 config={config || {}}
                 onSaveConfig={saveConfig}
                 onRefresh={loadImageProviders}
+              />
+            ) : selectedVideoProviderId && videoProviders[selectedVideoProviderId] ? (
+              <MediaProviderDetail
+                providerId={selectedVideoProviderId}
+                provider={videoProviders[selectedVideoProviderId]}
+                capability="videoGeneration"
+                config={videoConfig || {}}
+                onSaveConfig={saveVideoConfig}
+                onRefresh={loadVideoProviders}
               />
             ) : selectedSpeechProviderId && speechProviders[selectedSpeechProviderId] ? (
               <SpeechProviderDetail
@@ -426,6 +506,49 @@ export function MediaTab() {
                     ? t('settings.media.credentialMissing')
                     : !adapterAvailable
                       ? t('settings.media.adapterMissing')
+                      : '';
+                  return {
+                    value: `${m.provider}/${m.id}`,
+                    label: unavailableReason ? `${label} (${unavailableReason})` : label,
+                    disabled: !providerHasCredentials || !adapterAvailable,
+                  };
+                }) : []),
+              ]}
+            />
+          }
+        />
+        <SettingsRow
+          label={t('settings.media.defaultVideoModel')}
+          control={
+            <SelectWidget
+              value={videoDefaultValue}
+              onChange={(val) => {
+                if (val === LOADING_SELECT_VALUE) return;
+                if (!val) {
+                  saveVideoConfig({ defaultVideoModel: undefined });
+                  return;
+                }
+                const [provider, ...rest] = val.split('/');
+                saveVideoConfig({ defaultVideoModel: { provider, id: rest.join('/') } });
+              }}
+              disabled={!videoConfigReady}
+              options={[
+                ...(videoConfigReady ? [{ value: '', label: '—' }] : [{ value: LOADING_SELECT_VALUE, label: t('common.loading'), disabled: true }]),
+                ...(videoConfigReady && videoConfig?.defaultVideoModel && !allVideoModels.some(m => `${m.provider}/${m.id}` === videoDefaultValue)
+                  ? [{
+                      value: videoDefaultValue,
+                      label: `${videoConfig.defaultVideoModel.provider} / ${videoConfig.defaultVideoModel.id}`,
+                      disabled: true,
+                    }]
+                  : []),
+                ...(videoConfigReady ? allVideoModels.map(m => {
+                  const providerHasCredentials = videoProviders[m.provider]?.hasCredentials === true;
+                  const adapterAvailable = m.adapterAvailable !== false;
+                  const label = `${m.provider} / ${m.name || m.id}`;
+                  const unavailableReason = !providerHasCredentials
+                    ? t('settings.media.credentialMissing')
+                    : !adapterAvailable
+                      ? t('settings.media.videoAdapterMissing')
                       : '';
                   return {
                     value: `${m.provider}/${m.id}`,

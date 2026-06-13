@@ -1,3 +1,5 @@
+import type { ThinkingLevel } from './stores/model-slice';
+
 // ── Auto-update ──
 
 export interface AutoUpdateState {
@@ -111,6 +113,8 @@ export interface Model {
   isCurrent?: boolean;
   reasoning?: boolean;
   xhigh?: boolean;
+  thinkingLevels?: ThinkingLevel[];
+  defaultThinkingLevel?: ThinkingLevel;
   audio?: boolean;
   audioTransport?: string | null;
   audioTransportSupported?: boolean;

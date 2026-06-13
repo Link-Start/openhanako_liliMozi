@@ -29,7 +29,7 @@ import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { openFilePreview, openSkillPreview } from '../../utils/file-preview';
 import { writeAppFileDragPayload, clearAppFileDragPayload } from '../../utils/app-file-drag';
 import { openMediaViewerForRef } from '../../utils/open-media-viewer';
-import { buildFileRefId, isImageOrSvgExt } from '../../utils/file-kind';
+import { buildFileRefId, inferKindByExt, isImageOrSvgExt } from '../../utils/file-kind';
 import { resolveServerConnection } from '../../services/server-connection';
 import { resolveFileRefUrl } from '../../services/resource-url';
 import type { FileRef } from '../../types/file-ref';
@@ -491,6 +491,98 @@ const ImageOutputCard = memo(function ImageOutputCard({ fileId, filePath, label,
   );
 });
 
+const VideoOutputCard = memo(function VideoOutputCard({ fileId, filePath, label, ext, status, ctx }: { fileId?: string; filePath: string; label: string; ext: string; status?: string; ctx: FileBlockCtx }) {
+  const [failed, setFailed] = useState(false);
+  const displayName = label || filePath.split('/').pop() || filePath;
+  const videoSrc = useStore(useCallback((state) => {
+    const files = selectSessionFiles(state, ctx.sessionPath);
+    const ref = files.find(file => (fileId && file.fileId === fileId) || file.path === filePath)
+      ?? buildFallbackSessionFileRef({ fileId, filePath, label: displayName, ext, kind: 'video', ctx });
+    try {
+      return resolveFileRefUrl(ref, {
+        connection: resolveServerConnection(state),
+        platform: window.platform,
+      }).url;
+    } catch {
+      return '';
+    }
+  }, [ctx, displayName, ext, fileId, filePath]));
+  const downloadUrl = useSessionFileDownloadUrl({
+    fileId,
+    filePath,
+    label: displayName,
+    ext,
+    kind: 'video',
+    ctx,
+  });
+
+  const handleDragStart = useCallback((event: React.DragEvent) => {
+    const payload = writeAppFileDragPayload(event.dataTransfer, {
+      source: 'session-file',
+      files: [{
+        id: fileId || filePath,
+        fileId,
+        name: displayName,
+        path: filePath,
+      }],
+    });
+    event.currentTarget.addEventListener('dragend', () => clearAppFileDragPayload(payload.dragId), { once: true });
+    if (filePath) {
+      event.preventDefault();
+      window.platform?.startDrag?.(filePath);
+    }
+  }, [fileId, filePath, displayName]);
+
+  if (status === 'expired') return <FileOutputCard filePath={filePath} label={label} ext={ext} status={status} ctx={ctx} />;
+  if (failed) return <FileOutputCard filePath={filePath} label={label} ext={ext} status={status} ctx={ctx} />;
+
+  return (
+    <div
+      className={`${styles.imageOutputCard} ${styles.videoOutputCard}`}
+      data-testid="video-output-card"
+      draggable
+      onDragStart={handleDragStart}
+      onClick={() => openFilePreview(filePath, label, ext, {
+        origin: 'session',
+        sessionPath: ctx.sessionPath,
+        messageId: ctx.messageId,
+        fileId,
+        blockIdx: ctx.blockIdx,
+      })}
+      style={{ cursor: 'default' }}
+      aria-label={displayName}
+    >
+      {downloadUrl && (
+        <a
+          className={styles.imageOutputDownloadButton}
+          href={downloadUrl}
+          download={displayName}
+          draggable={false}
+          aria-label={`${window.t('chat.fileActions.downloadToDevice')} ${displayName}`}
+          title={window.t('chat.fileActions.downloadToDevice')}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <DownloadGlyph />
+        </a>
+      )}
+      <video
+        src={videoSrc}
+        className={styles.videoOutputPreview}
+        preload="metadata"
+        muted
+        playsInline
+        onError={() => setFailed(true)}
+        draggable={false}
+      />
+      <span className={styles.videoOutputPlayBadge} aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </span>
+    </div>
+  );
+});
+
 function DownloadGlyph() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -624,9 +716,14 @@ const FileBlock = memo(function FileBlock({ block, sessionPath, messageId, block
 }) {
   const ctx: FileBlockCtx = { sessionPath, messageId, blockIdx };
   // 扩展名识别统一走中心表（inferKindByExt via isImageOrSvgExt）
-  return isImageOrSvgExt(block.ext)
-    ? <ImageOutputCard fileId={block.fileId} filePath={block.filePath} label={block.label} ext={block.ext} status={block.status} ctx={ctx} />
-    : <FileOutputCard fileId={block.fileId} filePath={block.filePath} label={block.label} ext={block.ext} status={block.status} ctx={ctx} />;
+  const kind = inferKindByExt(block.ext);
+  if (isImageOrSvgExt(block.ext)) {
+    return <ImageOutputCard fileId={block.fileId} filePath={block.filePath} label={block.label} ext={block.ext} status={block.status} ctx={ctx} />;
+  }
+  if (kind === 'video') {
+    return <VideoOutputCard fileId={block.fileId} filePath={block.filePath} label={block.label} ext={block.ext} status={block.status} ctx={ctx} />;
+  }
+  return <FileOutputCard fileId={block.fileId} filePath={block.filePath} label={block.label} ext={block.ext} status={block.status} ctx={ctx} />;
 });
 
 // COMPAT(create_artifact, remove no earlier than v0.133):

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreferencesManager } from "../core/preferences-manager.ts";
 import { UniversalMediaManager } from "../core/media/universal-media-manager.ts";
+import { resolveMediaParameters } from "../core/media/media-parameters.ts";
 import { SessionFileRegistry } from "../lib/session-files/session-file-registry.ts";
 
 function makeRoot() {
@@ -268,6 +269,50 @@ describe("UniversalMediaManager plugin image input boundary", () => {
   });
 });
 
+describe("media parameter input limits", () => {
+  it("rejects reference images when the selected model mode is text-only", () => {
+    expect(() => resolveMediaParameters({
+      kind: "image",
+      providerId: "openai",
+      input: {
+        mode: "text2image",
+        image: ["https://example.com/ref.png"],
+      },
+      model: {
+        id: "dall-e-3",
+        modes: [{
+          id: "text2image",
+          inputLimits: { referenceImages: { min: 0, max: 0 } },
+          parameterSchema: { type: "object", properties: {} },
+        }],
+      },
+    })).toThrow(/reference images/);
+  });
+
+  it("rejects too many reference images for the selected model mode", () => {
+    expect(() => resolveMediaParameters({
+      kind: "image",
+      providerId: "gemini",
+      input: {
+        image: [
+          "https://example.com/a.png",
+          "https://example.com/b.png",
+          "https://example.com/c.png",
+          "https://example.com/d.png",
+        ],
+      },
+      model: {
+        id: "gemini-2.5-flash-image",
+        modes: [{
+          id: "image2image",
+          inputLimits: { referenceImages: { min: 1, max: 3 } },
+          parameterSchema: { type: "object", properties: {} },
+        }],
+      },
+    })).toThrow(/at most 3 reference images/);
+  });
+});
+
 describe("UniversalMediaManager response delivery", () => {
   const roots: string[] = [];
 
@@ -401,5 +446,297 @@ describe("UniversalMediaManager response delivery", () => {
     });
 
     manager.stop();
+  });
+
+  it("uses the default video model config when no video provider is specified", async () => {
+    const root = makeRoot();
+    roots.push(root);
+    const providerRegistry = {
+      getMediaProviders: () => [],
+      resolveMediaModel: vi.fn(() => ({
+        providerId: "agnes",
+        model: { id: "agnes-video-v2.0", protocolId: "agnes-videos" },
+        credentialLane: null,
+      })),
+    };
+    const manager = new UniversalMediaManager({
+      hanakoHome: root,
+      preferences: makePreferences(root, {
+        videoGeneration: {
+          defaultVideoModel: { provider: "agnes", id: "agnes-video-v2.0" },
+        },
+      }),
+      providerRegistry,
+      registerSessionFile: () => {},
+    });
+    const bus = makeBus();
+    manager.start(bus);
+    const submit = vi.fn(async () => ({ taskId: "agnes-video-task", providerTaskId: "video-provider-task" }));
+    manager.registerAdapter({
+      id: "agnes-videos",
+      protocolId: "agnes-videos",
+      types: ["video"],
+      submit,
+    });
+
+    await manager.generateVideoFromBus({
+      prompt: "animate a quiet desk",
+      delivery: { mode: "response" },
+    });
+
+    expect(providerRegistry.resolveMediaModel).toHaveBeenCalledWith({
+      providerId: "agnes",
+      modelId: "agnes-video-v2.0",
+      capability: "video_generation",
+    });
+    expect(submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "agnes",
+        modelId: "agnes-video-v2.0",
+        credentialProviderId: "agnes",
+      }),
+      expect.any(Object),
+    );
+
+    manager.stop();
+  });
+
+  it("preserves provider-contributed video parameter schemas for settings and discovery", async () => {
+    const root = makeRoot();
+    roots.push(root);
+    const parameterSchema = {
+      type: "object",
+      properties: {
+        duration: { type: "number", minimum: 4, maximum: 15, default: 5 },
+        video_resolution: { type: "string", enum: ["720p", "1080p"], default: "720p" },
+      },
+    };
+    const providerRegistry = {
+      getMediaProviders: () => [{
+        providerId: "jimeng-cli",
+        displayName: "即梦 CLI",
+        models: [{
+          id: "seedance2.0_vip",
+          displayName: "Seedance 2.0 VIP",
+          protocolId: "jimeng-cli-videos",
+          modes: [{
+            id: "text2video",
+            label: "文生视频",
+            parameterSchema,
+            defaults: { duration: 5, video_resolution: "720p" },
+          }],
+        }],
+      }],
+      getMediaProviderCredentialStatus: () => ({
+        hasCredentials: true,
+        unavailableReason: null,
+        lanes: [],
+      }),
+      resolveMediaModel: () => {
+        throw new Error("not used");
+      },
+    };
+    const manager = new UniversalMediaManager({
+      hanakoHome: root,
+      preferences: makePreferences(root),
+      providerRegistry,
+      registerSessionFile: () => {},
+    });
+    manager.registerAdapter({
+      id: "jimeng-cli-videos",
+      protocolId: "jimeng-cli-videos",
+      types: ["video"],
+      submit: vi.fn(),
+    });
+
+    await expect(manager.listVideoProviders()).resolves.toMatchObject({
+      providers: {
+        "jimeng-cli": {
+          models: [expect.objectContaining({
+            id: "seedance2.0_vip",
+            modes: [expect.objectContaining({
+              id: "text2video",
+              parameterSchema,
+              defaults: { duration: 5, video_resolution: "720p" },
+            })],
+          })],
+        },
+      },
+    });
+  });
+
+  it("merges video model defaults, user defaults, and request options before adapter submit", async () => {
+    const root = makeRoot();
+    roots.push(root);
+    const providerRegistry = {
+      getMediaProviders: () => [],
+      resolveMediaModel: vi.fn(() => ({
+        providerId: "jimeng-cli",
+        model: {
+          id: "seedance2.0_vip",
+          protocolId: "jimeng-cli-videos",
+          modes: [{
+            id: "text2video",
+            defaults: { duration: 5, ratio: "16:9", video_resolution: "720p" },
+            parameterSchema: {
+              type: "object",
+              properties: {
+                duration: { type: "number", minimum: 4, maximum: 15 },
+                ratio: { type: "string", enum: ["16:9", "9:16"] },
+                video_resolution: { type: "string", enum: ["720p", "1080p"] },
+              },
+            },
+          }],
+        },
+        credentialLane: null,
+      })),
+    };
+    const manager = new UniversalMediaManager({
+      hanakoHome: root,
+      preferences: makePreferences(root, {
+        videoGeneration: {
+          defaultVideoModel: { provider: "jimeng-cli", id: "seedance2.0_vip" },
+          providerDefaults: {
+            "jimeng-cli": {
+              duration: 7,
+              options: { video_resolution: "1080p" },
+            },
+          },
+        },
+      }),
+      providerRegistry,
+      registerSessionFile: () => {},
+    });
+    const bus = makeBus();
+    manager.start(bus);
+    const submit = vi.fn(async () => ({ taskId: "jimeng-video-task" }));
+    manager.registerAdapter({
+      id: "jimeng-cli-videos",
+      protocolId: "jimeng-cli-videos",
+      types: ["video"],
+      submit,
+    });
+
+    await manager.generateVideoFromBus({
+      prompt: "雨夜街道，镜头缓慢推进",
+      delivery: { mode: "response" },
+      options: { ratio: "9:16" },
+    });
+
+    expect(submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "jimeng-cli",
+        modelId: "seedance2.0_vip",
+        mode: "text2video",
+        duration: 7,
+        ratio: "9:16",
+        video_resolution: "1080p",
+        resolvedParameters: expect.objectContaining({
+          duration: 7,
+          ratio: "9:16",
+          video_resolution: "1080p",
+        }),
+      }),
+      expect.any(Object),
+    );
+    expect(manager.getTask("jimeng-video-task")).toMatchObject({
+      params: expect.objectContaining({
+        resolvedParameters: expect.objectContaining({
+          duration: 7,
+          ratio: "9:16",
+          video_resolution: "1080p",
+        }),
+      }),
+    });
+
+    manager.stop();
+  });
+
+  it("rejects video options outside the selected model mode schema", async () => {
+    const root = makeRoot();
+    roots.push(root);
+    const providerRegistry = {
+      getMediaProviders: () => [],
+      resolveMediaModel: vi.fn(() => ({
+        providerId: "jimeng-cli",
+        model: {
+          id: "seedance2.0fast",
+          protocolId: "jimeng-cli-videos",
+          modes: [{
+            id: "text2video",
+            parameterSchema: {
+              type: "object",
+              properties: {
+                video_resolution: { type: "string", enum: ["720p"] },
+              },
+            },
+          }],
+        },
+        credentialLane: null,
+      })),
+    };
+    const manager = new UniversalMediaManager({
+      hanakoHome: root,
+      preferences: makePreferences(root, {
+        videoGeneration: {
+          defaultVideoModel: { provider: "jimeng-cli", id: "seedance2.0fast" },
+        },
+      }),
+      providerRegistry,
+      registerSessionFile: () => {},
+    });
+    manager.start(makeBus());
+    const submit = vi.fn(async () => ({ taskId: "should-not-submit" }));
+    manager.registerAdapter({
+      id: "jimeng-cli-videos",
+      protocolId: "jimeng-cli-videos",
+      types: ["video"],
+      submit,
+    });
+
+    await expect(manager.generateVideoFromBus({
+      prompt: "雨夜街道",
+      delivery: { mode: "response" },
+      options: { video_resolution: "1080p" },
+    })).rejects.toThrow(/video_resolution/);
+    expect(submit).not.toHaveBeenCalled();
+
+    manager.stop();
+  });
+
+  it("resolves video reference images through session-owned SessionFile records", async () => {
+    const root = makeRoot();
+    roots.push(root);
+    const sessionFiles = new SessionFileRegistry();
+    const sessionPath = makeSessionPath(root, "video-session.jsonl");
+    const imagePath = makeTempFile(root, "refs/video-cover.png", "png");
+    const image = sessionFiles.registerFile({
+      sessionPath,
+      filePath: imagePath,
+      origin: "user_upload",
+      storageKind: "managed_cache",
+    });
+    const manager = makeManager(root, makePreferences(root), { sessionFiles });
+    (manager as any).submitVideo = async (payload) => ({
+      ok: true,
+      input: payload.input,
+      sessionPath: payload.sessionPath,
+    });
+
+    const result = await manager.generateVideoFromBus({
+      sessionPath,
+      prompt: "animate from ref",
+      referenceImages: [{ kind: "session_file", fileId: image.id }],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      sessionPath,
+      input: {
+        prompt: "animate from ref",
+        referenceImages: [imagePath],
+        image: [imagePath],
+      },
+    });
   });
 });

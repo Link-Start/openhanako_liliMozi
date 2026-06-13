@@ -2,6 +2,7 @@ import { lookupKnown } from "../shared/known-models.ts";
 
 export const DEFAULT_SESSION_THINKING_LEVEL = "medium";
 const VALID_THINKING_LEVELS = new Set(["off", "low", "medium", "high", "xhigh", "max"]);
+const DEFAULT_VISIBLE_THINKING_LEVELS = ["off", "medium", "high"];
 const OPENAI_XHIGH_MODEL_MARKERS = [
   "gpt-5.2",
   "gpt-5.3",
@@ -28,6 +29,23 @@ function canonicalThinkingLevel(level) {
   if (normalized === "auto") return "medium";
   if (normalized === "ultracode") return "max";
   return VALID_THINKING_LEVELS.has(normalized) ? normalized : null;
+}
+
+function visibleThinkingLevel(level) {
+  const normalized = canonicalThinkingLevel(level);
+  if (!normalized) return null;
+  return normalized === "xhigh" ? "max" : normalized;
+}
+
+export function normalizeThinkingLevelChoices(levels) {
+  if (!Array.isArray(levels)) return null;
+  const out = [];
+  for (const rawLevel of levels) {
+    const normalized = visibleThinkingLevel(rawLevel);
+    if (!normalized || out.includes(normalized)) continue;
+    out.push(normalized);
+  }
+  return out.length > 0 ? out : null;
 }
 
 export function normalizeSessionThinkingLevel(level) {
@@ -62,10 +80,20 @@ export function modelSupportsAnthropicMaxEffort(model) {
 export function modelSupportsXhigh(model) {
   const id = lower(model?.id);
   const known = lookupKnown(model?.provider, model?.id);
+  const explicitLevels = normalizeThinkingLevelChoices(model?.thinkingLevels);
   return model?.xhigh === true
+    || explicitLevels?.includes("max")
     || known?.xhigh === true
     || idIncludesAny(id, OPENAI_XHIGH_MODEL_MARKERS)
     || modelSupportsAnthropicMaxEffort(model);
+}
+
+export function getModelThinkingLevels(model) {
+  const explicitLevels = normalizeThinkingLevelChoices(model?.thinkingLevels);
+  if (explicitLevels) return explicitLevels;
+  return modelSupportsXhigh(model)
+    ? [...DEFAULT_VISIBLE_THINKING_LEVELS, "max"]
+    : [...DEFAULT_VISIBLE_THINKING_LEVELS];
 }
 
 export function normalizeThinkingLevelForModel(level, model) {

@@ -16,8 +16,15 @@ export const parameters = {
     image:    { type: "string", description: t("toolDef.generateVideo.imageDesc") },
     duration: { type: "number", description: t("toolDef.generateVideo.durationDesc") },
     ratio:    { type: "string", description: t("toolDef.generateVideo.ratioDesc") },
+    resolution: { type: "string", description: "Optional video resolution or provider-specific resolution tier." },
+    mode:     { type: "string", description: "Optional provider mode such as text2video or image2video." },
     model:    { type: "string", description: t("toolDef.generateVideo.modelDesc") },
     provider: { type: "string", description: t("toolDef.generateVideo.providerDesc") },
+    options: {
+      type: "object",
+      description: "Provider-specific optional generation parameters. Use media option discovery before filling uncommon keys.",
+      additionalProperties: true,
+    },
   },
   required: ["prompt"],
 };
@@ -48,7 +55,10 @@ export async function execute(input, ctx) {
     ...(input.image && { image: input.image }),
     ...(input.duration && { duration: input.duration }),
     ...(input.ratio && { ratio: input.ratio }),
+    ...(input.resolution && { resolution: input.resolution }),
+    ...(input.mode && { mode: input.mode }),
     ...(input.model && { model: input.model }),
+    ...(input.options && typeof input.options === "object" && !Array.isArray(input.options) ? { options: input.options } : {}),
   };
 
   // Single submit (no concurrent video generation)

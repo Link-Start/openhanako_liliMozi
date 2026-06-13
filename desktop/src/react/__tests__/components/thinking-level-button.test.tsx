@@ -51,7 +51,7 @@ describe('ThinkingLevelButton', () => {
     } as never);
     const onChange = vi.fn();
 
-    const { container } = render(<ThinkingLevelButton level="medium" onChange={onChange} modelXhigh />);
+    const { container } = render(<ThinkingLevelButton level="medium" onChange={onChange} availableLevels={['off', 'medium', 'high', 'max']} />);
     fireEvent.click(container.querySelector('button') as HTMLButtonElement);
     fireEvent.click(optionForText('深度'));
 
@@ -68,7 +68,7 @@ describe('ThinkingLevelButton', () => {
     vi.mocked(hanaFetch).mockResolvedValueOnce(jsonResponse({ ok: true, thinkingLevel: 'high' }));
     const onChange = vi.fn();
 
-    const { container } = render(<ThinkingLevelButton level="medium" onChange={onChange} modelXhigh={false} />);
+    const { container } = render(<ThinkingLevelButton level="medium" onChange={onChange} availableLevels={['off', 'medium', 'high']} />);
     fireEvent.click(container.querySelector('button') as HTMLButtonElement);
     fireEvent.click(optionForText('深度'));
 
@@ -81,7 +81,7 @@ describe('ThinkingLevelButton', () => {
   });
 
   it('shows Medium instead of Auto for legacy auto state', () => {
-    const { container } = render(<ThinkingLevelButton level="auto" onChange={vi.fn()} modelXhigh={false} />);
+    const { container } = render(<ThinkingLevelButton level="auto" onChange={vi.fn()} availableLevels={['off', 'medium', 'high']} />);
 
     fireEvent.click(container.querySelector('button') as HTMLButtonElement);
 
@@ -90,7 +90,7 @@ describe('ThinkingLevelButton', () => {
   });
 
   it('hides the xhigh level when the model does not support it', () => {
-    const { container } = render(<ThinkingLevelButton level="off" onChange={vi.fn()} modelXhigh={false} />);
+    const { container } = render(<ThinkingLevelButton level="off" onChange={vi.fn()} availableLevels={['off', 'medium', 'high']} />);
 
     fireEvent.click(container.querySelector('button') as HTMLButtonElement);
 
@@ -102,7 +102,7 @@ describe('ThinkingLevelButton', () => {
     vi.mocked(hanaFetch).mockResolvedValueOnce(jsonResponse({ ok: true, thinkingLevel: 'max' }));
     const onChange = vi.fn();
 
-    const { container } = render(<ThinkingLevelButton level="medium" onChange={onChange} modelXhigh />);
+    const { container } = render(<ThinkingLevelButton level="medium" onChange={onChange} availableLevels={['off', 'medium', 'high', 'max']} />);
     fireEvent.click(container.querySelector('button') as HTMLButtonElement);
 
     expect(screen.getByRole('option', { name: /极致/ })).toBeTruthy();
@@ -117,5 +117,15 @@ describe('ThinkingLevelButton', () => {
       method: 'POST',
       body: JSON.stringify({ level: 'max' }),
     }));
+  });
+
+  it('does not render a trailing checkmark for the selected thinking level', () => {
+    const { container } = render(<ThinkingLevelButton level="high" onChange={vi.fn()} availableLevels={['off', 'medium', 'high', 'max']} />);
+
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+
+    const selected = optionForText('深度');
+    expect(selected.getAttribute('aria-selected')).toBe('true');
+    expect(selected.querySelector('[data-select-check]')).toBeNull();
   });
 });

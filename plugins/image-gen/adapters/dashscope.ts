@@ -108,15 +108,9 @@ function normalizeDashScopeSize(value) {
 function generationParameters(params, family) {
   const size = normalizeDashScopeSize(params.size || params.resolution);
   const parameters: any = {
-    n: 1,
+    n: params.n || 1,
     ...(size ? { size } : {}),
   };
-  if (family === "wan") {
-    if (params.aspect_ratio || params.aspectRatio || params.ratio) {
-      parameters.aspect_ratio = params.aspect_ratio || params.aspectRatio || params.ratio;
-    }
-    return parameters;
-  }
   if (params.negative_prompt || params.negativePrompt) {
     parameters.negative_prompt = params.negative_prompt || params.negativePrompt;
   }
@@ -124,6 +118,10 @@ function generationParameters(params, family) {
     parameters.prompt_extend = params.prompt_extend ?? params.promptExtend;
   }
   if (params.watermark !== undefined) parameters.watermark = params.watermark;
+  if (params.seed !== undefined) parameters.seed = params.seed;
+  if (family === "wan" && (params.aspect_ratio || params.aspectRatio || params.ratio)) {
+    parameters.aspect_ratio = params.aspect_ratio || params.aspectRatio || params.ratio;
+  }
   return parameters;
 }
 
@@ -155,11 +153,15 @@ export const dashscopeImageAdapter = {
     const creds = await getCredentials(ctx, params);
     const modelId = params.modelId || params.model || "wan2.7-image-pro";
     const family = modelFamily(modelId);
+    const images = normalizeImageInput(params.image);
+    if (family === "qwen-text2image" && images.length > 0) {
+      throw new Error(`DashScope model "${modelId}" does not support reference images`);
+    }
     const body = {
       model: modelId,
       input: family === "qwen-text2image"
         ? { prompt: params.prompt }
-        : { messages: buildMessages(params.prompt, normalizeImageInput(params.image)) },
+        : { messages: buildMessages(params.prompt, images) },
       parameters: generationParameters(params, family),
     };
     const endpoint = family === "qwen-text2image"

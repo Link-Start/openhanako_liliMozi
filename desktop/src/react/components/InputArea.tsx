@@ -20,7 +20,7 @@ import { getWebSocket } from '../services/websocket';
 import { collectUiContext } from '../utils/ui-context';
 import { formatQuotedSelectionForPrompt } from '../utils/quoted-selection';
 import { renderMarkdown } from '../utils/markdown';
-import type { ThinkingLevel } from '../stores/model-slice';
+import { getModelThinkingLevels, type ThinkingLevel } from '../stores/model-slice';
 import { SlashCommandMenu } from './input/SlashCommandMenu';
 import { FileMentionMenu } from './input/FileMentionMenu';
 import { InputStatusBars } from './input/InputStatusBars';
@@ -328,10 +328,19 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
   const globalModelInfo = useMemo(() => models.find(m => m.isCurrent), [models]);
   const sessionModel = useStore(s => s.currentSessionPath ? s.sessionModelsByPath[s.currentSessionPath] : undefined);
+  const sessionModelInfo = useMemo(() => {
+    if (!sessionModel) return undefined;
+    const full = models.find(m => m.id === sessionModel.id && m.provider === sessionModel.provider);
+    return full ? { ...full, ...sessionModel } : sessionModel;
+  }, [models, sessionModel]);
   // #1624：当前 session 的工具能力漂移提示（服务端 restore 时算好，前端只消费）
   const capabilityDrift = useStore(s => s.currentSessionPath ? (s.capabilityDriftBySession[s.currentSessionPath] ?? null) : null);
   const capabilityRefreshing = useStore(s => s.currentSessionPath ? s.capabilityRefreshingSessions.includes(s.currentSessionPath) : false);
-  const currentModelInfo = sessionModel || globalModelInfo;
+  const currentModelInfo = sessionModelInfo || globalModelInfo;
+  const availableThinkingLevels = useMemo(
+    () => getModelThinkingLevels(currentModelInfo),
+    [currentModelInfo],
+  );
   // input 数组缺失视为未知；只有显式 text-only 的模型才在 UI 上标记“辅助视觉”。
   const supportsVision = !Array.isArray(currentModelInfo?.input) || currentModelInfo.input.includes("image");
   const showAudioInput = getModelAudioInputMode(currentModelInfo) === 'native-audio';
@@ -1851,7 +1860,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
             showThinking={showThinkingControl}
             thinkingLevel={thinkingLevel}
             onThinkingChange={setThinkingLevel}
-            modelXhigh={(sessionModel ? (sessionModel.xhigh ?? models.find(m => m.id === sessionModel.id && m.provider === sessionModel.provider)?.xhigh) : globalModelInfo?.xhigh) ?? false}
+            availableThinkingLevels={availableThinkingLevels}
             models={models}
             sessionModel={sessionModel}
             isStreaming={isStreaming}

@@ -58,6 +58,78 @@ describe("ProviderRegistry media capabilities", () => {
     ]));
   });
 
+  it("exposes media parameters and reference-image limits at model/mode granularity", () => {
+    const registry = new ProviderRegistry(tmpHome);
+    registry.reload();
+
+    const providers = registry.getMediaProviders("image_generation");
+    const byId = new Map(providers.map((provider) => [provider.providerId, provider]));
+    const openai = byId.get("openai");
+    const dashscope = byId.get("dashscope");
+    const gemini = byId.get("gemini");
+
+    const gptImage = openai?.models.find((model) => model.id === "gpt-image-1.5");
+    const dalle = openai?.models.find((model) => model.id === "dall-e-3");
+    expect(gptImage?.modes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "image2image",
+        inputLimits: expect.objectContaining({
+          referenceImages: expect.objectContaining({ min: 1 }),
+        }),
+        parameterSchema: expect.objectContaining({
+          properties: expect.objectContaining({
+            quality: expect.objectContaining({ enum: ["auto", "low", "medium", "high"] }),
+            background: expect.objectContaining({ enum: ["auto", "opaque", "transparent"] }),
+          }),
+        }),
+      }),
+    ]));
+    expect(dalle?.modes).toEqual([
+      expect.objectContaining({
+        id: "text2image",
+        inputLimits: expect.objectContaining({
+          referenceImages: expect.objectContaining({ max: 0 }),
+        }),
+        parameterSchema: expect.objectContaining({
+          properties: expect.objectContaining({
+            quality: expect.objectContaining({ enum: ["standard", "hd"] }),
+            style: expect.objectContaining({ enum: ["vivid", "natural"] }),
+          }),
+        }),
+      }),
+    ]);
+
+    const qwen20 = dashscope?.models.find((model) => model.id === "qwen-image-2.0-pro");
+    const qwenPlus = dashscope?.models.find((model) => model.id === "qwen-image-plus");
+    expect(qwen20?.modes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "text2image" }),
+      expect.objectContaining({
+        id: "image2image",
+        inputLimits: expect.objectContaining({
+          referenceImages: expect.objectContaining({ min: 1 }),
+        }),
+      }),
+    ]));
+    expect(qwenPlus?.modes).toEqual([
+      expect.objectContaining({
+        id: "text2image",
+        inputLimits: expect.objectContaining({
+          referenceImages: expect.objectContaining({ max: 0 }),
+        }),
+      }),
+    ]);
+
+    const gemini25 = gemini?.models.find((model) => model.id === "gemini-2.5-flash-image");
+    const gemini31 = gemini?.models.find((model) => model.id === "gemini-3.1-flash-image-preview");
+    const gemini25ImageMode = gemini25?.modes?.find((mode) => mode.id === "image2image");
+    const gemini31ImageMode = gemini31?.modes?.find((mode) => mode.id === "image2image");
+    expect(gemini25?.modes?.[0]?.parameterSchema.properties).not.toHaveProperty("resolution");
+    expect(gemini25ImageMode?.inputLimits.referenceImages.max).toBe(3);
+    expect(gemini31?.modes?.[0]?.parameterSchema.properties.ratio.enum).toContain("1:8");
+    expect(gemini31?.modes?.[0]?.parameterSchema.properties.resolution.enum).toContain("512");
+    expect(gemini31ImageMode?.inputLimits.referenceImages.max).toBe(14);
+  });
+
   it("exposes Agnes chat, image, and video capabilities from its provider plugin", () => {
     const registry = new ProviderRegistry(tmpHome);
     registry.reload();

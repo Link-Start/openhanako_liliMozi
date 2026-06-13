@@ -64,6 +64,9 @@ export function createMediaRoute(engine) {
       if (capability === "speech_recognition" || capability === "asr" || capability === "transcription") {
         return c.json(requireSpeechRecognitionService(engine).listProviders());
       }
+      if (capability === "video_generation" || capability === "video" || capability === "videoGeneration") {
+        return c.json(await requireMediaManager(engine).listVideoProviders());
+      }
       return c.json(await requireMediaManager(engine).listImageProviders());
     } catch (err) {
       return c.json({ error: err.message }, 500);
@@ -73,6 +76,14 @@ export function createMediaRoute(engine) {
   route.get("/media/image/providers", async (c) => {
     try {
       return c.json(await requireMediaManager(engine).listImageProviders());
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.get("/media/video/providers", async (c) => {
+    try {
+      return c.json(await requireMediaManager(engine).listVideoProviders());
     } catch (err) {
       return c.json({ error: err.message }, 500);
     }
@@ -100,6 +111,28 @@ export function createMediaRoute(engine) {
     }
   });
 
+  route.put("/media/video/config", async (c) => {
+    try {
+      const denied = denyWithoutScope(c, "settings.write");
+      if (denied) return denied;
+      const body = await safeJson(c);
+      const values = decodeConfigValues(body?.values && typeof body.values === "object" && !Array.isArray(body.values)
+        ? body.values
+        : body);
+      const config = requireMediaManager(engine).setVideoConfig(values);
+      recordSecurityAuditEvent(c, engine, {
+        action: "settings.videoGeneration.update",
+        target: "videoGeneration",
+        metadata: {
+          hasDefaultVideoModel: Boolean(config.defaultVideoModel),
+        },
+      });
+      return c.json({ ok: true, config, values: config });
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
   route.post("/media/image/providers/:providerId/models", async (c) => {
     try {
       const denied = denyWithoutScope(c, "providers.manage");
@@ -114,11 +147,39 @@ export function createMediaRoute(engine) {
     }
   });
 
+  route.post("/media/video/providers/:providerId/models", async (c) => {
+    try {
+      const denied = denyWithoutScope(c, "providers.manage");
+      if (denied) return denied;
+      const providerId = c.req.param("providerId");
+      const body = await safeJson(c);
+      const model = body?.model || body;
+      const result = await requireMediaManager(engine).setVideoProviderModel(providerId, model);
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
   route.delete("/media/image/providers/:providerId/models/:modelId", async (c) => {
     try {
       const denied = denyWithoutScope(c, "providers.manage");
       if (denied) return denied;
       const result = await requireMediaManager(engine).removeImageProviderModel(
+        c.req.param("providerId"),
+        c.req.param("modelId"),
+      );
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.delete("/media/video/providers/:providerId/models/:modelId", async (c) => {
+    try {
+      const denied = denyWithoutScope(c, "providers.manage");
+      if (denied) return denied;
+      const result = await requireMediaManager(engine).removeVideoProviderModel(
         c.req.param("providerId"),
         c.req.param("modelId"),
       );

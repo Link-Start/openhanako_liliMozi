@@ -16,9 +16,46 @@ const FORMAT_TO_MIME = {
   webp: "image/webp",
 };
 
+const DALL_E_3_SIZES = new Set(["1024x1024", "1792x1024", "1024x1792"]);
+const DALL_E_3_SIZE_BY_RATIO = {
+  "1:1": "1024x1024",
+  "16:9": "1792x1024",
+  "9:16": "1024x1792",
+};
+
 function normalizeImages(image) {
   if (!image) return [];
   return (Array.isArray(image) ? image : [image]).filter((item) => typeof item === "string" && item.trim());
+}
+
+function isDallE3(modelId) {
+  return String(modelId || "").toLowerCase() === "dall-e-3";
+}
+
+function normalizeDallE3SizeInput(value, ratio) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (DALL_E_3_SIZES.has(raw)) return raw;
+  const normalized = raw.toLowerCase();
+  if (normalized === "1k" || normalized === "auto") {
+    return DALL_E_3_SIZE_BY_RATIO[ratio || "1:1"] || DALL_E_3_SIZE_BY_RATIO["1:1"];
+  }
+  throw new Error(`OpenAI DALL-E 3 size "${raw}" is unsupported`);
+}
+
+function resolveDallE3Size(params, providerDefaults: any = {}) {
+  const ratio = params.aspect_ratio
+    || params.aspectRatio
+    || params.ratio
+    || providerDefaults.aspect_ratio
+    || providerDefaults.aspectRatio
+    || providerDefaults.ratio;
+  if (ratio && !DALL_E_3_SIZE_BY_RATIO[ratio]) {
+    throw new Error(`OpenAI DALL-E 3 ratio "${ratio}" is unsupported`);
+  }
+  return normalizeDallE3SizeInput(params.size || params.resolution || providerDefaults.size || providerDefaults.resolution, ratio)
+    || (ratio ? DALL_E_3_SIZE_BY_RATIO[ratio] : null);
 }
 
 function imageMime(filePath) {
@@ -95,31 +132,53 @@ export const openaiImageAdapter = {
     const providerDefaults = allDefaults[mediaProviderId] || {};
 
     // 4. Translate params → API body
-    const outputFormat = params.format || providerDefaults?.format || "jpeg";
+    const images = normalizeImages(params.image);
     const effectiveRatio = params.aspect_ratio || params.aspectRatio || params.ratio || providerDefaults?.aspect_ratio;
-    const body: any = {
-      model: modelId,
-      prompt: params.prompt,
-      n: 1,
-      output_format: outputFormat,
-    };
+    const body: any = isDallE3(modelId)
+      ? {
+        model: modelId,
+        prompt: params.prompt,
+        n: params.n || 1,
+        response_format: "b64_json",
+      }
+      : {
+        model: modelId,
+        prompt: params.prompt,
+        n: params.n || 1,
+        output_format: params.format || providerDefaults?.format || "jpeg",
+      };
 
-    const size = resolveOpenAiImageSize(
-      { ...params, ratio: effectiveRatio },
-      providerDefaults,
-      {
-        sourceName: "OpenAI image",
-        flexible: String(modelId).startsWith("gpt-image-2"),
-      },
-    );
+    const size = isDallE3(modelId)
+      ? resolveDallE3Size({ ...params, ratio: effectiveRatio }, providerDefaults)
+      : resolveOpenAiImageSize(
+        { ...params, ratio: effectiveRatio },
+        providerDefaults,
+        {
+          sourceName: "OpenAI image",
+          flexible: String(modelId).startsWith("gpt-image-2"),
+        },
+      );
     if (size) body.size = size;
 
     const quality = params.quality || providerDefaults?.quality;
     if (quality) body.quality = quality;
 
-    if (providerDefaults?.background) body.background = providerDefaults.background;
+    if (isDallE3(modelId)) {
+      if (params.style || providerDefaults?.style) body.style = params.style || providerDefaults.style;
+    } else {
+      const background = params.background || providerDefaults?.background;
+      if (background) body.background = background;
+      if (params.output_compression !== undefined || providerDefaults?.output_compression !== undefined) {
+        body.output_compression = params.output_compression ?? providerDefaults.output_compression;
+      }
+      if (params.moderation || providerDefaults?.moderation) {
+        body.moderation = params.moderation || providerDefaults.moderation;
+      }
+    }
 
-    const images = normalizeImages(params.image);
+    if (isDallE3(modelId) && images.length > 0) {
+      throw new Error("OpenAI DALL-E 3 does not support reference images");
+    }
 
     // 6. Call HTTP API — OpenAI gpt-image 用 /images/edits 做图生图
     const base = baseUrl.replace(/\/+$/, "");
@@ -158,7 +217,9 @@ export const openaiImageAdapter = {
       throw new Error("API returned no images");
     }
 
-    const mimeType = FORMAT_TO_MIME[outputFormat] || "image/png";
+    const mimeType = isDallE3(modelId)
+      ? "image/png"
+      : FORMAT_TO_MIME[body.output_format] || "image/png";
 
     // Note revised_prompt in log if present (not surfaced to caller)
     const revisedPrompt = responseImages[0]?.revised_prompt;

@@ -1774,6 +1774,38 @@
     border-radius: var(--radius-chat-card-inner);
 }
 
+.videoOutputCard {
+    width: min(420px, 100%);
+}
+
+.videoOutputPreview {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: 450px;
+    object-fit: cover;
+    background: color-mix(in srgb, var(--bg-card, var(--bg)) 78%, var(--text) 10%);
+    border-radius: var(--radius-chat-card-inner);
+}
+
+.videoOutputPlayBadge {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bg);
+    background: color-mix(in srgb, var(--text) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--bg) 60%, transparent);
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+}
+
 .imageOutputName {
     padding: 0.35rem 0.2rem 0;
     font-size: 0.78rem;

@@ -27,6 +27,11 @@ export const parameters = {
     quality:    { type: "string", description: t("toolDef.generateImage.qualityDesc") },
     model:      { type: "string", description: t("toolDef.generateImage.modelDesc") },
     provider:   { type: "string", description: t("toolDef.generateImage.providerDesc") },
+    options: {
+      type: "object",
+      description: "Provider-specific optional generation parameters. Use media option discovery before filling uncommon keys.",
+      additionalProperties: true,
+    },
     suggestedFilename: { type: "string", description: t("toolDef.generateImage.suggestedFilenameDesc") },
   },
   required: ["prompt"],

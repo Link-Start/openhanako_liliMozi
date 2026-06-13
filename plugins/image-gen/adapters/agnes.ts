@@ -137,6 +137,14 @@ function videoUrlFromResponse(data) {
   return null;
 }
 
+async function parseJsonOrNull(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export const agnesImageAdapter = {
   id: "agnes-images",
   protocolId: "agnes-images",
@@ -230,7 +238,7 @@ export const agnesVideoAdapter = {
   async submit(params, ctx) {
     const creds = await getCredentials(ctx, params);
     const mediaProviderId = params.providerId || "agnes";
-    const allDefaults = ctx.config?.get?.("providerDefaults") || {};
+    const allDefaults = ctx.videoConfig?.get?.("providerDefaults") ?? ctx.config?.get?.("providerDefaults") ?? {};
     const providerDefaults = allDefaults[mediaProviderId] || {};
     const modelId = params.modelId || params.model || providerDefaults.model || DEFAULT_VIDEO_MODEL;
     const size = resolveVideoSize(params, providerDefaults);
@@ -278,12 +286,28 @@ export const agnesVideoAdapter = {
   async query(taskId, ctx) {
     const creds = await getCredentials(ctx, { providerId: "agnes" });
     const root = agnesRootBase(creds.baseUrl);
-    const url = `${root}/agnesapi?video_id=${encodeURIComponent(taskId)}`;
-    const res = await fetch(url, {
+    const task = ctx?.task || {};
+    const modelName = task.modelId || task.params?.modelId || task.params?.model || "";
+    const query = new URLSearchParams({ video_id: String(taskId) });
+    if (modelName) query.set("model_name", modelName);
+    const url = `${root}/agnesapi?${query.toString()}`;
+    const recommended = await fetch(url, {
       headers: { "Authorization": `Bearer ${creds.apiKey}` },
     });
-    if (!res.ok) throw new Error(`API error ${res.status}`);
-    const data = await res.json();
+
+    let data;
+    if (recommended.ok) {
+      data = await parseJsonOrNull(recommended);
+    } else {
+      const legacyTaskId = task.taskId && task.taskId !== taskId ? task.taskId : null;
+      if (!legacyTaskId) throw new Error(`API error ${recommended.status}`);
+      const legacy = await fetch(`${agnesV1Base(creds.baseUrl)}/videos/${encodeURIComponent(legacyTaskId)}`, {
+        headers: { "Authorization": `Bearer ${creds.apiKey}` },
+      });
+      if (!legacy.ok) throw new Error(`API error ${legacy.status}`);
+      data = await parseJsonOrNull(legacy);
+    }
+
     const status = String(data?.status || "").toLowerCase();
     if (["failed", "error", "cancelled", "canceled"].includes(status)) {
       return {

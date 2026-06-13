@@ -51,7 +51,7 @@ export const minimaxImageAdapter = {
   name: "MiniMax Image",
   types: ["image"],
   capabilities: {
-    ratios: ["1:1", "16:9", "9:16", "4:3", "3:4"],
+    ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"],
     resolutions: [],
   },
 
@@ -79,6 +79,9 @@ export const minimaxImageAdapter = {
         : {}),
       ...(params.n ? { n: params.n } : {}),
       ...(params.prompt_optimizer !== undefined ? { prompt_optimizer: params.prompt_optimizer } : {}),
+      ...(params.seed !== undefined ? { seed: params.seed } : {}),
+      ...(params.width !== undefined ? { width: params.width } : {}),
+      ...(params.height !== undefined ? { height: params.height } : {}),
     };
 
     const images = normalizeImageInput(params.image);

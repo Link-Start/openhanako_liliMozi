@@ -2,6 +2,7 @@ export interface ThinkingModelLike {
   id?: string;
   provider?: string;
   reasoning?: boolean;
+  thinkingLevels?: string[];
   quirks?: string[];
   compat?: {
     thinkingFormat?: string;
@@ -19,6 +20,7 @@ export function shouldShowThinkingControl(
 
 function hasControllableThinking(model: ThinkingModelLike | null | undefined): boolean {
   if (!model) return false;
+  if (Array.isArray(model.thinkingLevels) && model.thinkingLevels.some(level => level && level !== 'off')) return true;
   if (Array.isArray(model.quirks) && model.quirks.includes('enable_thinking')) return true;
   return model.compat?.thinkingFormat === 'qwen' || model.compat?.thinkingFormat === 'qwen-chat-template';
 }

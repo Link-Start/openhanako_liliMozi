@@ -37,6 +37,40 @@ describe("native media route", () => {
     });
   });
 
+  it("returns video providers from the native media manager", async () => {
+    const app = new Hono();
+    const listVideoProviders = vi.fn(async () => ({
+      providers: {
+        agnes: {
+          providerId: "agnes",
+          displayName: "Agnes AI",
+          hasCredentials: true,
+          models: [{ id: "agnes-video-v2.0", name: "Agnes Video V2.0", protocolId: "agnes-videos" }],
+        },
+      },
+      config: { defaultVideoModel: { provider: "agnes", id: "agnes-video-v2.0" } },
+    }));
+    app.route("/api", createMediaRoute({
+      media: { listVideoProviders },
+    }));
+
+    const res = await app.request("/api/media/video/providers");
+
+    expect(res.status).toBe(200);
+    expect(listVideoProviders).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toEqual({
+      providers: {
+        agnes: {
+          providerId: "agnes",
+          displayName: "Agnes AI",
+          hasCredentials: true,
+          models: [{ id: "agnes-video-v2.0", name: "Agnes Video V2.0", protocolId: "agnes-videos" }],
+        },
+      },
+      config: { defaultVideoModel: { provider: "agnes", id: "agnes-video-v2.0" } },
+    });
+  });
+
   it("saves image generation config through the native media manager", async () => {
     const app = new Hono();
     const setImageConfig = vi.fn(() => ({ providerDefaults: { openai: { size: "1024x1024" } } }));
@@ -67,6 +101,39 @@ describe("native media route", () => {
       ok: true,
       config: { providerDefaults: { openai: { size: "1024x1024" } } },
       values: { providerDefaults: { openai: { size: "1024x1024" } } },
+    });
+  });
+
+  it("saves video generation config through the native media manager", async () => {
+    const app = new Hono();
+    const setVideoConfig = vi.fn(() => ({ providerDefaults: { agnes: { duration: 5 } } }));
+    app.route("/api", createMediaRoute({
+      media: {
+        listVideoProviders: async () => ({ providers: {}, config: {} }),
+        setVideoConfig,
+      },
+    }));
+
+    const res = await app.request("/api/media/video/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        values: {
+          defaultVideoModel: null,
+          providerDefaults: { agnes: { duration: 5 } },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(setVideoConfig).toHaveBeenCalledWith({
+      defaultVideoModel: undefined,
+      providerDefaults: { agnes: { duration: 5 } },
+    });
+    expect(await res.json()).toEqual({
+      ok: true,
+      config: { providerDefaults: { agnes: { duration: 5 } } },
+      values: { providerDefaults: { agnes: { duration: 5 } } },
     });
   });
 

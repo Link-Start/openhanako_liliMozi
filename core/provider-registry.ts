@@ -1195,7 +1195,7 @@ export class ProviderRegistry {
    * 裸字符串条目会被升级为对象
    * @param {string} providerId
    * @param {string} modelId
-   * @param {{ name?: string, context?: number, maxOutput?: number, image?: boolean, video?: boolean, reasoning?: boolean, defaultThinkingLevel?: string, compat?: object, toolUse?: object, visionCapabilities?: object }} meta
+   * @param {{ name?: string, context?: number, maxOutput?: number, image?: boolean, video?: boolean, reasoning?: boolean, xhigh?: boolean, thinkingLevels?: string[], defaultThinkingLevel?: string, compat?: object, toolUse?: object, visionCapabilities?: object }} meta
    */
   updateModelEntry(providerId, modelId, meta) {
     const rawProvider = this.getAllProvidersRaw()[providerId] || {};
@@ -1207,7 +1207,7 @@ export class ProviderRegistry {
     }
 
     // 白名单：只允许模型能力字段（image 是标准名，vision 为旧名不写入）
-    const ALLOWED = ["name", "context", "maxOutput", "image", "video", "reasoning", "type", "defaultThinkingLevel"];
+    const ALLOWED = ["name", "context", "maxOutput", "image", "video", "reasoning", "xhigh", "thinkingLevels", "type", "defaultThinkingLevel"];
     const safe: any = {};
     for (const key of ALLOWED) {
       if (meta[key] !== undefined) safe[key] = meta[key];

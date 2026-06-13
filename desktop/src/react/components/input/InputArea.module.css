@@ -502,52 +502,6 @@
     color: rgba(var(--accent-rgb), 0.6);
 }
 
-.thinking-level-popup[data-select-widget-popup] {
-    width: 188px;
-    padding: 4px;
-}
-
-.thinking-level-popup :global([role="option"]) {
-    padding: 0;
-    border-radius: var(--radius-sm);
-}
-
-.thinking-level-option {
-    display: grid;
-    grid-template-columns: minmax(2.6rem, 1fr) max-content;
-    align-items: baseline;
-    column-gap: 1.1rem;
-    width: 100%;
-    min-height: 34px;
-    padding: 0.42rem 0.72rem;
-}
-
-.thinking-level-label,
-.thinking-level-desc {
-    min-width: 0;
-    white-space: nowrap;
-}
-
-.thinking-level-label {
-    font-size: 0.82rem;
-    line-height: 1.2;
-}
-
-.thinking-level-desc {
-    font-size: 0.72rem;
-    line-height: 1.2;
-    font-weight: 400;
-    color: var(--text-muted);
-}
-
-.thinking-level-popup :global([role="option"]:hover) .thinking-level-desc {
-    color: rgba(var(--accent-rgb), 0.62);
-}
-
-.thinking-level-popup :global([role="option"][aria-selected="true"]) .thinking-level-desc {
-    color: rgba(var(--accent-rgb), 0.72);
-}
-
 /* 模型选择器 */
 .model-selector {
     position: relative;

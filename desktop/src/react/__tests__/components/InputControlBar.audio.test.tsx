@@ -37,7 +37,7 @@ function renderBar(overrides: Partial<React.ComponentProps<typeof InputControlBa
     showThinking={false}
     thinkingLevel="auto"
     onThinkingChange={vi.fn()}
-    modelXhigh={false}
+    availableThinkingLevels={['off', 'medium', 'high']}
     models={[]}
     sessionModel={undefined}
     isStreaming={false}

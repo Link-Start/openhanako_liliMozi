@@ -479,6 +479,29 @@ export const capabilities = {
 
 CLI provider 必须使用结构化参数绑定。不要拼 shell 字符串；Hana 会通过 `execFile` / `spawn` 的非 shell 模式运行命令，并把输出收束进媒体任务目录。
 
+#### Provider 与 Adapter 的边界
+
+`providers/*.js` 是长期支持的 Provider Contribution 入口。它声明供应商、模型、能力、`protocolId`，进入 ProviderRegistry 后由聊天、图片、视频、语音等选择器统一发现。旧插件如果已经通过 `providers/*.js` 声明图片 provider，只需要补齐 `capabilities.media.imageGeneration` 和每个模型的 `protocolId`，不需要换入口。
+
+媒体 Adapter 负责执行某个 `protocolId` 的 `submit` / `query` / 下载流程。只注册 Adapter 不等于注册供应商；没有 Provider capability 的模型不会自然出现在供应商管理、默认媒体模型选择、媒体 helper 发现结果里。
+
+旧 `media-gen:*` 事件接口仍然保留给历史图片生成插件兼容，例如 `media-gen:register-adapter`、`media-gen:submit-image`、`media-gen:list-adapters`。新插件不要继续依赖这些旧命名空间。迁移方向是：
+
+```text
+ProviderPlugin capabilities.media.*
+        │
+        ▼
+ProviderRegistry 发现供应商和模型
+        │
+        ▼
+MediaAdapterRegistry 按 protocolId 选择 Adapter
+        │
+        ▼
+UniversalMediaManager 统一任务、占位、轮询、SessionFile 回填
+```
+
+如果插件需要全新媒体协议，先声明 Provider capability，并为该 `protocolId` 提供 Adapter。正式 Adapter Plugin API 尚未稳定前，内置或受信插件可以继续使用旧 `media-gen:register-adapter` 作为过渡，但要把它视为兼容层。
+
 ### Configuration（配置 schema）
 
 在 `manifest.json` 的 `contributes.configuration` 中声明配置 schema。Hana 会规范化字段、写入默认值、校验类型，并在设置 API 中自动隐藏敏感字段：

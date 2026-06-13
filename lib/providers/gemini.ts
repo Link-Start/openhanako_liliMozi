@@ -6,6 +6,42 @@
  * 文档：https://ai.google.dev/gemini-api/docs
  */
 
+import {
+  GEMINI_25_IMAGE_RATIOS,
+  GEMINI_31_FLASH_IMAGE_RATIOS,
+  GEMINI_3_PRO_IMAGE_RATIOS,
+  enumParam,
+  mediaMode,
+  noReferenceImages,
+  referenceImages,
+} from "./media-schema-helpers.ts";
+
+function geminiImageProperties(ratios, resolutions = null) {
+  return {
+    ratio: enumParam(ratios, "1:1"),
+    ...(resolutions ? { resolution: enumParam(resolutions, resolutions[0]) } : {}),
+  };
+}
+
+function geminiImageModel(id, displayName, aliases, ratios, resolutions, maxReferenceImages) {
+  const properties = geminiImageProperties(ratios, resolutions);
+  return {
+    id,
+    displayName,
+    protocolId: "gemini-generate-content-image",
+    inputs: ["text", "image"],
+    outputs: ["image"],
+    supportsEdit: true,
+    aliases,
+    modes: [
+      mediaMode("text2image", "Text to image", properties, {}, noReferenceImages()),
+      mediaMode("image2image", "Image edit/reference", properties, {}, referenceImages({ max: maxReferenceImages })),
+    ],
+    ratios: [...ratios],
+    ...(resolutions ? { resolutions: [...resolutions] } : {}),
+  };
+}
+
 /** @type {import('../provider-registry.ts').ProviderPlugin} */
 export const geminiPlugin = {
   id: "gemini",
@@ -18,9 +54,9 @@ export const geminiPlugin = {
       imageGeneration: {
         defaultModelId: "gemini-3.1-flash-image-preview",
         models: [
-          { id: "gemini-2.5-flash-image", displayName: "Gemini 2.5 Flash Image", protocolId: "gemini-generate-content-image", inputs: ["text", "image"], outputs: ["image"], aliases: ["nano-banana"] },
-          { id: "gemini-3.1-flash-image-preview", displayName: "Gemini 3.1 Flash Image Preview", protocolId: "gemini-generate-content-image", inputs: ["text", "image"], outputs: ["image"], aliases: ["nano-banana-2"] },
-          { id: "gemini-3-pro-image-preview", displayName: "Gemini 3 Pro Image Preview", protocolId: "gemini-generate-content-image", inputs: ["text", "image"], outputs: ["image"], aliases: ["nano-banana-pro"] },
+          geminiImageModel("gemini-2.5-flash-image", "Gemini 2.5 Flash Image", ["nano-banana"], GEMINI_25_IMAGE_RATIOS, null, 3),
+          geminiImageModel("gemini-3.1-flash-image-preview", "Gemini 3.1 Flash Image Preview", ["nano-banana-2"], GEMINI_31_FLASH_IMAGE_RATIOS, ["512", "1K", "2K", "4K"], 14),
+          geminiImageModel("gemini-3-pro-image-preview", "Gemini 3 Pro Image Preview", ["nano-banana-pro"], GEMINI_3_PRO_IMAGE_RATIOS, ["1K", "2K", "4K"], 14),
         ],
       },
     },

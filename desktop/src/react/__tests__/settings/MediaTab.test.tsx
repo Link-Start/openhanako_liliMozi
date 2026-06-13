@@ -33,8 +33,8 @@ vi.mock('../../settings/components/SettingsRow', () => ({
 }));
 
 vi.mock('../../settings/tabs/media/MediaProviderDetail', () => ({
-  MediaProviderDetail: ({ providerId }: { providerId: string }) => (
-    <div data-testid="media-provider-detail">image:{providerId}</div>
+  MediaProviderDetail: ({ providerId, capability = 'imageGeneration' }: { providerId: string; capability?: string }) => (
+    <div data-testid="media-provider-detail">{capability === 'videoGeneration' ? 'video' : 'image'}:{providerId}</div>
   ),
 }));
 
@@ -81,6 +81,9 @@ describe('MediaTab image-gen config', () => {
           },
           config: {},
         }));
+      }
+      if (path === '/api/media/video/providers') {
+        return Promise.resolve(jsonResponse({ providers: {}, config: {} }));
       }
       return Promise.resolve(jsonResponse({ values: { defaultImageModel: { provider: 'volcengine', id: 'seedream-5' } } }));
     });
@@ -372,6 +375,52 @@ describe('MediaTab image-gen config', () => {
     expect(await screen.findByText('OpenAI Speech')).toBeInTheDocument();
     await waitFor(() => {
       expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/speech-recognition/providers');
+    });
+  });
+
+  it('loads video generation providers and saves the default video model through the video config endpoint', async () => {
+    mocks.hanaFetch.mockImplementation((path: string) => {
+      if (path === '/api/media/image/providers') {
+        return Promise.resolve(jsonResponse({ providers: {}, config: {} }));
+      }
+      if (path === '/api/media/video/providers') {
+        return Promise.resolve(jsonResponse({
+          providers: {
+            agnes: {
+              providerId: 'agnes',
+              displayName: 'Agnes AI',
+              hasCredentials: true,
+              models: [{ id: 'agnes-video-v2.0', name: 'Agnes Video V2.0', protocolId: 'agnes-videos', adapterAvailable: true }],
+              availableModels: [],
+            },
+          },
+          config: {},
+        }));
+      }
+      if (path === '/api/speech-recognition/providers') {
+        return Promise.resolve(jsonResponse({ providers: {}, config: { enabled: false } }));
+      }
+      if (path === '/api/media/video/config') {
+        return Promise.resolve(jsonResponse({
+          values: { defaultVideoModel: { provider: 'agnes', id: 'agnes-video-v2.0' } },
+        }));
+      }
+      return Promise.resolve(jsonResponse({ values: {} }));
+    });
+
+    render(<MediaTab />);
+
+    expect(await screen.findByText('Agnes AI')).toBeInTheDocument();
+    expect(screen.getByTestId('media-provider-detail')).toHaveTextContent('video:agnes');
+
+    const select = await screen.findByLabelText('settings.media.defaultVideoModel');
+    fireEvent.change(select, { target: { value: 'agnes/agnes-video-v2.0' } });
+
+    await waitFor(() => {
+      expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/media/video/config', expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ values: { defaultVideoModel: { provider: 'agnes', id: 'agnes-video-v2.0' } } }),
+      }));
     });
   });
 

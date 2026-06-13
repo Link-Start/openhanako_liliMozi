@@ -709,13 +709,17 @@ export class Hub {
           credentialLanes: credentialStatus.lanes,
           activeCredentialLaneId: credentialStatus.activeLaneId || null,
           activeCredentialProviderId: credentialStatus.activeProviderId || null,
-          models: provider.models.map((model) => ({
-            id: model.id,
-            name: model.displayName || model.name || model.id,
-            displayName: model.displayName || model.name || model.id,
-            protocolId: model.protocolId,
-            credentialLaneId: model.credentialLaneId,
-          })),
+          models: provider.models.map((model) => {
+            const name = model.displayName || model.name || model.id;
+            return {
+              ...model,
+              id: model.id,
+              name,
+              displayName: name,
+              protocolId: model.protocolId,
+              credentialLaneId: model.credentialLaneId,
+            };
+          }),
           availableModels: [],
         };
       }
@@ -746,6 +750,7 @@ export class Hub {
         return {
           providerId: resolved.providerId,
           modelId: resolved.model.id,
+          model: resolved.model,
           protocolId: resolved.model.protocolId,
           capability: resolved.capability,
           credentialLaneId: lane?.id || status.activeLaneId || null,
@@ -770,6 +775,7 @@ export class Hub {
           quality: payload.quality,
           model: payload.model,
           provider: payload.provider,
+          options: payload.options,
         };
       if (!textOrNull(input.prompt)) throw new Error("prompt is required");
       return bus.request("media-gen:submit-image", {

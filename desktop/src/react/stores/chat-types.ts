@@ -7,6 +7,7 @@
  */
 
 import type { FileVersion } from '../types';
+import type { ThinkingLevel } from './model-slice';
 
 // ── 工具调用 ──
 
@@ -310,6 +311,8 @@ export interface SessionModel {
   audioTransportSupported?: boolean;
   reasoning?: boolean;
   xhigh?: boolean;
+  thinkingLevels?: ThinkingLevel[];
+  defaultThinkingLevel?: ThinkingLevel;
   contextWindow?: number;
 }
 

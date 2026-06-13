@@ -234,6 +234,7 @@ Use `stageFile()` for plugin-generated local files. `createMediaDetails()` norma
 
 Provider plugins live in `providers/*.js` and require `trust: "full-access"`.
 The runtime package exposes provider types and `defineProvider()` for authoring, but the host loader still reads named exports from each provider file.
+Provider declarations are the canonical discovery layer for models and media capabilities. Media adapters execute a declared `protocolId`; adapter registration alone does not make a model discoverable in provider settings, default media model selectors, or media helper APIs.
 
 ```ts
 import { defineProvider } from '@hana/plugin-runtime';
@@ -279,6 +280,8 @@ export const { id, displayName, authType, runtime, capabilities } = provider;
 ```
 
 Keep chat and media capabilities explicit. Media-only providers should use `chat.projection = "none"`, and CLI providers must use structured argument bindings rather than shell command strings.
+
+Legacy image-generation plugins may still use `media-gen:register-adapter` as a compatibility execution path, but new plugins should not treat the `media-gen:*` namespace as the public provider API. Add a ProviderPlugin with `capabilities.media.*`, then keep adapter registration only for custom protocol execution until the host exposes a stable Adapter Plugin API.
 
 ## Pi SDK extensions
 

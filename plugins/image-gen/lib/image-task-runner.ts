@@ -81,6 +81,7 @@ export function buildImageParams(input) {
     ...(input.quality && { quality: input.quality }),
     ...(input.model && { model: input.model }),
     ...(image && { image }),
+    ...(input.options && typeof input.options === "object" && !Array.isArray(input.options) ? input.options : {}),
   };
 }
 
@@ -140,6 +141,7 @@ function targetFromAdapter(adapter, input, media: any = {}) {
     adapter,
     providerId: media.providerId || input.provider || adapter.id,
     modelId: media.modelId || input.model || null,
+    model: media.model || null,
     protocolId: media.protocolId || adapter.protocolId || null,
     credentialLaneId: media.credentialLaneId || null,
     credentialProviderId: media.credentialProviderId || media.providerId || input.provider || adapter.id,

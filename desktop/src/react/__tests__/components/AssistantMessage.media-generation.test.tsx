@@ -20,10 +20,15 @@ vi.mock('../../utils/screenshot', () => ({
 describe('AssistantMessage media generation placeholder', () => {
   beforeEach(() => {
     window.t = ((key: string) => key) as typeof window.t;
+    (window as any).platform = {
+      getFileUrl: (filePath: string) => `file://${filePath}`,
+      startDrag: vi.fn(),
+    };
     useStore.setState({
       agents: [],
       agentName: 'Hanako',
       agentYuan: 'hanako',
+      mediaViewer: null,
       streamingSessions: [],
       selectedMessageIdsBySession: {},
     } as never);
@@ -108,6 +113,45 @@ describe('AssistantMessage media generation placeholder', () => {
       status: 'pending',
       prompt: 'same prompt',
     }));
+  });
+
+  it('renders generated video files as media cards that open the media viewer and drag out the file', async () => {
+    const startDrag = vi.fn();
+    (window as any).platform = {
+      getFileUrl: (filePath: string) => `file://${filePath}`,
+      startDrag,
+    };
+
+    render(
+      <AssistantMessage
+        showAvatar={false}
+        sessionPath="/sessions/main.jsonl"
+        message={{
+          id: 'a1',
+          role: 'assistant',
+          blocks: [{
+            type: 'file',
+            fileId: 'sf_video',
+            filePath: '/tmp/generated/agnes.mp4',
+            label: 'agnes.mp4',
+            ext: 'mp4',
+            mime: 'video/mp4',
+            kind: 'video',
+          }],
+        }}
+      />,
+    );
+
+    const card = await screen.findByTestId('video-output-card');
+    expect(card.querySelector('video')).toBeInTheDocument();
+
+    fireEvent.click(card);
+    await waitFor(() => {
+      expect(useStore.getState().mediaViewer?.currentId).toContain('/tmp/generated/agnes.mp4');
+    });
+
+    fireEvent.dragStart(card);
+    expect(startDrag).toHaveBeenCalledWith('/tmp/generated/agnes.mp4');
   });
 
   it('isolates a malformed rich block without hiding sibling message blocks', () => {

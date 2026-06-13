@@ -80,6 +80,61 @@ describe("generate-image tool — metadata", () => {
     expect(description).toBeTruthy();
     expect(parameters.required).toContain("prompt");
   });
+
+  it("exposes a stable options object for provider-specific image parameters", () => {
+    expect(parameters.properties.options).toMatchObject({
+      type: "object",
+    });
+  });
+});
+
+describe("generate-video tool — metadata", () => {
+  it("exposes a stable options object for provider-specific video parameters", async () => {
+    const mod = await import("../plugins/image-gen/tools/generate-video.ts");
+    expect(mod.parameters.required).toContain("prompt");
+    expect(mod.parameters.properties.options).toMatchObject({
+      type: "object",
+    });
+  });
+});
+
+describe("describe-media-options tool", () => {
+  it("returns provider-contributed mode parameter schema without submitting generation", async () => {
+    const mod = await import("../plugins/image-gen/tools/describe-media-options.ts");
+    const request = vi.fn(async () => ({
+      providers: {
+        "jimeng-cli": {
+          providerId: "jimeng-cli",
+          displayName: "即梦 CLI",
+          models: [{
+            id: "seedance2.0_vip",
+            displayName: "Seedance 2.0 VIP",
+            modes: [{
+              id: "text2video",
+              parameterSchema: {
+                type: "object",
+                properties: {
+                  video_resolution: { type: "string", enum: ["720p", "1080p"] },
+                },
+              },
+              defaults: { video_resolution: "720p" },
+            }],
+          }],
+        },
+      },
+    }));
+
+    const result = await mod.execute({
+      kind: "video",
+      provider: "jimeng-cli",
+      model: "seedance2.0_vip",
+      mode: "text2video",
+    }, { bus: { request } });
+
+    expect(request).toHaveBeenCalledWith("provider:media-providers", { capability: "video_generation" });
+    const mediaOptions = result.details.mediaOptions as any;
+    expect(mediaOptions.mode.parameterSchema.properties.video_resolution.enum).toEqual(["720p", "1080p"]);
+  });
 });
 
 describe("generate-image tool — initialization guard", () => {

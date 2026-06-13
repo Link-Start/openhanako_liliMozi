@@ -343,6 +343,7 @@ export class Poller {
       generatedDir: this._generatedDir,
       bus: this._bus,
       log: this._log,
+      task,
     };
 
     let result;

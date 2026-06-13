@@ -46,7 +46,7 @@ import {
 } from "../../lib/session-files/session-file-registry.ts";
 import { serializeSessionFile } from "../../lib/session-files/session-file-response.ts";
 import { browserScreenshotPath } from "../../lib/session-files/browser-screenshot-file.ts";
-import { normalizeSessionThinkingLevel, modelSupportsXhigh } from "../../core/session-thinking-level.ts";
+import { getModelThinkingLevels, normalizeSessionThinkingLevel, modelSupportsXhigh, resolveModelDefaultThinkingLevel } from "../../core/session-thinking-level.ts";
 import {
   modelSupportsDirectAudioInput,
   modelSupportsDirectVideoInput,
@@ -1449,6 +1449,8 @@ export function createSessionsRoute(engine, hub = null) {
         currentModelAudioTransportSupported: modelSupportsDirectAudioInput(activeModel),
         currentModelReasoning: activeModel?.reasoning ?? null,
         currentModelXhigh: modelSupportsXhigh(activeModel),
+        currentModelThinkingLevels: activeModel ? getModelThinkingLevels(activeModel) : null,
+        currentModelDefaultThinkingLevel: activeModel ? resolveModelDefaultThinkingLevel(activeModel) : null,
         currentModelContextWindow: activeModel?.contextWindow ?? null,
         // #1624：restore 时算好的工具/prompt 漂移提示（无漂移或已 dismiss → null）
         capabilityDrift: engine.getSessionCapabilityDriftNotice?.(sessionPath) || null,

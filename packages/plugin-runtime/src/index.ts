@@ -218,6 +218,28 @@ export interface HanaProviderChatCapability {
   [key: string]: unknown;
 }
 
+export interface HanaMediaReferenceImageLimits {
+  min?: number;
+  max?: number;
+  [key: string]: unknown;
+}
+
+export interface HanaMediaInputLimits {
+  referenceImages?: HanaMediaReferenceImageLimits;
+  [key: string]: unknown;
+}
+
+export interface HanaProviderMediaMode {
+  id: string;
+  label?: string;
+  parameterSchema?: JsonSchema;
+  defaults?: Record<string, unknown>;
+  inputLimits?: HanaMediaInputLimits;
+  pricing?: Record<string, unknown>;
+  agentHints?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface HanaProviderMediaModel {
   id: string;
   displayName?: string;
@@ -227,6 +249,10 @@ export interface HanaProviderMediaModel {
   supportsEdit?: boolean;
   aliases?: string[];
   credentialLaneId?: string;
+  modes?: HanaProviderMediaMode[];
+  parameterSchema?: JsonSchema;
+  defaults?: Record<string, unknown>;
+  inputLimits?: HanaMediaInputLimits;
   [key: string]: unknown;
 }
 
@@ -406,6 +432,8 @@ export interface HanaGenerateImageInput {
   ratio?: string;
   resolution?: string;
   quality?: string;
+  mode?: string;
+  options?: Record<string, unknown>;
   model?: string;
   provider?: string;
   input?: Record<string, unknown>;
@@ -418,9 +446,13 @@ export interface HanaGenerateImageInput {
 export interface HanaGenerateVideoInput {
   sessionPath?: string;
   prompt: string;
-  image?: string;
+  image?: HanaGenerateImageReference | HanaGenerateImageReference[] | string;
+  referenceImages?: HanaGenerateImageReference[];
   duration?: number;
   ratio?: string;
+  resolution?: string;
+  mode?: string;
+  options?: Record<string, unknown>;
   model?: string;
   provider?: string;
   input?: Record<string, unknown>;
@@ -437,6 +469,16 @@ export interface HanaGenerateMediaInput {
   sessionPath?: string;
   fileId?: string;
   prompt?: string;
+  image?: HanaGenerateImageReference | HanaGenerateImageReference[] | string;
+  referenceImages?: HanaGenerateImageReference[];
+  duration?: number;
+  ratio?: string;
+  resolution?: string;
+  quality?: string;
+  mode?: string;
+  options?: Record<string, unknown>;
+  model?: string;
+  provider?: string;
   delivery?: HanaMediaDelivery;
   deliveryMode?: string;
   input?: Record<string, unknown>;

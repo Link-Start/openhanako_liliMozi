@@ -17,7 +17,7 @@ import {
   resolveModelVideoInputTransport,
 } from "../../shared/model-capabilities.ts";
 import { callText } from "../../core/llm-client.ts";
-import { modelSupportsXhigh } from "../../core/session-thinking-level.ts";
+import { getModelThinkingLevels, modelSupportsXhigh, resolveModelDefaultThinkingLevel } from "../../core/session-thinking-level.ts";
 
 const HEALTH_CHECK_PROMPT = "Reply exactly OK.";
 const HEALTH_CHECK_MAX_TOKENS = 128;
@@ -91,6 +91,8 @@ function serializeModelInfo(model, { current = null, overrides = null } = {}) {
     audioTransport,
     audioTransportSupported: modelSupportsDirectAudioInput(model),
     reasoning: model.reasoning,
+    thinkingLevels: getModelThinkingLevels(model),
+    defaultThinkingLevel: resolveModelDefaultThinkingLevel(model),
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
     ...(modelSupportsXhigh(model) ? { xhigh: true } : {}),

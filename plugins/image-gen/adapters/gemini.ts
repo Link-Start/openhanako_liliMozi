@@ -7,8 +7,11 @@ import {
 import { t } from "../../../lib/i18n.ts";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const GEMINI_SUPPORTED_RATIOS = new Set(["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]);
-const GEMINI_SUPPORTED_IMAGE_SIZES = new Set(["1K", "2K", "4K"]);
+const GEMINI_25_RATIOS = ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+const GEMINI_31_FLASH_RATIOS = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"];
+const GEMINI_3_PRO_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+const GEMINI_3_SIZES = ["1K", "2K", "4K"];
+const GEMINI_31_FLASH_SIZES = ["512", ...GEMINI_3_SIZES];
 
 async function getCredentials(ctx, params: any = {}) {
   const providerId = params.credentialProviderId || params.providerId || "gemini";
@@ -36,28 +39,59 @@ function collectInlineImages(data) {
   return images;
 }
 
-function normalizeGeminiAspectRatio(value) {
+function geminiImageCapabilities(modelId) {
+  const id = String(modelId || "").toLowerCase();
+  if (id.includes("3.1-flash")) {
+    return {
+      ratios: new Set(GEMINI_31_FLASH_RATIOS),
+      imageSizes: new Set(GEMINI_31_FLASH_SIZES),
+      maxReferenceImages: 14,
+      supportsImageSize: true,
+    };
+  }
+  if (id.includes("3-pro")) {
+    return {
+      ratios: new Set(GEMINI_3_PRO_RATIOS),
+      imageSizes: new Set(GEMINI_3_SIZES),
+      maxReferenceImages: 14,
+      supportsImageSize: true,
+    };
+  }
+  return {
+    ratios: new Set(GEMINI_25_RATIOS),
+    imageSizes: new Set(),
+    maxReferenceImages: 3,
+    supportsImageSize: false,
+  };
+}
+
+function normalizeGeminiAspectRatio(value, capabilities) {
   if (!value) return null;
   const ratio = String(value).trim();
-  if (GEMINI_SUPPORTED_RATIOS.has(ratio)) return ratio;
+  if (capabilities.ratios.has(ratio)) return ratio;
   throw new Error(`Gemini image ratio "${ratio}" is unsupported`);
 }
 
-function normalizeGeminiImageSize(value, fieldName) {
+function normalizeGeminiImageSize(value, fieldName, capabilities, modelId) {
   if (!value) return null;
+  if (!capabilities.supportsImageSize) {
+    throw new Error(`Gemini 2.5 image model "${modelId}" does not support image size`);
+  }
   const raw = String(value).trim();
   const normalized = raw.toUpperCase();
-  if (GEMINI_SUPPORTED_IMAGE_SIZES.has(normalized)) return normalized;
+  const canonical = normalized === "0.5K" ? "512" : normalized;
+  if (capabilities.imageSizes.has(canonical)) return canonical;
   throw new Error(`Gemini image ${fieldName} "${raw}" is unsupported`);
 }
 
-function normalizeGeminiImageConfig(params) {
+function normalizeGeminiImageConfig(params, modelId) {
+  const capabilities = geminiImageCapabilities(modelId);
   const imageConfig: any = {};
-  const aspectRatio = normalizeGeminiAspectRatio(params.aspect_ratio || params.aspectRatio || params.ratio);
+  const aspectRatio = normalizeGeminiAspectRatio(params.aspect_ratio || params.aspectRatio || params.ratio, capabilities);
   if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
 
-  const size = normalizeGeminiImageSize(params.size, "size");
-  const resolution = normalizeGeminiImageSize(params.resolution, "resolution");
+  const size = normalizeGeminiImageSize(params.size, "size", capabilities, modelId);
+  const resolution = normalizeGeminiImageSize(params.resolution, "resolution", capabilities, modelId);
   if (size && resolution && size !== resolution) {
     throw new Error(`Gemini image size "${params.size}" conflicts with resolution "${params.resolution}"`);
   }
@@ -94,8 +128,8 @@ export const geminiImageAdapter = {
   name: "Gemini Image",
   types: ["image"],
   capabilities: {
-    ratios: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
-    resolutions: ["1K", "2K", "4K"],
+    ratios: [...new Set([...GEMINI_31_FLASH_RATIOS, ...GEMINI_3_PRO_RATIOS, ...GEMINI_25_RATIOS])],
+    resolutions: ["512", "1K", "2K", "4K"],
   },
 
   async checkAuth(ctx) {
@@ -110,13 +144,18 @@ export const geminiImageAdapter = {
   async submit(params, ctx) {
     const creds = await getCredentials(ctx, params);
     const modelId = params.modelId || params.model || "gemini-3.1-flash-image-preview";
+    const capabilities = geminiImageCapabilities(modelId);
+    const inputImages = normalizeImageInput(params.image);
+    if (inputImages.length > capabilities.maxReferenceImages) {
+      throw new Error(`Gemini model "${modelId}" supports at most ${capabilities.maxReferenceImages} reference images`);
+    }
     const parts: any[] = [{ text: params.prompt }];
-    for (const image of normalizeImageInput(params.image)) {
+    for (const image of inputImages) {
       const part = await imagePart(image);
       if (part) parts.push(part as any);
     }
 
-    const imageConfig = normalizeGeminiImageConfig(params);
+    const imageConfig = normalizeGeminiImageConfig(params, modelId);
 
     const body = {
       contents: [{ parts }],

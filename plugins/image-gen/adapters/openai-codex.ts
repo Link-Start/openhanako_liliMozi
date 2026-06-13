@@ -202,7 +202,11 @@ export const openaiCodexImageAdapter = {
 
     const quality = params.quality || providerDefaults?.quality;
     if (quality) tool.quality = quality;
-    if (providerDefaults?.background) tool.background = providerDefaults.background;
+    const background = params.background || providerDefaults?.background;
+    if (background) tool.background = background;
+    if (params.output_compression !== undefined || providerDefaults?.output_compression !== undefined) {
+      tool.output_compression = params.output_compression ?? providerDefaults.output_compression;
+    }
 
     const content: any[] = [{ type: "input_text", text: params.prompt }];
     for (const imageUrl of normalizeImages(params.image)) {

@@ -552,6 +552,8 @@ export async function switchSession(path: string): Promise<void> {
         audioTransportSupported: data.currentModelAudioTransportSupported ?? undefined,
         reasoning: data.currentModelReasoning ?? undefined,
         xhigh: data.currentModelXhigh ?? undefined,
+        thinkingLevels: Array.isArray(data.currentModelThinkingLevels) ? data.currentModelThinkingLevels : undefined,
+        defaultThinkingLevel: data.currentModelDefaultThinkingLevel ?? undefined,
         contextWindow: data.currentModelContextWindow ?? undefined,
       });
     }
