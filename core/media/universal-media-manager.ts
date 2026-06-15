@@ -17,13 +17,7 @@ import {
   retryImageTask,
 } from "../../plugins/image-gen/lib/image-task-runner.ts";
 import { resolveMediaParameters } from "./media-parameters.ts";
-import { volcengineImageAdapter } from "../../plugins/image-gen/adapters/volcengine.ts";
-import { openaiImageAdapter } from "../../plugins/image-gen/adapters/openai.ts";
-import { openaiCodexImageAdapter } from "../../plugins/image-gen/adapters/openai-codex.ts";
-import { minimaxImageAdapter } from "../../plugins/image-gen/adapters/minimax.ts";
-import { dashscopeImageAdapter } from "../../plugins/image-gen/adapters/dashscope.ts";
-import { geminiImageAdapter } from "../../plugins/image-gen/adapters/gemini.ts";
-import { agnesImageAdapter, agnesVideoAdapter } from "../../plugins/image-gen/adapters/agnes.ts";
+import { builtinImageGenAdapters } from "../../plugins/image-gen/builtin-adapters.ts";
 
 const log = createModuleLogger("media");
 const IMAGE_CAPABILITY = "image_generation";
@@ -317,16 +311,7 @@ export class UniversalMediaManager {
   }
 
   _registerBuiltinAdapters() {
-    for (const adapter of [
-      volcengineImageAdapter,
-      openaiImageAdapter,
-      openaiCodexImageAdapter,
-      minimaxImageAdapter,
-      dashscopeImageAdapter,
-      geminiImageAdapter,
-      agnesImageAdapter,
-      agnesVideoAdapter,
-    ]) {
+    for (const adapter of builtinImageGenAdapters) {
       this.registerAdapter(adapter);
     }
   }

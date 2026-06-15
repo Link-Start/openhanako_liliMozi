@@ -373,6 +373,27 @@ describe("UniversalMediaManager adapter registration bus contract", () => {
     }
   });
 
+  it("registers the shared image-gen built-in adapter list in the native media runtime", async () => {
+    const root = makeRoot();
+    roots.push(root);
+    const { builtinImageGenAdapters } = await import("../plugins/image-gen/builtin-adapters.ts");
+    const manager = new UniversalMediaManager({
+      hanakoHome: root,
+      preferences: makePreferences(root),
+      providerRegistry: {
+        getMediaProviders: () => [],
+        resolveMediaModel: () => {
+          throw new Error("not configured");
+        },
+      },
+      registerSessionFile: () => {},
+    });
+
+    const expectedIds = builtinImageGenAdapters.map((adapter) => adapter.id).sort();
+    const actualIds = manager.registry.list().map((adapter) => adapter.id).sort();
+    expect(actualIds).toEqual(expectedIds);
+  });
+
   it("accepts module loggers that expose log/warn/error but no info method", () => {
     const root = makeRoot();
     roots.push(root);

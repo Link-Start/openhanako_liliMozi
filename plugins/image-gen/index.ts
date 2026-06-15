@@ -4,12 +4,7 @@ import fs from "node:fs";
 import { AdapterRegistry } from "./lib/adapter-registry.ts";
 import { TaskStore } from "./lib/task-store.ts";
 import { Poller } from "./lib/poller.ts";
-import { volcengineImageAdapter } from "./adapters/volcengine.ts";
-import { openaiImageAdapter } from "./adapters/openai.ts";
-import { openaiCodexImageAdapter } from "./adapters/openai-codex.ts";
-import { minimaxImageAdapter } from "./adapters/minimax.ts";
-import { dashscopeImageAdapter } from "./adapters/dashscope.ts";
-import { geminiImageAdapter } from "./adapters/gemini.ts";
+import { builtinImageGenAdapters } from "./builtin-adapters.ts";
 import { submitImageGeneration } from "./lib/submit-image.ts";
 
 export default class ImageGenPlugin {
@@ -49,12 +44,9 @@ export default class ImageGenPlugin {
     });
 
     // Built-in adapters
-    registry.register(volcengineImageAdapter);
-    registry.register(openaiImageAdapter);
-    registry.register(openaiCodexImageAdapter);
-    registry.register(minimaxImageAdapter);
-    registry.register(dashscopeImageAdapter);
-    registry.register(geminiImageAdapter);
+    for (const adapter of builtinImageGenAdapters) {
+      registry.register(adapter);
+    }
 
     // Attach to ctx for tools
     this.ctx._mediaGen = { registry, store, poller, generatedDir };
