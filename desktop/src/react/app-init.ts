@@ -10,7 +10,7 @@
 import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
 import { applyAgentIdentity, loadAgents, loadAvatars } from './stores/agent-actions';
-import { loadSessions, switchSession } from './stores/session-actions';
+import { loadPendingNewSessionPermissionDefault, loadSessions, switchSession } from './stores/session-actions';
 import { initSessionProjectCatalog } from './stores/session-project-actions';
 import { connectWebSocket, getWebSocket } from './services/websocket';
 import { setStatus, loadModels } from './utils/ui-helpers';
@@ -228,6 +228,7 @@ export async function initApp(): Promise<void> {
 
   // 10. 加载 agents + sessions
   useStore.setState({ pendingNewSession: true });
+  await loadPendingNewSessionPermissionDefault();
   await loadAgents();
   await loadSessions();
 

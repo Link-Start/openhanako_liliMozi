@@ -269,6 +269,10 @@ function jsonResponse(body: unknown, ok = true): Response {
   return { ok, json: async () => body } as unknown as Response;
 }
 
+function mockPermissionDefault(mode = 'ask') {
+  mockFetch.mockResolvedValueOnce(jsonResponse({ permissionMode: mode }));
+}
+
   describe('session-actions', () => {
   beforeEach(() => {
     Object.keys(mockState).forEach(k => delete mockState[k]);
@@ -544,6 +548,7 @@ function jsonResponse(body: unknown, ok = true): Response {
       (mockState as Record<string, unknown>).deskFiles = [{ name: 'stale.md' }];
       (mockState as Record<string, unknown>).deskJianContent = 'stale';
       (mockState as Record<string, unknown>).homeFolder = '/workspace/AgentHome';
+      mockPermissionDefault();
 
       await createNewSession();
 
@@ -561,6 +566,7 @@ function jsonResponse(body: unknown, ok = true): Response {
       (mockState as Record<string, unknown>).deskBasePath = '/workspace/current-session';
       (mockState as Record<string, unknown>).deskCurrentPath = 'notes';
       (mockState as Record<string, unknown>).deskFiles = [{ name: 'stale.md' }];
+      mockPermissionDefault();
 
       await createNewSession();
 
@@ -578,6 +584,7 @@ function jsonResponse(body: unknown, ok = true): Response {
       let resolveSwitch!: (r: Response) => void;
       const switchResponse = new Promise<Response>(resolve => { resolveSwitch = resolve; });
       mockFetch.mockImplementationOnce(() => switchResponse);
+      mockPermissionDefault();
 
       const switching = switchSession('/session/desktop.jsonl');
       await createNewSession();
@@ -790,6 +797,8 @@ function jsonResponse(body: unknown, ok = true): Response {
     });
 
     it('carries an explicit project id from the new-session draft into session creation', async () => {
+      mockPermissionDefault();
+
       await createNewSession({ projectId: 'project-hana', cwd: '/workspace/project-hana' });
       mockFetch.mockResolvedValueOnce(jsonResponse({
         ok: true,

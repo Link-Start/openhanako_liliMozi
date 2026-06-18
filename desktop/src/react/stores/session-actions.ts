@@ -778,6 +778,20 @@ interface CreateNewSessionOptions {
   cwd?: string | null;
 }
 
+export async function loadPendingNewSessionPermissionDefault(): Promise<SessionPermissionMode> {
+  try {
+    const res = await hanaFetch('/api/preferences/session-permission-default');
+    const data = await res.json();
+    const mode = normalizeSessionPermissionMode(data.permissionMode);
+    if (isPendingNewSessionDraftView()) emitSessionPermissionMode(mode);
+    return mode;
+  } catch (err) {
+    console.warn('[session] load permission default failed:', err);
+    if (isPendingNewSessionDraftView()) emitSessionPermissionMode('ask');
+    return 'ask';
+  }
+}
+
 export async function createNewSession(options: CreateNewSessionOptions = {}): Promise<void> {
   // Entering the pending new-session workspace is a navigation boundary.
   // Any in-flight switchSession response now belongs to the previous view.
@@ -824,14 +838,7 @@ export async function createNewSession(options: CreateNewSessionOptions = {}): P
 
   // 重置 context ring
   useStore.setState({ contextTokens: null, contextWindow: null, contextPercent: null });
-  try {
-    const res = await hanaFetch('/api/preferences/session-permission-default');
-    const data = await res.json();
-    const mode = data.permissionMode || 'ask';
-    if (isPendingNewSessionDraftView()) emitSessionPermissionMode(mode);
-  } catch {
-    if (isPendingNewSessionDraftView()) emitSessionPermissionMode('ask');
-  }
+  await loadPendingNewSessionPermissionDefault();
 
   try {
     const res = await hanaFetch('/api/session-thinking-level');
