@@ -34,13 +34,13 @@ function selectorsWithPointerAuto(css: string): string[] {
 }
 
 describe('ChatTimelineNavigator layout', () => {
-  it('does not let the hover rail or expanded card steal clicks from chat content', () => {
+  it('keeps the idle rail click-through while allowing the expanded card to hold hover', () => {
     const css = readChatCss();
     const navBlock = cssBlock(css, '.timelineNav');
     const pointerAutoSelectors = selectorsWithPointerAuto(css);
 
     expect(navBlock).toMatch(/pointer-events:\s*none/);
-    expect(pointerAutoSelectors.some(selector => selector.includes('.timelineNavExpanded .timelineCard'))).toBe(false);
+    expect(pointerAutoSelectors.some(selector => selector.includes('.timelineNavExpanded .timelineCard'))).toBe(true);
     expect(pointerAutoSelectors.some(selector => selector.includes('.timelineNavExpanded .timelineMarker'))).toBe(false);
     expect(pointerAutoSelectors.some(selector => selector.includes('.timelineNavExpanded .timelineLabel'))).toBe(true);
     expect(pointerAutoSelectors.some(selector => selector.includes('.timelineLine'))).toBe(true);

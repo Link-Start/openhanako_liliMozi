@@ -41,6 +41,23 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
   const [cardHover, setCardHover] = useState(false);
   const rafRef = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const hoverCloseTimerRef = useRef<number | null>(null);
+
+  const openHoverCard = useCallback(() => {
+    if (hoverCloseTimerRef.current != null) {
+      window.clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+    setCardHover(true);
+  }, []);
+
+  const closeHoverCardSoon = useCallback(() => {
+    if (hoverCloseTimerRef.current != null) window.clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = window.setTimeout(() => {
+      hoverCloseTimerRef.current = null;
+      setCardHover(false);
+    }, 120);
+  }, []);
 
   const measure = useCallback(() => {
     const panel = scrollRef.current;
@@ -127,6 +144,13 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
     };
   }, [active, scrollRef, updateActive]);
 
+  useEffect(() => () => {
+    if (hoverCloseTimerRef.current != null) {
+      window.clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+  }, []);
+
   const jumpTo = useCallback((anchor: TimelineAnchor) => {
     const panel = scrollRef.current;
     const layout = layouts[anchor.messageId];
@@ -173,6 +197,8 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
       <div
         className={styles.timelineCard}
         style={cardVars}
+        onPointerEnter={openHoverCard}
+        onPointerLeave={closeHoverCardSoon}
       >
         <div className={styles.timelineList} ref={listRef}>
           {renderedAnchors.map((anchor) => {
@@ -192,15 +218,15 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
                 aria-label={(window.t?.('chat.timeline.jumpTo') || 'Jump to {label}').replace('{label}', anchor.label)}
                 title={anchor.label}
                 onFocus={() => setFocusOpen(true)}
-                onMouseEnter={() => setCardHover(true)}
-                onMouseLeave={() => setCardHover(false)}
+                onMouseEnter={openHoverCard}
+                onMouseLeave={closeHoverCardSoon}
                 onClick={() => jumpTo(anchor)}
               >
                 <span className={styles.timelineLabel}>{anchor.label}</span>
                 <span
                   className={styles.timelineLine}
                   aria-hidden="true"
-                  onMouseEnter={() => setCardHover(true)}
+                  onMouseEnter={openHoverCard}
                 />
               </button>
             );
