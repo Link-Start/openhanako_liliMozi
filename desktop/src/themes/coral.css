@@ -5,9 +5,9 @@
 
 [data-theme="coral"] {
     /* 背景 */
-    --bg:           #FDFDFB;
-    --bg-card:      #FCF5E5;
-    --bg-glass:     rgba(252, 245, 229, 0.92);
+    --bg:           #FFF3EE;
+    --bg-card:      #FFFFFF;
+    --bg-glass:     rgba(255, 255, 255, 0.92);
 
     /* 主色调 */
     --accent:       #F07860;
@@ -29,7 +29,7 @@
     --coral:        #F07860;
 
     /* 侧边栏 */
-    --sidebar-bg:   #FCF5E5;
+    --sidebar-bg:   #FDEAE3;
 
     /* 便笺 */
     --jian-note-bg:     #FFF8EA;
@@ -43,7 +43,7 @@
     --tool-bg:      rgba(240, 120, 96, 0.06);
     --tool-text:    #314153;
     --user-bg:      rgba(240, 120, 96, 0.08);
-    --drop-overlay-bg: rgba(253, 253, 251, 0.86);
+    --drop-overlay-bg: rgba(255, 243, 238, 0.86);
     --attach-bg:    rgba(26, 48, 73, 0.04);
 
     /* 辅助色 */
