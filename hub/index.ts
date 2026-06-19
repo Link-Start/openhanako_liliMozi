@@ -784,34 +784,6 @@ export class Hub {
       }
     }));
 
-    this._sessionHandlerCleanups.push(bus.handle("media:generate-image", async (payload: any = {}) => {
-      const sessionPath = textOrNull(payload.sessionPath);
-      if (!sessionPath) throw new Error("sessionPath is required");
-      const input = payload.input && typeof payload.input === "object"
-        ? payload.input
-        : {
-          prompt: payload.prompt,
-          count: payload.count,
-          image: payload.image,
-          ratio: payload.ratio,
-          resolution: payload.resolution,
-          quality: payload.quality,
-          model: payload.model,
-          provider: payload.provider,
-          options: payload.options,
-        };
-      if (!textOrNull(input.prompt)) throw new Error("prompt is required");
-      return bus.request("media-gen:submit-image", {
-        input,
-        sessionPath,
-        metadata: {
-          ...(payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
-          ...(textOrNull(payload.pluginId) ? { pluginId: textOrNull(payload.pluginId) } : {}),
-        },
-        ...(payload.deliveryTarget !== undefined ? { deliveryTarget: payload.deliveryTarget } : {}),
-      });
-    }));
-
     this._sessionHandlerCleanups.push(bus.handle("provider:add-media-model", async ({
       providerId,
       capability = "image_generation",

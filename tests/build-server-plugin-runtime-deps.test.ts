@@ -89,6 +89,15 @@ describe("bundled plugin runtime dependencies", () => {
     expect(fs.existsSync(path.join(outDir, "plugins", "mcp", "index.js"))).toBe(false);
   });
 
+  it("includes host modules used by the bundled media generation plugin", async () => {
+    const deps = await collectBundledPluginRuntimeDependencies({ rootDir: path.resolve(".") });
+
+    expect(deps).toEqual(expect.arrayContaining([
+      path.join("core", "media", "media-parameters.ts"),
+      path.join("lib", "i18n.ts"),
+    ]));
+  });
+
   it("collects npm packages imported by bundled plugin source for packaged server installs", async () => {
     fs.mkdirSync(path.join(rootDir, "plugins", "beautify", "lib"), { recursive: true });
     fs.writeFileSync(

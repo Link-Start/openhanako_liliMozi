@@ -26,7 +26,7 @@
  *   { type: "jian_update", content: "..." }
  *   { type: "devlog", text: "...", level: "info"|"heartbeat"|"error" }
  *   { type: "activity_update", activity: { id, type, startedAt, finishedAt, summary, sessionFile, status } }
- *   { type: "content_block", block: { type: "file"|"media_generation"|"artifact"|"screenshot"|"skill"|"plugin_card"|"suggestion_card"|"cron_confirm"|"settings_confirm"|"settings_update", ... } }  (工具结果统一内容块，含 stage_files/image-gen 占位与完成替换/旧 create_artifact 兼容输出/browser screenshot/install_skill/plugin card/建议卡片/cron 兼容确认/settings 确认/设置结果)
+ *   { type: "content_block", block: { type: "file"|"media_generation"|"artifact"|"screenshot"|"skill"|"plugin_card"|"suggestion_card"|"cron_confirm"|"settings_confirm"|"settings_update", ... } }  (工具结果统一内容块，含 stage_files/media_generation 占位与完成替换/旧 create_artifact 兼容输出/browser screenshot/install_skill/plugin card/建议卡片/cron 兼容确认/settings 确认/设置结果)
  *   { type: "session_user_message", sessionPath: "...", message: { text, attachments?, quotedText?, skills?, deskContext? } }  (桌面/RC 统一用户消息，参与 stream_resume)
  *   { type: "confirmation_resolved", confirmId: "...", action: "confirmed"|"rejected", value?: any }  (用户操作确认卡片后广播，前端更新卡片状态)
  *   { type: "block_update", taskId: "...", patch: { streamStatus: "done"|"failed", summary?: "..." } }  (活跃 block 状态更新)

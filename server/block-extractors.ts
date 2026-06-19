@@ -65,6 +65,11 @@ export const BLOCK_EXTRACTORS = {
     }];
   },
 
+  "media_generate-image": (details) => extractMediaGenerationBlocks(details, "image"),
+
+  "media_generate-video": (details) => extractMediaGenerationBlocks(details, "video"),
+
+  // COMPAT(v0.332): Historical sessions may contain old image-gen tool result names.
   "image-gen_generate-image": (details) => extractMediaGenerationBlocks(details, "image"),
 
   "image-gen_generate-video": (details) => extractMediaGenerationBlocks(details, "video"),

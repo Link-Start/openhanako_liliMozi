@@ -288,7 +288,7 @@ export function createDeskRoute(engine, hub) {
       "请按这个顺序完成：",
       "1. 阅读目标 Markdown 文件，理解文章内容和情绪。",
       "2. 你自己写一条给生图模型使用的英文提示词。",
-      "3. 调用 image-gen_generate-image 生成 1 张图片，ratio 固定传 3:2，resolution 传 2k。",
+      "3. 调用 media_generate-image 生成 1 张图片，ratio 固定传 3:2，resolution 传 2k。",
       "4. 调用 check_pending_tasks 查询本会话的图片生成任务；如果任务还没完成，停止当前轮次并说明 cover 会在后台任务完成后继续处理。",
       "5. 图片生成成功后，从 resolved 结果的 sessionFiles[0].filePath 取生成图片绝对路径。",
       "6. 调用 beautify_create-cover，把生成图片应用到 Markdown：",

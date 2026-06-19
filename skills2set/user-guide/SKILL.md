@@ -402,7 +402,7 @@ HanaAgent 现在统一用 SessionFile 管理文件。桌面附件、生成图片
 
 ### 图片和视频生成
 
-HanaAgent 自带 image-gen 系统插件。进入设置 → 多媒体配置图片生成 Provider 和默认模型。对话中让 HanaAgent 生成图片或视频时，任务会以插件卡片显示，完成后文件会进入统一的文件流，可以在桌面预览，也可以通过 Bridge 发送。
+HanaAgent 自带 Media Generation 能力。进入设置 → 多媒体配置图片生成 Provider 和默认模型。对话中让 HanaAgent 生成图片或视频时，任务会以媒体生成占位块显示，完成后文件会进入统一的文件流，可以在桌面预览，也可以通过 Bridge 发送。
 
 ### 实用技巧：让 HanaAgent 帮你写技能
 

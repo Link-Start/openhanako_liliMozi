@@ -1,6 +1,6 @@
 import { inferMediaMode } from "../../../core/media/media-parameters.ts";
 
-export const name = "describe-media-options";
+export const name = "describe-options";
 export const description = "Describe installed image/video generation providers, models, modes, and provider-specific optional parameters before choosing advanced options.";
 
 export const parameters = {

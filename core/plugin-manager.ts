@@ -22,6 +22,16 @@ const PLUGIN_SOURCE_EXTS = [".ts", ".js"];
 function isPluginSourceFile(filename) {
   return PLUGIN_SOURCE_EXTS.some((ext) => filename.endsWith(ext));
 }
+
+function hasSkillSourceEntry(skillsDir) {
+  if (!fs.existsSync(skillsDir)) return false;
+  for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".md")) return true;
+    if (entry.isDirectory() && fs.existsSync(path.join(skillsDir, entry.name, "SKILL.md"))) return true;
+  }
+  return false;
+}
+
 function resolvePluginEntry(pluginDir) {
   for (const ext of PLUGIN_SOURCE_EXTS) {
     const p = path.join(pluginDir, `index${ext}`);
@@ -919,7 +929,7 @@ export class PluginManager {
 
   async _loadSkillPaths(entry) {
     const skillsDir = path.join(entry.pluginDir, "skills");
-    if (!fs.existsSync(skillsDir)) return;
+    if (!hasSkillSourceEntry(skillsDir)) return;
     this._skillPaths.push({
       dirPath: skillsDir,
       label: `plugin:${entry.id}`,

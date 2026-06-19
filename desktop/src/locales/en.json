@@ -2858,8 +2858,8 @@
       "description": "Generate images from text descriptions. Non-blocking: returns immediately after submission, displays automatically when complete.",
       "promptDesc": "Image description (Chinese or English)",
       "countDesc": "Number of concurrent generations, default 1, max 9",
-      "imageDesc": "Reference image path (image-to-image)",
-      "referenceImagesDesc": "Array of reference image paths. Use this for multiple references; single-image calls can keep using image. The selected adapter may cap the count with maxReferenceImages.",
+      "imageDesc": "Reference image for image-to-image. Prefer a current-session object like { kind: \"session_file\", fileId }.",
+      "referenceImagesDesc": "Array of reference images. Prefer current-session objects like { kind: \"session_file\", fileId }. Use this for multiple references; single-image calls can keep using image.",
       "ratioDesc": "Aspect ratio: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 21:9",
       "resolutionDesc": "Unified resolution tier: 1k, 2k, 4k; adapter maps to the closest vendor size",
       "qualityDesc": "Quality tier: low, medium, high, auto (adapter maps to vendor parameters)",
@@ -2872,7 +2872,7 @@
     "generateVideo": {
       "description": "Generate videos from text descriptions. Non-blocking: returns immediately after submission, displays automatically when complete.",
       "promptDesc": "Video description (Chinese or English)",
-      "imageDesc": "Reference image path (image-to-video)",
+      "imageDesc": "Reference image for image-to-video. Prefer a current-session object like { kind: \"session_file\", fileId }.",
       "durationDesc": "Video duration 4-15 seconds (default 5)",
       "ratioDesc": "Aspect ratio: 1:1, 16:9, 9:16, 4:3, 3:4, 21:9",
       "modelDesc": "Model version: seedance2.0, seedance2.0fast (default seedance2.0)",
@@ -2920,13 +2920,13 @@
       "pixelHeightDesc": "Image pixel height, optional; the tool will try to read it from the image header if not provided.",
       "targetFilePathRequired": "An explicit absolute path to a Markdown file is required; if initiated from a regular chat, please confirm the target file path first.",
       "mustBeMarkdown": "Target file must be a .md Markdown file.",
-      "generatedFilePathRequired": "An absolute path to an existing image (generatedFilePath) is required. Please call image-gen_generate-image first and wait for the task to complete, or select a built-in/local image, then pass the image filePath to this tool.",
+      "generatedFilePathRequired": "An absolute path to an existing image (generatedFilePath) is required. Please call media_generate-image first and wait for the task to complete, or select a built-in/local image, then pass the image filePath to this tool.",
       "applied": "Image applied as Markdown cover and written to frontmatter.",
       "failed": "Failed to apply cover: {error}"
     },
     "listCapabilities": {
       "description": "List the aesthetic enhancement capabilities currently supported by the Beautify tool.",
-      "text": "Beautify currently offers two capabilities. 1) Markdown cover workflow: read the cover style guide first, prepare an image (from image-gen, a future built-in gallery, or a local file), then copy it into the attachments folder and write the cover frontmatter. 2) Full-page HTML aesthetic guide: before generating web pages / typeset pages / reports, call beautify_get-html-style-guide for Hana's default art direction (no-arg call returns the router, then fetch sections on demand)."
+      "text": "Beautify currently offers two capabilities. 1) Markdown cover workflow: read the cover style guide first, prepare an image (from Media Generation, a future built-in gallery, or a local file), then copy it into the attachments folder and write the cover frontmatter. 2) Full-page HTML aesthetic guide: before generating web pages / typeset pages / reports, call beautify_get-html-style-guide for Hana's default art direction (no-arg call returns the router, then fetch sections on demand)."
     }
   },
   "cli": {
@@ -3082,7 +3082,7 @@
       "providerUnavailableDetail": "Specified image generation provider \"{providerId}\" is unavailable: {detail}",
       "modelUnavailable": "Specified image generation model \"{modelId}\" is unavailable",
       "modelUnavailableDetail": "Specified image generation model \"{modelId}\" is unavailable: {detail}",
-      "modePassedAsModel": "\"{modeId}\" is a mode, not a model. For default generation, omit model; if you truly need to choose a mode, use the mode field or call describe-media-options first to confirm the available model and mode.",
+      "modePassedAsModel": "\"{modeId}\" is a mode, not a model. For default generation, omit model; if you truly need to choose a mode, use the mode field or call media_describe-options first to confirm the available model and mode.",
       "noConfiguredModel": "no configured image generation model available",
       "modelNotFound": "model not found: {modelId}",
       "noRegisteredProtocol": "no registered protocol: {protocolId}",

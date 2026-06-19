@@ -100,7 +100,7 @@ describe("scan", () => {
 });
 
 describe("loadAll", () => {
-  it("loads real bundled image-gen, beautify, mcp, and office plugin contributions", async () => {
+  it("loads real bundled media, image-gen, beautify, mcp, and office plugin contributions", async () => {
     const pm = new PluginManager({
       pluginsDirs: [path.resolve("plugins")],
       dataDir,
@@ -120,7 +120,7 @@ describe("loadAll", () => {
       await pm.loadAll();
 
       const diagnosticsById = new Map(pm.getDiagnostics().map((entry) => [entry.id, entry]));
-      for (const id of ["image-gen", "beautify", "mcp", "office"]) {
+      for (const id of ["media", "image-gen", "beautify", "mcp", "office"]) {
         expect(diagnosticsById.get(id)).toMatchObject({
           id,
           source: "builtin",
@@ -132,8 +132,9 @@ describe("loadAll", () => {
 
       const toolNames = pm.getAllTools().map((tool) => tool.name);
       expect(toolNames).toEqual(expect.arrayContaining([
-        "image-gen_generate-image",
-        "image-gen_generate-video",
+        "media_generate-image",
+        "media_generate-video",
+        "media_describe-options",
         "beautify_create-cover",
         "beautify_apply-cover-candidate",
         "beautify_get-cover-style-guide",
@@ -143,7 +144,11 @@ describe("loadAll", () => {
         "office_read-document",
         "office_html-to-pdf",
       ]));
+      expect(toolNames.filter((name) => name.startsWith("image-gen_"))).toEqual([]);
       expect(pm.getSkillPaths()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ pluginId: "media", builtin: true }),
+      ]));
+      expect(pm.getSkillPaths()).not.toEqual(expect.arrayContaining([
         expect.objectContaining({ pluginId: "image-gen", builtin: true }),
       ]));
       expect(pm.routeRegistry.has("image-gen")).toBe(true);
@@ -157,7 +162,7 @@ describe("loadAll", () => {
         }),
       ]));
     } finally {
-      for (const id of ["image-gen", "beautify", "mcp", "office"]) {
+      for (const id of ["media", "image-gen", "beautify", "mcp", "office"]) {
         await pm.unloadPlugin(id, { source: "builtin" });
       }
     }

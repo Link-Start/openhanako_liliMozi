@@ -180,9 +180,9 @@ describe('present_files', () => {
 
 // ─── image-gen media generation ─────────────────────────────────────────────
 
-describe('image-gen media generation', () => {
+describe('media generation blocks', () => {
   it('extracts one pending media_generation block per submitted image task', () => {
-    const blocks = (extractBlocks as any)('image-gen_generate-image', {
+    const blocks = (extractBlocks as any)('media_generate-image', {
       mediaGeneration: {
         kind: 'image',
         batchId: 'batch-1',
@@ -212,6 +212,25 @@ describe('image-gen media generation', () => {
         status: 'pending',
       },
     ]);
+  });
+
+  it('keeps historical image-gen tool names readable for old sessions', () => {
+    const blocks = (extractBlocks as any)('image-gen_generate-image', {
+      mediaGeneration: {
+        kind: 'image',
+        batchId: 'legacy-batch',
+        prompt: 'A legacy generated image',
+        tasks: [{ taskId: 'legacy-task' }],
+      },
+    });
+
+    expect(blocks[0]).toMatchObject({
+      type: 'media_generation',
+      taskId: 'legacy-task',
+      kind: 'image',
+      batchId: 'legacy-batch',
+      status: 'pending',
+    });
   });
 
   it('replaces historical pending media_generation blocks with completed session file blocks', () => {
