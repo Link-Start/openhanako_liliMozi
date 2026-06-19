@@ -115,12 +115,12 @@
 
 /* flush 下 row 不做左右 inset（无卡片容器需要内缩），也不画 row + row divider
  * （字段本身就是独立视觉元素，靠自身的 border/bg 分隔，不需要水平线） */
-.sectionFlush .row {
+.sectionFlush > .sectionBody > .row {
     padding-left: 0;
     padding-right: 0;
 }
 
-.sectionFlush .row + .row::before {
+.sectionFlush > .sectionBody > .row + .row::before {
     display: none;
 }
 
@@ -328,10 +328,18 @@
 /* ─── StepSlider（有限档位设置用）─── */
 
 .stepSlider {
-    width: 150px;
+    width: 198px;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.stepSliderTop,
+.stepSliderTicks {
+    width: 150px;
+    max-width: 100%;
+    margin: 0 auto;
 }
 
 .stepSliderTop {

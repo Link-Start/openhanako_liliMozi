@@ -180,12 +180,24 @@ describe('InterfaceTab appearance state', () => {
   it('keeps compact step slider ticks aligned to the slider stops without a value pill', () => {
     const css = readSettingsComponentStyles();
 
-    expect(css).toMatch(/\.stepSlider\s*\{[\s\S]*width:\s*150px/);
+    expect(css).toMatch(/\.stepSlider\s*\{[\s\S]*width:\s*198px/);
+    expect(css).toMatch(/\.stepSliderTop,\s*\.stepSliderTicks\s*\{[\s\S]*width:\s*150px/);
+    expect(css).toMatch(/\.stepSliderTop,\s*\.stepSliderTicks\s*\{[\s\S]*margin:\s*0 auto/);
     expect(css).not.toMatch(/\.stepSliderValue/);
     expect(css).toMatch(/\.stepSliderTicks\s*\{[\s\S]*position:\s*relative/);
     expect(css).toMatch(/\.stepSliderTicks span\s*\{[\s\S]*position:\s*absolute/);
     expect(css).toMatch(/\.stepSliderTicks span\s*\{[\s\S]*left:\s*var\(--step-slider-tick-left\)/);
     expect(css).toMatch(/\.stepSliderTicks span\s*\{[\s\S]*transform:\s*translateX\(-50%\)/);
+  });
+
+  it('keeps standard row padding inside nested setting cards in flush sections', () => {
+    const css = readSettingsComponentStyles();
+
+    expect(css).toMatch(/\.sectionFlush\s*>\s*\.sectionBody\s*>\s*\.row\s*\{[\s\S]*padding-left:\s*0/);
+    expect(css).toMatch(/\.sectionFlush\s*>\s*\.sectionBody\s*>\s*\.row\s*\{[\s\S]*padding-right:\s*0/);
+    expect(css).toMatch(/\.sectionFlush\s*>\s*\.sectionBody\s*>\s*\.row\s*\+\s*\.row::before\s*\{[\s\S]*display:\s*none/);
+    expect(css).not.toMatch(/\.sectionFlush\s+\.row\s*\{/);
+    expect(css).not.toMatch(/\.sectionFlush\s+\.row\s*\+\s*\.row::before\s*\{/);
   });
 
   it('hides fourth through sixth heading typography controls', () => {
