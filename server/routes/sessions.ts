@@ -24,6 +24,7 @@ import {
 } from "../../lib/subagent-executor-metadata.ts";
 import {
   extractTextContent,
+  contentHasThinkingBlock,
   filterUnreferencedInlineImages,
   loadSessionHistoryMessages,
   loadLatestAssistantSummaryFromSessionFile,
@@ -61,6 +62,7 @@ import { createModuleLogger } from "../../lib/debug-log.ts";
 import { searchSessions } from "../../lib/search/session-search.ts";
 import { SessionSearchTokenizerUnavailableError } from "../../lib/search/session-search-tokenizer.ts";
 import { MountAwareFileError, MountAwareFileService } from "../../core/mount-aware-file-service.ts";
+import { isAssistantCommentaryTextBlock } from "../../shared/text-signature.ts";
 
 const log = createModuleLogger("sessions");
 const lifecycleLog = createModuleLogger("sessions/lifecycle");
@@ -187,7 +189,7 @@ function hasTextBlockContent(content, { stripThink = false } = {}) {
     return text.length > 0;
   }
   if (!Array.isArray(content)) return false;
-  return content.some(block => block?.type === "text" && block.text);
+  return content.some(block => block?.type === "text" && block.text && !isAssistantCommentaryTextBlock(block));
 }
 
 function hasToolUseContent(content) {
@@ -201,7 +203,9 @@ function isDisplayableHistoryMessage(message) {
     return hasTextBlockContent(message.content) || hasInlineImageContent(message.content);
   }
   if (message.role === "assistant") {
-    return hasTextBlockContent(message.content, { stripThink: true }) || hasToolUseContent(message.content);
+    return hasTextBlockContent(message.content, { stripThink: true })
+      || contentHasThinkingBlock(message.content, { stripThink: true })
+      || hasToolUseContent(message.content);
   }
   return false;
 }
@@ -969,7 +973,7 @@ export function createSessionsRoute(engine, hub = null) {
               ...(m.id ? { entryId: m.id } : {}),
               role: "assistant",
               content: text,
-              thinking: thinking || undefined,
+              ...(contentHasThinkingBlock(m.content, { stripThink: true }) ? { thinking } : {}),
               toolCalls: toolUses.length ? toolUses : undefined,
               ...(m.timestamp ? { timestamp: m.timestamp } : {}),
             });

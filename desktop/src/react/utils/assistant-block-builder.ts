@@ -24,7 +24,7 @@ export function buildAssistantBlocksFromContent({
 }: AssistantBlockInput): ContentBlock[] {
   const blocks: ContentBlock[] = [];
 
-  if (thinking) {
+  if (thinking !== null && thinking !== undefined) {
     blocks.push({ type: 'thinking', content: thinking, sealed: true });
   }
 

@@ -398,6 +398,26 @@ describe('buildItemsFromHistory user image restoration', () => {
     });
   });
 
+  it('保留空 thinking 为已完成思考块', () => {
+    const items = buildItemsFromHistory({
+      messages: [{
+        id: 'a-empty-thinking',
+        role: 'assistant',
+        content: '',
+        thinking: '',
+      }],
+    });
+
+    const first = items[0];
+    expect(first.type).toBe('message');
+    if (first.type !== 'message') throw new Error('expected message');
+    expect(first.data.blocks).toEqual([{
+      type: 'thinking',
+      content: '',
+      sealed: true,
+    }]);
+  });
+
   it('恢复 deferred 幕间消息为独立时间线条目', () => {
     const items = buildItemsFromHistory({
       messages: [{

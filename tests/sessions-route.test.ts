@@ -35,6 +35,7 @@ vi.mock("../lib/browser/browser-manager.js", () => ({
 
 vi.mock("../core/message-utils.js", () => ({
   extractTextContent: vi.fn(() => ({ text: "", images: [], thinking: "", toolUses: [] })),
+  contentHasThinkingBlock: vi.fn(() => false),
   filterUnreferencedInlineImages: vi.fn((_text, images) => images || []),
   loadSessionHistoryMessages: vi.fn(async () => []),
   loadLatestAssistantSummaryFromSessionFile: vi.fn(async () => null),
@@ -1662,6 +1663,75 @@ describe("sessions route", () => {
         timestamp: "2026-05-07T05:43:00.000Z",
       },
     ]);
+  });
+
+  it("returns empty assistant thinking blocks from history as completed thinking", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const msgUtils = await import("../core/message-utils.ts");
+    const app = new Hono();
+    const content = [{ type: "thinking", thinking: "" }];
+
+    vi.mocked(msgUtils.extractTextContent)
+      .mockReturnValueOnce({ text: "", images: [], thinking: "", toolUses: [] });
+    vi.mocked(msgUtils.contentHasThinkingBlock).mockImplementation((candidate) => candidate === content);
+    vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
+      { role: "assistant", content },
+    ]);
+
+    const engine = {
+      agentsDir: "/tmp/agents",
+      deferredResults: null,
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request("/api/sessions/messages");
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.messages).toEqual([{
+      id: "0",
+      role: "assistant",
+      content: "",
+      thinking: "",
+    }]);
+  });
+
+  it("does not return OpenAI commentary-only history messages as visible text", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const msgUtils = await import("../core/message-utils.ts");
+    const app = new Hono();
+
+    vi.mocked(msgUtils.extractTextContent).mockClear();
+    vi.mocked(msgUtils.contentHasThinkingBlock).mockReturnValue(false);
+    vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
+      {
+        role: "assistant",
+        content: [{
+          type: "text",
+          text: "I need to inspect the current state.",
+          textSignature: JSON.stringify({
+            v: 1,
+            id: "msg_commentary",
+            phase: "commentary",
+          }),
+        }],
+      },
+    ]);
+
+    const engine = {
+      agentsDir: "/tmp/agents",
+      deferredResults: null,
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request("/api/sessions/messages");
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.messages).toEqual([]);
+    expect(msgUtils.extractTextContent).not.toHaveBeenCalled();
   });
 
   it("hydrates only the requested display window for long session history", async () => {

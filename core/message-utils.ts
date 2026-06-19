@@ -9,6 +9,7 @@ import { isToolCallBlock, getToolArgs } from "./llm-utils.ts";
 import { SessionManager } from "../lib/pi-sdk/index.ts";
 import { DEFERRED_RESULT_RECORD_TYPE } from "../lib/deferred-result-notification.ts";
 import { repairOversizedSessionEntriesInFile } from "./session-jsonl-file.ts";
+import { isAssistantCommentaryTextBlock } from "../shared/text-signature.ts";
 
 /**
  * 工具调用参数摘要键列表
@@ -47,7 +48,7 @@ export function extractTextContent(content, { stripThink = false } = {}) {
   }
   if (!Array.isArray(content)) return { text: "", thinking: "", toolUses: [], images: [] };
   const rawText = content
-    .filter(block => block.type === "text" && block.text)
+    .filter(block => block.type === "text" && block.text && !isAssistantCommentaryTextBlock(block))
     .map(block => block.text)
     .join("");
   const images = content
@@ -77,6 +78,15 @@ export function extractTextContent(content, { stripThink = false } = {}) {
       };
     });
   return { text, thinking, toolUses, images };
+}
+
+export function contentHasThinkingBlock(content, { stripThink = false } = {}) {
+  if (typeof content === "string") {
+    if (!stripThink) return false;
+    return /<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/.test(content);
+  }
+  if (!Array.isArray(content)) return false;
+  return content.some(block => block?.type === "thinking");
 }
 
 export function filterUnreferencedInlineImages(text, images) {

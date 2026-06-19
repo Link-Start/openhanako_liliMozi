@@ -37,6 +37,7 @@ import { buildAutomationSuggestionBlock } from "../suggestion-blocks.ts";
 import { isAllowedChatImageMime, isChatImageBase64WithinLimit } from "../../shared/image-mime.ts";
 import { isAllowedChatVideoMime, isChatVideoBase64WithinLimit } from "../../shared/video-mime.ts";
 import { isAllowedChatAudioMime, isChatAudioBase64WithinLimit } from "../../shared/audio-mime.ts";
+import { getAssistantTextPhase } from "../../shared/text-signature.ts";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -299,6 +300,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         titlePreview: "",
         pendingDeferredContentEvents: [],
         pendingTurnCompletionNotification: null,
+        pendingPhaseTextByIndex: new Map(),
         turnStallTimer: null,
         lastStreamActivityAt: 0,
         lastAccessed: Date.now(),
@@ -489,6 +491,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     ss.thinkTagParser.reset();
     ss.moodParser.reset();
     ss.cardParser.reset();
+    ss.pendingPhaseTextByIndex?.clear?.();
   }
 
   function clearTurnStallWatchdog(ss) {
@@ -730,51 +733,93 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
       });
     };
 
+    const phaseTextBuffer = () => {
+      if (!(ss.pendingPhaseTextByIndex instanceof Map)) ss.pendingPhaseTextByIndex = new Map();
+      return ss.pendingPhaseTextByIndex;
+    };
+
+    const textEventBufferKey = (subEvent) => (
+      Number.isInteger(subEvent?.contentIndex) ? String(subEvent.contentIndex) : "__default"
+    );
+
+    const textBlockFromEvent = (subEvent) => {
+      const partialContent = subEvent?.partial?.content;
+      const messageContent = event.message?.content;
+      const content = Array.isArray(partialContent)
+        ? partialContent
+        : Array.isArray(messageContent)
+          ? messageContent
+          : null;
+      if (!content) return null;
+      if (Number.isInteger(subEvent?.contentIndex)) {
+        return content[subEvent.contentIndex] || null;
+      }
+      return content.find((block) => block?.type === "text") || null;
+    };
+
+    const shouldBufferPhaseText = (subEvent) => {
+      const message = subEvent?.partial || event.message || {};
+      const api = typeof message?.api === "string" ? message.api.toLowerCase() : "";
+      const provider = typeof message?.provider === "string" ? message.provider.toLowerCase() : "";
+      return provider === "openai-codex"
+        || api === "openai-codex-responses"
+        || api === "openai-responses"
+        || api === "azure-openai-responses";
+    };
+
+    const emitVisibleTextDelta = (delta) => {
+      const text = typeof delta === "string" ? delta : "";
+      if (!text) return;
+      ss.hasOutput = true;
+      if (ss.isThinking) {
+        ss.isThinking = false;
+        emitStreamEvent(sessionPath, ss, { type: "thinking_end" });
+      }
+
+      // ThinkTagParser（最外层）→ MoodParser → CardParser
+      ss.thinkTagParser.feed(text, (tEvt) => {
+        switch (tEvt.type) {
+          case "think_start":
+            emitStreamEvent(sessionPath, ss, { type: "thinking_start" });
+            break;
+          case "think_text":
+            emitStreamEvent(sessionPath, ss, { type: "thinking_delta", delta: tEvt.data });
+            break;
+          case "think_end":
+            emitStreamEvent(sessionPath, ss, { type: "thinking_end" });
+            break;
+          case "text":
+            // 非 think 内容继续走 MoodParser → CardParser 链
+            feedMoodPipeline(tEvt.data);
+            break;
+        }
+      });
+    };
+
     if (event.type === "message_update") {
       if (!ss) return;
       const sub = event.assistantMessageEvent?.type;
 
       if (sub === "text_delta") {
-        ss.hasOutput = true;
-        if (ss.isThinking) {
-          ss.isThinking = false;
-          emitStreamEvent(sessionPath, ss, { type: "thinking_end" });
+        const subEvent = event.assistantMessageEvent;
+        const delta = subEvent.delta || "";
+        if (shouldBufferPhaseText(subEvent)) {
+          const pending = phaseTextBuffer();
+          const key = textEventBufferKey(subEvent);
+          pending.set(key, `${pending.get(key) || ""}${delta}`);
+          return;
         }
-
-        const delta = event.assistantMessageEvent.delta;
-        // ThinkTagParser（最外层）→ MoodParser → CardParser
-        ss.thinkTagParser.feed(delta, (tEvt) => {
-          switch (tEvt.type) {
-            case "think_start":
-              emitStreamEvent(sessionPath, ss, { type: "thinking_start" });
-              break;
-            case "think_text":
-              emitStreamEvent(sessionPath, ss, { type: "thinking_delta", delta: tEvt.data });
-              break;
-            case "think_end":
-              emitStreamEvent(sessionPath, ss, { type: "thinking_end" });
-              break;
-            case "text":
-              // 非 think 内容继续走 MoodParser → CardParser 链
-              ss.moodParser.feed(tEvt.data, (evt) => {
-                switch (evt.type) {
-                  case "text":
-                    feedCardPipeline(evt.data);
-                    break;
-                  case "mood_start":
-                    emitStreamEvent(sessionPath, ss, { type: "mood_start" });
-                    break;
-                  case "mood_text":
-                    emitStreamEvent(sessionPath, ss, { type: "mood_text", delta: evt.data });
-                    break;
-                  case "mood_end":
-                    emitStreamEvent(sessionPath, ss, { type: "mood_end" });
-                    break;
-                }
-              });
-              break;
-          }
-        });
+        emitVisibleTextDelta(delta);
+      } else if (sub === "text_end") {
+        const subEvent = event.assistantMessageEvent;
+        if (!shouldBufferPhaseText(subEvent)) return;
+        const pending = phaseTextBuffer();
+        const key = textEventBufferKey(subEvent);
+        const block = textBlockFromEvent(subEvent);
+        const buffered = pending.get(key);
+        pending.delete(key);
+        if (getAssistantTextPhase(block) === "commentary") return;
+        emitVisibleTextDelta(buffered ?? subEvent.content ?? block?.text ?? "");
       } else if (sub === "thinking_delta") {
         ss.hasThinking = true;
         if (!ss.isThinking) {
@@ -979,6 +1024,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
           ss.thinkTagParser.reset();
           ss.moodParser.reset();
           ss.cardParser.reset();
+          ss.pendingPhaseTextByIndex?.clear?.();
           ss._cardHints = [];
           ss._cardEmitted = false;
           ss.isThinking = false;
@@ -1140,6 +1186,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
       ss.thinkTagParser.reset();
       ss.moodParser.reset();
       ss.cardParser.reset();
+      ss.pendingPhaseTextByIndex?.clear?.();
       ss._cardHints = [];
       ss._cardEmitted = false;
       flushPendingDeferredContentEvents(sessionPath, ss);

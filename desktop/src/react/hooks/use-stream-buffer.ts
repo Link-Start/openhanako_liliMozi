@@ -40,6 +40,7 @@ interface Buffer {
   moodAcc: string;
   moodYuan: string;
   inThinking: boolean;
+  hasThinkingBlock: boolean;
   inMood: boolean;
   inCard: boolean;
   cardAttrs: { type: string; plugin: string; route: string; title?: string } | null;
@@ -59,6 +60,7 @@ function createBuffer(sessionPath: string): Buffer {
     moodAcc: '',
     moodYuan: 'hanako',
     inThinking: false,
+    hasThinkingBlock: false,
     inMood: false,
     inCard: false,
     cardAttrs: null,
@@ -153,6 +155,7 @@ class StreamBufferManager {
       buf.messageId ||
       buf.textAcc ||
       buf.thinkingAcc ||
+      buf.hasThinkingBlock ||
       buf.moodAcc ||
       buf.inThinking ||
       buf.inMood ||
@@ -169,6 +172,7 @@ class StreamBufferManager {
     }
     buf.textAcc = '';
     buf.thinkingAcc = '';
+    buf.hasThinkingBlock = false;
     buf.moodAcc = '';
     buf.inThinking = false;
     buf.inMood = false;
@@ -288,7 +292,7 @@ class StreamBufferManager {
       const blocks = [...(msg.blocks || [])];
 
       // ── Thinking ──
-      if (buf.thinkingAcc || buf.inThinking) {
+      if (buf.thinkingAcc || buf.hasThinkingBlock || buf.inThinking) {
         const idx = blocks.findIndex(b => b.type === 'thinking');
         const thinkingBlock: ContentBlock = {
           type: 'thinking',
@@ -352,17 +356,20 @@ class StreamBufferManager {
       case 'thinking_start':
         this.ensureMessage(buf);
         buf.inThinking = true;
+        buf.hasThinkingBlock = true;
         buf.thinkingAcc = '';
         this.flush(buf);
         break;
 
       case 'thinking_delta':
+        buf.hasThinkingBlock = true;
         buf.thinkingAcc += msg.delta || '';
         // 与 text/mood 共用时间节流，避免思考流只能在结束后显示。
         this.scheduleFlush(buf);
         break;
 
       case 'thinking_end':
+        buf.hasThinkingBlock = true;
         buf.inThinking = false;
         this.flush(buf);
         break;
@@ -569,7 +576,7 @@ class StreamBufferManager {
   snapshot(sessionPath: string, sessionId: string | null = null): StreamBufferSnapshot | null {
     const buf = this.lookupBuffer(sessionPath, sessionId);
     if (!buf) return null;
-    const hasContent = !!(buf.textAcc || buf.thinkingAcc || buf.moodAcc);
+    const hasContent = !!(buf.textAcc || buf.thinkingAcc || buf.hasThinkingBlock || buf.moodAcc);
     if (!hasContent) return null;
     return {
       hasContent: true,

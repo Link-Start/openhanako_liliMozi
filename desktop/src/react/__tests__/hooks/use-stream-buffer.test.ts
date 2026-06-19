@@ -144,6 +144,14 @@ describe('streamBufferManager.thinking 流式刷新', () => {
       vi.useRealTimers();
     }
   });
+
+  it('空 thinking 结束后保留 sealed 完成态，而不是消失或停在活跃态', () => {
+    streamBufferManager.handle({ type: 'thinking_start', sessionPath: PATH });
+    expect(getThinkingBlock()).toEqual({ type: 'thinking', content: '', sealed: false });
+
+    streamBufferManager.handle({ type: 'thinking_end', sessionPath: PATH });
+    expect(getThinkingBlock()).toEqual({ type: 'thinking', content: '', sealed: true });
+  });
 });
 
 describe('streamBufferManager.ensureMessage 自愈', () => {

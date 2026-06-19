@@ -172,6 +172,115 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
+  it("buffers OpenAI Responses text until text_end and suppresses commentary phase", () => {
+    let createHandlers;
+    let subscriber;
+    const commentarySignature = JSON.stringify({
+      v: 1,
+      id: "msg_commentary",
+      phase: "commentary",
+    });
+    const finalSignature = JSON.stringify({
+      v: 1,
+      id: "msg_final",
+      phase: "final_answer",
+    });
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    const sessionPath = "/tmp/openai-phase-session.jsonl";
+    const commentaryPartial = {
+      role: "assistant",
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      model: "gpt-5.5",
+      content: [{ type: "text", text: "I need to inspect the current state." }],
+    };
+    const finalContent = [
+      {
+        type: "text",
+        text: "I need to inspect the current state.",
+        textSignature: commentarySignature,
+      },
+      {
+        type: "text",
+        text: "已经查到状态。",
+        textSignature: finalSignature,
+      },
+    ];
+
+    subscriber?.({
+      type: "message_update",
+      message: commentaryPartial,
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "I need to inspect the current state.",
+        partial: commentaryPartial,
+      },
+    }, sessionPath);
+    subscriber?.({
+      type: "message_update",
+      message: { ...commentaryPartial, content: [finalContent[0]] },
+      assistantMessageEvent: {
+        type: "text_end",
+        contentIndex: 0,
+        content: "I need to inspect the current state.",
+        partial: { ...commentaryPartial, content: [finalContent[0]] },
+      },
+    }, sessionPath);
+    subscriber?.({
+      type: "message_update",
+      message: { ...commentaryPartial, content: finalContent },
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 1,
+        delta: "已经查到状态。",
+        partial: { ...commentaryPartial, content: finalContent },
+      },
+    }, sessionPath);
+    subscriber?.({
+      type: "message_update",
+      message: { ...commentaryPartial, content: finalContent },
+      assistantMessageEvent: {
+        type: "text_end",
+        contentIndex: 1,
+        content: "已经查到状态。",
+        partial: { ...commentaryPartial, content: finalContent },
+      },
+    }, sessionPath);
+
+    const deltas = ws.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .filter((payload) => payload.type === "text_delta");
+
+    expect(deltas.map((payload) => payload.delta)).toEqual(["已经查到状态。"]);
+
+    handlers.onClose({}, ws);
+  });
+
   it("reports engine runtime streaming separately when resume replay state is missing", async () => {
     let createHandlers;
     const upgradeWebSocket = vi.fn((factory) => {

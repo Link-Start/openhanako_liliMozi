@@ -99,6 +99,44 @@ describe("extractTextContent", () => {
     expect(result.images).toEqual([]);
   });
 
+  it("过滤 OpenAI Responses commentary 文本，只把 final_answer 当正文", () => {
+    const content = [
+      {
+        type: "text",
+        text: "I need to inspect the current status before deciding.",
+        textSignature: JSON.stringify({
+          v: 1,
+          id: "msg_commentary",
+          phase: "commentary",
+        }),
+      },
+      {
+        type: "toolCall",
+        id: "call_1|fc_1",
+        name: "current_status",
+        arguments: { action: "read", key: "ui_context" },
+      },
+      {
+        type: "text",
+        text: "已经查到当前状态。",
+        textSignature: JSON.stringify({
+          v: 1,
+          id: "msg_final",
+          phase: "final_answer",
+        }),
+      },
+    ];
+
+    const result = extractTextContent(content);
+    expect(result.text).toBe("已经查到当前状态。");
+    expect(result.toolUses).toHaveLength(1);
+    expect(result.toolUses[0]).toMatchObject({
+      id: "call_1|fc_1",
+      name: "current_status",
+      args: { action: "read", key: "ui_context" },
+    });
+  });
+
   it("content block 数组提取 thinking block", () => {
     const content = [
       { type: "text", text: "answer" },
