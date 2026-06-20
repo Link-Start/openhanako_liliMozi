@@ -172,6 +172,57 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
+  it("renders structured reasoning_content thinking deltas from OpenAI-compatible providers", () => {
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    subscriber?.({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "thinking_delta",
+        reasoning_content: "先判断 DeepSeek 的结构化推理字段。",
+      },
+    }, "/tmp/deepseek-thinking.jsonl");
+
+    const thinkingEvents = ws.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .filter((payload) => payload.type === "thinking_start" || payload.type === "thinking_delta");
+
+    expect(thinkingEvents).toEqual([
+      expect.objectContaining({ type: "thinking_start" }),
+      expect.objectContaining({
+        type: "thinking_delta",
+        delta: "先判断 DeepSeek 的结构化推理字段。",
+      }),
+    ]);
+
+    handlers.onClose({}, ws);
+  });
+
   it("buffers OpenAI Responses text until text_end and suppresses commentary phase", () => {
     let createHandlers;
     let subscriber;

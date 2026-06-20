@@ -767,6 +767,14 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         || api === "azure-openai-responses";
     };
 
+    const thinkingDeltaFromEvent = (subEvent) => {
+      for (const key of ["delta", "reasoning_content", "reasoning_text", "thinking", "thinking_text", "reasoning", "text"]) {
+        const value = subEvent?.[key];
+        if (typeof value === "string" && value.length > 0) return value;
+      }
+      return "";
+    };
+
     const emitVisibleTextDelta = (delta) => {
       const text = typeof delta === "string" ? delta : "";
       if (!text) return;
@@ -828,7 +836,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         }
         emitStreamEvent(sessionPath, ss, {
           type: "thinking_delta",
-          delta: event.assistantMessageEvent.delta || "",
+          delta: thinkingDeltaFromEvent(event.assistantMessageEvent),
         });
       } else if (sub === "toolcall_start") {
         // 不在这里关闭 thinking 状态
