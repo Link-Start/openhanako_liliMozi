@@ -139,6 +139,32 @@ describe('ToolGroupBlock', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('hides interactive card guide and render tools because the card is the UI', () => {
+    const { container } = render(
+      <ToolGroupBlock
+        collapsed={false}
+        tools={[
+          {
+            name: 'hana_card_guide',
+            args: {},
+            done: true,
+            success: true,
+          },
+          {
+            name: 'show_card',
+            args: {
+              title: 'dorm_comparison',
+            },
+            done: true,
+            success: true,
+          },
+        ]}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
   it('hides current card-backed tools while keeping visible browser and compatibility tools', () => {
     render(
       <ToolGroupBlock

@@ -152,6 +152,8 @@ describe('process fold grouping', () => {
       assistant('a3', [thinking(), toolGroup([
         tool('update_settings'),
         { ...tool('automation'), args: { action: 'pending_update' } },
+        tool('hana_card_guide'),
+        tool('show_card'),
       ])]),
     ];
 
