@@ -218,6 +218,7 @@ export function buildDeferredResultInterludeBlock(event, { receiverName = "Hana"
     id: `deferred:${event.taskId}:${status}`,
     taskId: event.taskId,
     variant: "deferred_result",
+    timelinePlacement: "after_anchor_message",
     status,
     sourceKind: source.kind,
     sourceLabel: source.label,

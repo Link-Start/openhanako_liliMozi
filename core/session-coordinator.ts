@@ -98,6 +98,7 @@ import {
   normalizeSessionPromptSnapshot,
   normalizeStringArray,
 } from "./session-prompt-snapshot.ts";
+import { buildTurnInputPresentationEvent } from "../lib/turn-input-presentation.ts";
 
 const log = createModuleLogger("session");
 const SESSION_META_PAYLOAD_DIR = "session-meta-payloads";
@@ -2528,6 +2529,12 @@ export class SessionCoordinator {
     return true;
   }
 
+  _emitTurnInputPresentation(sessionPath: any, message: any, deliveryMode: any) {
+    const event = buildTurnInputPresentationEvent(message, { deliveryMode });
+    if (!event) return;
+    this._d.emitEvent?.(event, sessionPath);
+  }
+
   async deliverCustomMessage(sessionPath: any, message: any, options: any = {}) {
     if (!sessionPath) throw new Error("deliverCustomMessage: sessionPath is required");
     this._assertActiveDesktopSessionPath(sessionPath, "deliverCustomMessage");
@@ -2546,10 +2553,14 @@ export class SessionCoordinator {
     entry.lastTouchedAt = Date.now();
     if (entry.session.isStreaming) {
       await entry.session.sendCustomMessage(message, { deliverAs: "followUp" });
+      this._emitTurnInputPresentation(sessionPath, message, "followUp");
       return { ok: true, mode: "followUp" };
     }
 
     const triggerTurn = options?.triggerTurn !== false;
+    if (triggerTurn) {
+      this._emitTurnInputPresentation(sessionPath, message, "triggerTurn");
+    }
     await entry.session.sendCustomMessage(message, { triggerTurn });
     return { ok: true, mode: triggerTurn ? "triggerTurn" : "notifyOnly" };
   }

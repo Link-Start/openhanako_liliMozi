@@ -1410,14 +1410,15 @@ describe("sessions route", () => {
     });
   });
 
-  it("restores deferred subagent result as an interlude block", async () => {
+  it("restores deferred subagent result as an interlude block before the following assistant reply", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const msgUtils = await import("../core/message-utils.ts");
     const app = new Hono();
     const sessionPath = "/tmp/agents/hana/sessions/subagent-result.jsonl";
 
     vi.mocked(msgUtils.extractTextContent)
-      .mockReturnValueOnce({ text: "parent says hi", images: [], thinking: "", toolUses: [] });
+      .mockReturnValueOnce({ text: "parent says hi", images: [], thinking: "", toolUses: [] })
+      .mockReturnValueOnce({ text: "received child result", images: [], thinking: "", toolUses: [] });
     vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
       { role: "assistant", content: "parent says hi" },
       {
@@ -1436,6 +1437,7 @@ describe("sessions route", () => {
         content: "<hana-background-result task-id=\"subagent-1\" status=\"success\" type=\"subagent\">\n子助手完整回复\n</hana-background-result>",
         display: false,
       },
+      { role: "assistant", content: "received child result" },
     ]);
 
     const engine = {
@@ -1475,6 +1477,104 @@ describe("sessions route", () => {
       detailMarkdown: "子助手完整回复",
     });
     expect(interlude.text).not.toContain("长任务说明");
+  });
+
+  it("keeps deferred subagent interlude hidden in history until an assistant reply exists", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const msgUtils = await import("../core/message-utils.ts");
+    const app = new Hono();
+    const sessionPath = "/tmp/agents/hana/sessions/subagent-result-pending-reply.jsonl";
+
+    vi.mocked(msgUtils.extractTextContent)
+      .mockReturnValueOnce({ text: "parent says hi", images: [], thinking: "", toolUses: [] });
+    vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
+      { role: "assistant", content: "parent says hi" },
+      {
+        role: "custom",
+        customType: "hana-background-result",
+        content: "<hana-background-result task-id=\"subagent-1\" status=\"success\" type=\"subagent\">\n子助手完整回复\n</hana-background-result>",
+        display: false,
+      },
+    ]);
+
+    const engine = {
+      agentsDir: "/tmp/agents",
+      currentSessionPath: sessionPath,
+      agentIdFromSessionPath: vi.fn(() => "hana"),
+      getAgent: vi.fn((id) => (id === "hana" ? { agentName: "小花" } : null)),
+      deferredResults: {
+        query: vi.fn(() => ({
+          status: "resolved",
+          result: "子助手完整回复",
+          meta: {
+            type: "subagent",
+            interlude: true,
+            executorAgentNameSnapshot: "明",
+            label: "大纲评估",
+          },
+        })),
+      },
+      subagentRuns: { query: vi.fn(() => null) },
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request(`/api/sessions/messages?path=${encodeURIComponent(sessionPath)}`);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.blocks.some((b) => b.type === "interlude")).toBe(false);
+  });
+
+  it("does not attach a hidden deferred interlude across a later user message", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const msgUtils = await import("../core/message-utils.ts");
+    const app = new Hono();
+    const sessionPath = "/tmp/agents/hana/sessions/subagent-result-cross-user.jsonl";
+
+    vi.mocked(msgUtils.extractTextContent)
+      .mockReturnValueOnce({ text: "parent says hi", images: [], thinking: "", toolUses: [] })
+      .mockReturnValueOnce({ text: "new user question", images: [], thinking: "", toolUses: [] })
+      .mockReturnValueOnce({ text: "reply to user question", images: [], thinking: "", toolUses: [] });
+    vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
+      { role: "assistant", content: "parent says hi" },
+      {
+        role: "custom",
+        customType: "hana-background-result",
+        content: "<hana-background-result task-id=\"subagent-1\" status=\"success\" type=\"subagent\">\n子助手完整回复\n</hana-background-result>",
+        display: false,
+      },
+      { role: "user", content: "new user question" },
+      { role: "assistant", content: "reply to user question" },
+    ]);
+
+    const engine = {
+      agentsDir: "/tmp/agents",
+      currentSessionPath: sessionPath,
+      agentIdFromSessionPath: vi.fn(() => "hana"),
+      getAgent: vi.fn((id) => (id === "hana" ? { agentName: "小花" } : null)),
+      deferredResults: {
+        query: vi.fn(() => ({
+          status: "resolved",
+          result: "子助手完整回复",
+          meta: {
+            type: "subagent",
+            interlude: true,
+            executorAgentNameSnapshot: "明",
+            label: "大纲评估",
+          },
+        })),
+      },
+      subagentRuns: { query: vi.fn(() => null) },
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request(`/api/sessions/messages?path=${encodeURIComponent(sessionPath)}`);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.blocks.some((b) => b.type === "interlude")).toBe(false);
   });
 
   it("loads session messages by sessionId and treats path as a legacy locator", async () => {

@@ -393,6 +393,7 @@ function isMediaInterludeAnchor(block: Record<string, any>, taskId: string): boo
 }
 
 function shouldPlaceInterludeBeforeMessage(interlude: Record<string, any>, inlineBlocks: Record<string, any>[]): boolean {
+  if (interlude.timelinePlacement === 'after_anchor_message') return false;
   const taskId = nonEmptyString(interlude.taskId);
   if (!taskId) return false;
   return inlineBlocks.some((block) => isMediaInterludeAnchor(block, taskId));

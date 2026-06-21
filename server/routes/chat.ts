@@ -34,6 +34,7 @@ import { AppError } from "../../shared/errors.ts";
 import { errorBus } from "../../shared/error-bus.ts";
 import { createRequestContext } from "../http/boundary.ts";
 import { buildDeferredResultInterludeBlock, resolveDeferredReceiverName } from "../deferred-result-interlude.ts";
+import { TURN_INPUT_PRESENTATION_EVENT_TYPE } from "../../lib/turn-input-presentation.ts";
 import { buildAutomationSuggestionBlock } from "../suggestion-blocks.ts";
 import { isAllowedChatImageMime, isChatImageBase64WithinLimit } from "../../shared/image-mime.ts";
 import { isAllowedChatVideoMime, isChatVideoBase64WithinLimit } from "../../shared/video-mime.ts";
@@ -300,6 +301,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         titleRequested: false,
         titlePreview: "",
         pendingDeferredContentEvents: [],
+        pendingTurnInputPresentations: [],
         pendingTurnCompletionNotification: null,
         pendingPhaseTextByIndex: new Map(),
         turnStallTimer: null,
@@ -439,12 +441,6 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
 
   function buildDeferredResultContentEvents(sessionPath, event) {
     const events = [];
-    if (event.meta?.interlude) {
-      const interlude = buildDeferredResultInterludeBlock(event, {
-        receiverName: resolveDeferredReceiverName(engine, sessionPath),
-      });
-      if (interlude) events.push({ type: "content_block", block: interlude });
-    }
 
     if (event.status === "success") {
       for (const block of enrichSessionFileBlocks(deferredResultFileBlocks(event.result, event.taskId), engine, sessionPath)) {
@@ -478,6 +474,127 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     if (!pending.length) return;
     ss.pendingDeferredContentEvents = [];
     emitDeferredContentEvents(sessionPath, ss, pending);
+  }
+
+  function beginStreamingTurnState(sessionPath, ss, { streamId = null, flushDeferred = false } = {}) {
+    if (flushDeferred) flushPendingDeferredContentEvents(sessionPath, ss);
+    ss.pendingTurnCompletionNotification = null;
+    ss.lastStreamActivityAt = Date.now();
+    ss.turnActive = true;
+    ss.thinkTagParser.reset();
+    ss.moodParser.reset();
+    ss.cardParser.reset();
+    ss.pendingPhaseTextByIndex?.clear?.();
+    ss._cardHints = [];
+    ss._cardEmitted = false;
+    ss.isThinking = false;
+    ss.hasOutput = false;
+    ss.hasToolCall = false;
+    ss.hasThinking = false;
+    ss.hasError = false;
+    ss.isAborted = false;
+    ss.titleRequested = false;
+    ss.titlePreview = "";
+    const statusStreamId = beginSessionStream(ss, streamId);
+    scheduleTurnStallWatchdog(sessionPath, ss);
+    return statusStreamId;
+  }
+
+  function turnInputPresentationAlreadyQueued(items, item) {
+    const block = item?.block;
+    if (!block) return false;
+    return items.some((queued) => (
+      (block.id && queued.block?.id === block.id) ||
+      (!!block.taskId && queued.block?.taskId === block.taskId && queued.block?.status === block.status)
+    ));
+  }
+
+  function buildPreReplyInterludeBlock(sessionPath, presentation) {
+    if (presentation?.kind !== "pre_reply_interlude" || !presentation.taskId) return null;
+    const task = engine.deferredResults?.query?.(presentation.taskId) || null;
+    const taskStatus = task?.status === "failed" || task?.status === "aborted"
+      ? task.status
+      : presentation.status;
+    const status = taskStatus === "failed" || taskStatus === "aborted" ? taskStatus : "success";
+    const meta = {
+      ...(task?.meta || {}),
+      type: presentation.resultType || task?.meta?.type || "background-task",
+    };
+    const result = Object.prototype.hasOwnProperty.call(presentation, "result")
+      ? presentation.result
+      : task?.result;
+    const reason = presentation.reason || task?.reason || null;
+    return buildDeferredResultInterludeBlock({
+      taskId: presentation.taskId,
+      status,
+      result,
+      reason,
+      meta,
+    }, {
+      receiverName: resolveDeferredReceiverName(engine, sessionPath),
+    });
+  }
+
+  function emitTurnInputPresentation(sessionPath, ss, item) {
+    const block = item?.block;
+    if (!block) return;
+    emitStreamEvent(sessionPath, ss, { type: "content_block", block });
+  }
+
+  function buildTurnInputPresentationQueueItem(sessionPath, presentation) {
+    const block = buildPreReplyInterludeBlock(sessionPath, presentation);
+    if (!block) return null;
+    return {
+      kind: presentation.kind,
+      deliveryMode: presentation.deliveryMode || null,
+      block,
+    };
+  }
+
+  function resolveFollowUpMode(sessionPath) {
+    try {
+      return engine.getSessionByPath?.(sessionPath)?.followUpMode === "all" ? "all" : "one-at-a-time";
+    } catch {
+      return "one-at-a-time";
+    }
+  }
+
+  function drainTurnInputPresentationItemsForNextTurn(sessionPath, ss) {
+    const pending = ss.pendingTurnInputPresentations || [];
+    if (!pending.length) return [];
+    const first = pending[0];
+    const drainCount = first.deliveryMode === "followUp" && resolveFollowUpMode(sessionPath) === "all"
+      ? pending.findIndex((item) => item.deliveryMode !== "followUp")
+      : 1;
+    const count = drainCount === -1 ? pending.length : Math.max(1, drainCount);
+    const items = pending.slice(0, count);
+    ss.pendingTurnInputPresentations = pending.slice(count);
+    return items;
+  }
+
+  function queueOrEmitTurnInputPresentation(sessionPath, ss, presentation) {
+    const item = buildTurnInputPresentationQueueItem(sessionPath, presentation);
+    if (!item) return;
+    const canEmitIntoStartingTriggeredTurn =
+      presentation.deliveryMode === "triggerTurn" &&
+      ss.turnActive === true &&
+      !ss.hasOutput &&
+      !ss.hasToolCall &&
+      !ss.hasThinking;
+    if (canEmitIntoStartingTriggeredTurn) {
+      emitTurnInputPresentation(sessionPath, ss, item);
+      return;
+    }
+    const pending = ss.pendingTurnInputPresentations || [];
+    if (turnInputPresentationAlreadyQueued(pending, item)) return;
+    ss.pendingTurnInputPresentations = [...pending, item];
+  }
+
+  function flushPendingTurnInputPresentations(sessionPath, ss) {
+    const items = drainTurnInputPresentationItemsForNextTurn(sessionPath, ss);
+    for (const item of items) {
+      emitTurnInputPresentation(sessionPath, ss, item);
+    }
   }
 
   function finishStreamingState(ss, sessionPath = null) {
@@ -978,6 +1095,21 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         patch: event.patch,
         sessionPath,
       });
+    } else if (event.type === TURN_INPUT_PRESENTATION_EVENT_TYPE) {
+      if (!ss) return;
+      queueOrEmitTurnInputPresentation(sessionPath, ss, event.presentation);
+    } else if (event.type === "turn_start") {
+      if (!ss) return;
+      if (!ss.turnActive) {
+        const statusStreamId = beginStreamingTurnState(sessionPath, ss);
+        broadcast({
+          type: "status",
+          isStreaming: true,
+          sessionPath,
+          streamId: statusStreamId,
+        });
+        flushPendingTurnInputPresentations(sessionPath, ss);
+      }
     } else if (event.type === "todo_update") {
       broadcast({
         type: "todo_update",
@@ -1028,26 +1160,10 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
           ? event.streamId
           : null;
         if (event.isStreaming) {
-          flushPendingDeferredContentEvents(sessionPath, ss);
-          ss.pendingTurnCompletionNotification = null;
-          ss.lastStreamActivityAt = Date.now();
-          ss.turnActive = true;
-          ss.thinkTagParser.reset();
-          ss.moodParser.reset();
-          ss.cardParser.reset();
-          ss.pendingPhaseTextByIndex?.clear?.();
-          ss._cardHints = [];
-          ss._cardEmitted = false;
-          ss.isThinking = false;
-          ss.hasOutput = false;
-          ss.hasToolCall = false;
-          ss.hasThinking = false;
-          ss.hasError = false;
-          ss.isAborted = false;
-          ss.titleRequested = false;
-          ss.titlePreview = "";
-          statusStreamId = beginSessionStream(ss, eventStreamId);
-          scheduleTurnStallWatchdog(sessionPath, ss);
+          statusStreamId = beginStreamingTurnState(sessionPath, ss, {
+            streamId: eventStreamId,
+            flushDeferred: true,
+          });
         } else if (ss.isStreaming) {
           statusStreamId = eventStreamId || ss.streamId || null;
           flushTerminalParsers();

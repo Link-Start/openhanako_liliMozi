@@ -211,6 +211,19 @@ function isDisplayableHistoryMessage(message) {
   return false;
 }
 
+function nextImmediateDisplayableAssistantIndex(sourceMessages, sourceIndex, displayIdxAtSource) {
+  let displayIdx = displayIdxAtSource;
+  for (let i = sourceIndex + 1; i < sourceMessages.length; i += 1) {
+    const message = sourceMessages[i];
+    if (!isDisplayableHistoryMessage(message)) continue;
+    const currentIndex = displayIdx;
+    displayIdx += 1;
+    if (message.role === "user") return null;
+    if (message.role === "assistant") return currentIndex;
+  }
+  return null;
+}
+
 function resolveHistoryPageBounds(sourceMessages, { beforeId, limit, forceAll }) {
   let total = 0;
   for (const message of sourceMessages) {
@@ -924,7 +937,7 @@ export function createSessionsRoute(engine, hub = null) {
         }
       };
       const recordDeferredInterlude = (parsed, afterIndex) => {
-        if (!parsed?.taskId || afterIndex < 0 || deferredInterludeTaskIds.has(parsed.taskId)) return;
+        if (!parsed?.taskId || !Number.isInteger(afterIndex) || afterIndex < 0 || deferredInterludeTaskIds.has(parsed.taskId)) return;
         const task = deferredStore?.query?.(parsed.taskId) || null;
         const run = engine.subagentRuns?.query?.(parsed.taskId) || null;
         const runTask = taskFromSubagentRun(run);
@@ -941,7 +954,6 @@ export function createSessionsRoute(engine, hub = null) {
           reason: parsed.reason || metadataTask?.reason || null,
           meta,
         };
-        if (!meta.interlude) return;
         const block = buildDeferredResultInterludeBlock(event, { receiverName });
         if (!block) return;
         blocks.push({ ...block, afterIndex });
@@ -949,7 +961,8 @@ export function createSessionsRoute(engine, hub = null) {
       };
       let displayIdx = 0;
 
-      for (const m of sourceMessages) {
+      for (let sourceIndex = 0; sourceIndex < sourceMessages.length; sourceIndex += 1) {
+        const m = sourceMessages[sourceIndex];
         if (m.role === "user") {
           if (!isDisplayableHistoryMessage(m)) continue;
           const currentIndex = displayIdx;
@@ -1000,7 +1013,10 @@ export function createSessionsRoute(engine, hub = null) {
           }
           const parsed = parseHistoryDeferredResult(m);
           recordMediaGenerationResult(parsed, afterIndex);
-          recordDeferredInterlude(parsed, afterIndex);
+          if (m.customType === DEFERRED_RESULT_MESSAGE_TYPE) {
+            const nextAssistantIndex = nextImmediateDisplayableAssistantIndex(sourceMessages, sourceIndex, displayIdx);
+            recordDeferredInterlude(parsed, nextAssistantIndex == null ? null : nextAssistantIndex - 1);
+          }
         }
       }
 
@@ -1009,7 +1025,7 @@ export function createSessionsRoute(engine, hub = null) {
           if (!isTerminalDeferredTask(task)) continue;
           const parsed = buildDeferredResultRecord(task.taskId, task);
           recordMediaGenerationResult(parsed, pageBounds.total - 1);
-          recordDeferredInterlude(parsed, pageBounds.total - 1);
+          recordDeferredInterlude(parsed, null);
         }
       }
       const resolvedBlocks = resolveMediaGenerationBlocks(

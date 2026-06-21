@@ -34,8 +34,16 @@ function makeSession({ isStreaming }) {
 
 describe("SessionCoordinator deferred custom delivery", () => {
   it("wakes an idle live session with triggerTurn instead of steer", async () => {
-    const coord = makeCoordinator();
+    const order: string[] = [];
+    const emitEvent = vi.fn();
+    const coord = makeCoordinator({ emitEvent });
     const session = makeSession({ isStreaming: false });
+    session.sendCustomMessage.mockImplementation(async () => {
+      order.push("send");
+    });
+    emitEvent.mockImplementation(() => {
+      order.push("emit");
+    });
     const sessionPath = "/tmp/fake/agents/test-agent/sessions/a.jsonl";
     coord.sessions.set(sessionPath, {
       session,
@@ -46,20 +54,35 @@ describe("SessionCoordinator deferred custom delivery", () => {
 
     const result = await coord.deliverCustomMessage(sessionPath, {
       customType: "hana-background-result",
-      content: "<hana-background-result />",
+      content: "<hana-background-result task-id=\"task-1\" status=\"success\" type=\"subagent\">done</hana-background-result>",
       display: false,
     });
 
     expect(result).toMatchObject({ ok: true, mode: "triggerTurn" });
+    expect(order).toEqual(["emit", "send"]);
     expect(session.sendCustomMessage).toHaveBeenCalledWith(
       expect.objectContaining({ customType: "hana-background-result", display: false }),
       { triggerTurn: true },
     );
     expect(coord.steerSession).not.toHaveBeenCalled();
+    expect(emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "turn_input_presentation",
+        presentation: expect.objectContaining({
+          kind: "pre_reply_interlude",
+          taskId: "task-1",
+          status: "success",
+          resultType: "subagent",
+          deliveryMode: "triggerTurn",
+        }),
+      }),
+      sessionPath,
+    );
   });
 
   it("queues custom delivery as a follow-up when the session is currently streaming", async () => {
-    const coord = makeCoordinator();
+    const emitEvent = vi.fn();
+    const coord = makeCoordinator({ emitEvent });
     const session = makeSession({ isStreaming: true });
     const sessionPath = "/tmp/fake/agents/test-agent/sessions/a.jsonl";
     coord.sessions.set(sessionPath, {
@@ -70,7 +93,7 @@ describe("SessionCoordinator deferred custom delivery", () => {
 
     const result = await coord.deliverCustomMessage(sessionPath, {
       customType: "hana-background-result",
-      content: "<hana-background-result />",
+      content: "<hana-background-result task-id=\"task-follow-up\" status=\"success\" type=\"workflow\">done</hana-background-result>",
       display: false,
     });
 
@@ -78,6 +101,19 @@ describe("SessionCoordinator deferred custom delivery", () => {
     expect(session.sendCustomMessage).toHaveBeenCalledWith(
       expect.objectContaining({ customType: "hana-background-result", display: false }),
       { deliverAs: "followUp" },
+    );
+    expect(emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "turn_input_presentation",
+        presentation: expect.objectContaining({
+          kind: "pre_reply_interlude",
+          taskId: "task-follow-up",
+          status: "success",
+          resultType: "workflow",
+          deliveryMode: "followUp",
+        }),
+      }),
+      sessionPath,
     );
   });
 
@@ -125,7 +161,8 @@ describe("SessionCoordinator deferred custom delivery", () => {
   });
 
   it("can deliver a notification without triggering a parent turn", async () => {
-    const coord = makeCoordinator();
+    const emitEvent = vi.fn();
+    const coord = makeCoordinator({ emitEvent });
     const session = makeSession({ isStreaming: false });
     const sessionPath = "/tmp/fake/agents/test-agent/sessions/a.jsonl";
     coord.sessions.set(sessionPath, {
@@ -148,6 +185,10 @@ describe("SessionCoordinator deferred custom delivery", () => {
     expect(session.sendCustomMessage).toHaveBeenCalledWith(
       expect.objectContaining({ customType: "hana-background-result", display: false }),
       { triggerTurn: false },
+    );
+    expect(emitEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "turn_input_presentation" }),
+      expect.anything(),
     );
   });
 

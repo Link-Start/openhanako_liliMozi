@@ -223,6 +223,7 @@ export type RichBlock =
     type: 'interlude';
     id: string;
     variant: 'deferred_result' | string;
+    timelinePlacement?: 'after_anchor_message' | string;
     taskId?: string;
     status?: 'success' | 'failed' | 'aborted' | string;
     sourceKind?: 'subagent' | 'workflow' | 'tool' | string;

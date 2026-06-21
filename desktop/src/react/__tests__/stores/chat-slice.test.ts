@@ -232,8 +232,8 @@ describe('chat-slice', () => {
     });
   });
 
-  describe('insertInterludeItemNearTaskResult', () => {
-    it('workflow 幕间插到同一轮连续 assistant 片段之后', () => {
+  describe('appendInterludeItem', () => {
+    it('appendInterludeItem 把幕间作为下一轮回复前置项追加到时间线尾部并去重', () => {
       slice.initSession('/a', [
         { type: 'message', data: { id: 'u1', role: 'user', text: 'run workflow' } },
         {
@@ -249,66 +249,25 @@ describe('chat-slice', () => {
             }],
           },
         },
-        {
-          type: 'message',
-          data: {
-            id: 'a-text',
-            role: 'assistant',
-            blocks: [{ type: 'text', html: '<p>Workflow 已经提交后台运行了。</p>' }],
-          },
-        },
       ], false);
 
-      const inserted = slice.insertInterludeItemNearTaskResult('/a', 'workflow-1', {
-        type: 'interlude',
+      const interlude = {
+        type: 'interlude' as const,
         id: 'deferred:workflow-1:success',
         variant: 'deferred_result',
         taskId: 'workflow-1',
         status: 'success',
         sourceKind: 'workflow',
         text: 'Hanako 收到了来自 冒烟测试 workflow 的结果',
-      });
+      };
 
-      expect(inserted).toBe(true);
+      expect(slice.appendInterludeItem('/a', interlude)).toBe(true);
+      expect(slice.appendInterludeItem('/a', interlude)).toBe(true);
       expect(slice.chatSessions['/a']?.items.map((item) => (
         item.type === 'message' ? item.data.id : item.id
-      ))).toEqual(['u1', 'a-card', 'a-text', 'deferred:workflow-1:success']);
+      ))).toEqual(['u1', 'a-card', 'deferred:workflow-1:success']);
     });
 
-    it('媒体结果幕间仍然插到结果文件前', () => {
-      slice.initSession('/a', [
-        { type: 'message', data: { id: 'u1', role: 'user', text: 'draw' } },
-        {
-          type: 'message',
-          data: {
-            id: 'a-media',
-            role: 'assistant',
-            blocks: [{
-              type: 'file',
-              replacesTaskId: 'task-img',
-              filePath: '/tmp/image.png',
-              label: 'image.png',
-              ext: 'png',
-            }],
-          },
-        },
-      ], false);
-
-      const inserted = slice.insertInterludeItemNearTaskResult('/a', 'task-img', {
-        type: 'interlude',
-        id: 'deferred:task-img:success',
-        variant: 'deferred_result',
-        taskId: 'task-img',
-        status: 'success',
-        sourceKind: 'tool',
-        text: '图片结果已抵达',
-      });
-
-      expect(inserted).toBe(true);
-      expect(slice.chatSessions['/a']?.items.map((item) => (
-        item.type === 'message' ? item.data.id : item.id
-      ))).toEqual(['u1', 'deferred:task-img:success', 'a-media']);
-    });
   });
 
   describe('truncateSessionFromMessage', () => {

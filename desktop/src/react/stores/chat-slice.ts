@@ -32,7 +32,7 @@ export interface ChatSlice {
   updateLastMessage: (path: string, updater: (msg: ChatMessage) => ChatMessage) => void;
   updateMessageById: (path: string, messageId: string, updater: (msg: ChatMessage) => ChatMessage) => boolean;
   truncateSessionFromMessage: (path: string, messageId: string) => boolean;
-  insertInterludeItemNearTaskResult: (sessionPath: string, taskId: string | null, block: Extract<ContentBlock, { type: 'interlude' }>) => boolean;
+  appendInterludeItem: (sessionPath: string, block: Extract<ContentBlock, { type: 'interlude' }>) => boolean;
   resolveBlockByTaskId: (sessionPath: string, taskId: string, resolution: ContentBlock) => boolean;
   patchBlockByTaskId: (sessionPath: string, taskId: string, patch: Record<string, any>) => void;
   _pendingBlockPatches: Record<string, Record<string, any>>;
@@ -313,7 +313,7 @@ export const createChatSlice = (
   // 缓存：block_update 到达时 block 可能还没添加到 store（时序竞争）
   _pendingBlockPatches: {} as Record<string, Record<string, any>>,
 
-  insertInterludeItemNearTaskResult: (sessionPath, taskId, block) => {
+  appendInterludeItem: (sessionPath, block) => {
     if (!scopedMapValue<SessionMessages>(get() as any, get().chatSessions, sessionPath)) return false;
 
     let consumed = false;
@@ -327,28 +327,7 @@ export const createChatSlice = (
         return {};
       }
 
-      let insertAt = items.length;
-      let foundAnchor = !taskId;
-      for (let i = items.length - 1; i >= 0; i--) {
-        const item = items[i];
-        if (item.type !== 'message' || item.data.role !== 'assistant') continue;
-        const blocks = item.data.blocks;
-        if (!blocks) continue;
-        if (!taskId) continue;
-
-        const blockIdx = blocks.findIndex((existing) => isInterludeResultAnchorBlock(existing, taskId));
-        if (blockIdx < 0) continue;
-
-        foundAnchor = true;
-        insertAt = shouldPlaceInterludeBeforeAnchor(blocks[blockIdx])
-          ? i
-          : insertAfterAssistantRun(items, i);
-        break;
-      }
-
-      if (!foundAnchor) return {};
-
-      items.splice(insertAt, 0, { type: 'interlude', id: block.id, data: block });
+      items.push({ type: 'interlude', id: block.id, data: block });
       consumed = true;
       invalidateSessionCache(sessionPath);
       return {
@@ -589,32 +568,4 @@ function isEquivalentInterlude(existing: Extract<ContentBlock, { type: 'interlud
     (block.id && existing.id === block.id) ||
     (!!block.taskId && existing.taskId === block.taskId && existing.status === block.status)
   );
-}
-
-function isMediaTaskAnchorBlock(block: ContentBlock, taskId: string): boolean {
-  return (
-    (block.type === 'media_generation' && block.taskId === taskId) ||
-    (block.type === 'file' && block.replacesTaskId === taskId)
-  );
-}
-
-function isInterludeResultAnchorBlock(block: ContentBlock, taskId: string): boolean {
-  return (
-    isMediaTaskAnchorBlock(block, taskId) ||
-    ((block.type === 'subagent' || block.type === 'workflow') && block.taskId === taskId)
-  );
-}
-
-function shouldPlaceInterludeBeforeAnchor(block: ContentBlock): boolean {
-  return block.type === 'media_generation' || block.type === 'file';
-}
-
-function insertAfterAssistantRun(items: ChatListItem[], anchorIndex: number): number {
-  let insertAt = anchorIndex + 1;
-  while (insertAt < items.length) {
-    const item = items[insertAt];
-    if (item.type !== 'message' || item.data.role !== 'assistant') break;
-    insertAt += 1;
-  }
-  return insertAt;
 }

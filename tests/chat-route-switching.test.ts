@@ -632,7 +632,7 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
-  it("delays visible deferred result blocks until the parent turn ends", () => {
+  it("renders deferred interludes from turn input presentation at the next SDK turn start", () => {
     let createHandlers;
     let subscriber;
     const upgradeWebSocket = vi.fn((factory) => {
@@ -648,6 +648,19 @@ describe("chat route model switch guard", () => {
     const engine = {
       agentName: "Hanako",
       abortAllStreaming: vi.fn(async () => {}),
+      deferredResults: {
+        query: vi.fn(() => ({
+          status: "resolved",
+          result: "回来了。",
+          meta: {
+            type: "subagent",
+            interlude: true,
+            executorAgentNameSnapshot: "Hanako",
+            label: "凌晨诗行",
+            summary: "写一首关于凌晨五点三十九分的三行短诗。要求：不要使用常见意象。",
+          },
+        })),
+      },
       getSessionByPath: vi.fn(() => ({ entries: [] })),
       isSessionStreaming: vi.fn(() => false),
       isSessionSwitching: vi.fn(() => false),
@@ -661,6 +674,7 @@ describe("chat route model switch guard", () => {
     handlers.onOpen({}, ws);
 
     subscriber?.({ type: "session_status", isStreaming: true }, "/tmp/interlude-session.jsonl");
+    subscriber?.({ type: "turn_start" }, "/tmp/interlude-session.jsonl");
     subscriber?.({
       type: "message_update",
       assistantMessageEvent: { type: "text_delta", delta: "派出去了。\n" },
@@ -678,6 +692,17 @@ describe("chat route model switch guard", () => {
         summary: "写一首关于凌晨五点三十九分的三行短诗。要求：不要使用常见意象。",
       },
     }, "/tmp/interlude-session.jsonl");
+    subscriber?.({
+      type: "turn_input_presentation",
+      presentation: {
+        kind: "pre_reply_interlude",
+        taskId: "subagent-fast",
+        status: "success",
+        resultType: "subagent",
+        result: "回来了。",
+        deliveryMode: "followUp",
+      },
+    }, "/tmp/interlude-session.jsonl");
 
     let payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
     expect(payloads.some((payload) => payload.type === "deferred_result")).toBe(true);
@@ -687,14 +712,202 @@ describe("chat route model switch guard", () => {
 
     payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
     const turnEndIndex = payloads.findIndex((payload) => payload.type === "turn_end");
-    const interludeIndex = payloads.findIndex((payload) => payload.type === "content_block" && payload.block?.type === "interlude");
     expect(turnEndIndex).toBeGreaterThanOrEqual(0);
-    expect(interludeIndex).toBeGreaterThan(turnEndIndex);
+    expect(payloads.some((payload) => payload.type === "content_block" && payload.block?.type === "interlude")).toBe(false);
+
+    subscriber?.({ type: "turn_start" }, "/tmp/interlude-session.jsonl");
+    subscriber?.({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "收到，正在处理。\n" },
+    }, "/tmp/interlude-session.jsonl");
+
+    payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    let nextStatusIndex = -1;
+    for (let i = payloads.length - 1; i >= 0; i -= 1) {
+      if (payloads[i].type === "status" && payloads[i].isStreaming === true) {
+        nextStatusIndex = i;
+        break;
+      }
+    }
+    const interludeIndex = payloads.findIndex((payload) => payload.type === "content_block" && payload.block?.type === "interlude");
+    const nextTextIndex = payloads.findIndex((payload) => payload.type === "text_delta" && payload.delta === "收到，正在处理。\n");
+    expect(nextStatusIndex).toBeGreaterThan(turnEndIndex);
+    expect(interludeIndex).toBeGreaterThan(nextStatusIndex);
+    expect(interludeIndex).toBeLessThan(nextTextIndex);
     expect(payloads[interludeIndex].block).toMatchObject({
       type: "interlude",
       taskId: "subagent-fast",
       sourceLabel: "Hanako · 凌晨诗行",
     });
+
+    handlers.onClose({}, ws);
+  });
+
+  it("drains one follow-up turn input presentation per SDK turn by default", () => {
+    let createHandlers;
+    let subscriber;
+    const sessionPath = "/tmp/interlude-followup-one-by-one.jsonl";
+    const taskMeta: Record<string, { label: string; summary: string }> = {
+      "task-a": { label: "A", summary: "first task" },
+      "task-b": { label: "B", summary: "second task" },
+    };
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hanako",
+      abortAllStreaming: vi.fn(async () => {}),
+      deferredResults: {
+        query: vi.fn((taskId) => ({
+          status: "resolved",
+          result: `${taskId} done`,
+          meta: {
+            type: "subagent",
+            interlude: true,
+            executorAgentNameSnapshot: "Hanako",
+            label: taskMeta[taskId]?.label,
+            summary: taskMeta[taskId]?.summary,
+          },
+        })),
+      },
+      getSessionByPath: vi.fn(() => ({ entries: [], followUpMode: "one-at-a-time" })),
+      isSessionStreaming: vi.fn(() => true),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    subscriber?.({ type: "session_status", isStreaming: true }, sessionPath);
+    subscriber?.({ type: "turn_start" }, sessionPath);
+    for (const taskId of ["task-a", "task-b"]) {
+      subscriber?.({
+        type: "turn_input_presentation",
+        presentation: {
+          kind: "pre_reply_interlude",
+          taskId,
+          status: "success",
+          resultType: "subagent",
+          result: `${taskId} done`,
+          deliveryMode: "followUp",
+        },
+      }, sessionPath);
+    }
+
+    subscriber?.({ type: "turn_end" }, sessionPath);
+    subscriber?.({ type: "turn_start" }, sessionPath);
+    subscriber?.({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "first follow-up reply" },
+    }, sessionPath);
+    subscriber?.({ type: "turn_end" }, sessionPath);
+    subscriber?.({ type: "turn_start" }, sessionPath);
+    subscriber?.({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "second follow-up reply" },
+    }, sessionPath);
+
+    const payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    const firstTextIndex = payloads.findIndex((payload) => payload.type === "text_delta" && payload.delta === "first follow-up reply");
+    const secondTextIndex = payloads.findIndex((payload) => payload.type === "text_delta" && payload.delta === "second follow-up reply");
+    const interludes = payloads
+      .map((payload, index) => ({ payload, index }))
+      .filter(({ payload }) => payload.type === "content_block" && payload.block?.type === "interlude");
+
+    expect(interludes).toHaveLength(2);
+    expect(interludes[0].payload.block.taskId).toBe("task-a");
+    expect(interludes[0].index).toBeLessThan(firstTextIndex);
+    expect(interludes[1].payload.block.taskId).toBe("task-b");
+    expect(interludes[1].index).toBeGreaterThan(firstTextIndex);
+    expect(interludes[1].index).toBeLessThan(secondTextIndex);
+
+    handlers.onClose({}, ws);
+  });
+
+  it("drains all follow-up turn input presentations in one SDK turn when followUpMode is all", () => {
+    let createHandlers;
+    let subscriber;
+    const sessionPath = "/tmp/interlude-followup-all.jsonl";
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hanako",
+      abortAllStreaming: vi.fn(async () => {}),
+      deferredResults: {
+        query: vi.fn((taskId) => ({
+          status: "resolved",
+          result: `${taskId} done`,
+          meta: {
+            type: "subagent",
+            interlude: true,
+            executorAgentNameSnapshot: "Hanako",
+            label: taskId,
+            summary: taskId,
+          },
+        })),
+      },
+      getSessionByPath: vi.fn(() => ({ entries: [], followUpMode: "all" })),
+      isSessionStreaming: vi.fn(() => true),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    subscriber?.({ type: "session_status", isStreaming: true }, sessionPath);
+    subscriber?.({ type: "turn_start" }, sessionPath);
+    for (const taskId of ["task-a", "task-b"]) {
+      subscriber?.({
+        type: "turn_input_presentation",
+        presentation: {
+          kind: "pre_reply_interlude",
+          taskId,
+          status: "success",
+          resultType: "subagent",
+          result: `${taskId} done`,
+          deliveryMode: "followUp",
+        },
+      }, sessionPath);
+    }
+
+    subscriber?.({ type: "turn_end" }, sessionPath);
+    subscriber?.({ type: "turn_start" }, sessionPath);
+    subscriber?.({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "combined follow-up reply" },
+    }, sessionPath);
+
+    const payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    const textIndex = payloads.findIndex((payload) => payload.type === "text_delta" && payload.delta === "combined follow-up reply");
+    const interludes = payloads
+      .map((payload, index) => ({ payload, index }))
+      .filter(({ payload }) => payload.type === "content_block" && payload.block?.type === "interlude");
+
+    expect(interludes.map(({ payload }) => payload.block.taskId)).toEqual(["task-a", "task-b"]);
+    expect(interludes.every(({ index }) => index < textIndex)).toBe(true);
 
     handlers.onClose({}, ws);
   });
@@ -1033,7 +1246,7 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
-  it("keeps standalone deferred results immediate across repeated deliveries", () => {
+  it("does not render interludes directly from standalone deferred result notifications", () => {
     let createHandlers;
     let subscriber;
     const upgradeWebSocket = vi.fn((factory) => {
@@ -1076,7 +1289,7 @@ describe("chat route model switch guard", () => {
       .filter((payload) => payload.type === "content_block" && payload.block?.type === "interlude")
       .map((payload) => payload.block.taskId);
 
-    expect(interludeTaskIds).toEqual(["standalone-1", "standalone-2"]);
+    expect(interludeTaskIds).toEqual([]);
 
     handlers.onClose({}, ws);
   });

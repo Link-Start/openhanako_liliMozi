@@ -455,6 +455,46 @@ describe('buildItemsFromHistory user image restoration', () => {
     });
   });
 
+  it('显式 after_anchor_message 幕间在恢复时不走旧媒体前置规则', () => {
+    const items = buildItemsFromHistory({
+      messages: [{
+        id: 'a1',
+        role: 'assistant',
+        content: '提交图片任务',
+      }],
+      blocks: [
+        {
+          type: 'interlude',
+          afterIndex: 0,
+          id: 'deferred:task-img:success',
+          variant: 'deferred_result',
+          timelinePlacement: 'after_anchor_message',
+          taskId: 'task-img',
+          status: 'success',
+          sourceKind: 'tool',
+          sourceLabel: '图片生成',
+          text: '图片结果已抵达',
+        },
+        {
+          type: 'file',
+          afterIndex: 0,
+          replacesTaskId: 'task-img',
+          filePath: '/tmp/image.png',
+          label: 'image.png',
+          ext: 'png',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.type)).toEqual(['message', 'interlude']);
+    expect(items[0]?.type).toBe('message');
+    if (items[0]?.type !== 'message') throw new Error('expected message');
+    expect(items[0].data.blocks?.map((block) => block.type)).toEqual(['text', 'file']);
+    expect(items[1]?.type).toBe('interlude');
+    if (items[1]?.type !== 'interlude') throw new Error('expected interlude');
+    expect(items[1].data.taskId).toBe('task-img');
+  });
+
   it('只有 deferred 幕间消息的历史行不会留下空 assistant 外壳', () => {
     const items = buildItemsFromHistory({
       messages: [{
