@@ -132,14 +132,6 @@ function paramsForLocalTarget(params, absolutePath) {
   };
 }
 
-function paramsForSessionFileTarget(params, target) {
-  return {
-    ...stripResourceParams(params),
-    fileId: target.fileId,
-    ...(target.sessionPath ? { sessionPath: target.sessionPath } : {}),
-  };
-}
-
 function removePathFromRequired(required) {
   if (!Array.isArray(required)) return required;
   return required.filter((name) => !["path", "file_path", "filePath"].includes(name));
@@ -218,28 +210,19 @@ function emitResourceChanged(options, target, reason) {
   }, sessionPath);
 }
 
-async function readUrlAsText(url) {
-  if (typeof fetch !== "function") {
-    return textResult("ResourceIO URL reads require a runtime with fetch support.");
+async function readUrlAsText(url, resourceIO) {
+  if (!resourceIO || typeof resourceIO.read !== "function") {
+    return textResult("ResourceIO URL reads require the ResourceIO kernel.");
   }
-  const res = await fetch(url);
-  if (!res.ok) {
-    return textResult(`ResourceIO URL read failed: HTTP ${res.status} ${res.statusText}`);
-  }
-  const contentType = res.headers.get("content-type") || "";
-  const arrayBuffer = await res.arrayBuffer();
-  const maxBytes = 1024 * 1024;
-  const bytes = new Uint8Array(arrayBuffer.slice(0, maxBytes));
-  const text = new TextDecoder("utf-8").decode(bytes);
-  const truncated = arrayBuffer.byteLength > maxBytes
-    ? `\n\n[ResourceIO: truncated URL response at ${maxBytes} bytes]`
-    : "";
+  const result = await resourceIO.read({ kind: "url", url });
+  const text = Buffer.isBuffer(result.content)
+    ? result.content.toString("utf-8")
+    : Buffer.from(result.content || "").toString("utf-8");
   return textResult([
     `URL: ${url}`,
-    contentType ? `Content-Type: ${contentType}` : null,
+    result.version?.etag ? `ETag: ${result.version.etag}` : null,
     "",
     text,
-    truncated,
   ].filter((part) => part !== null).join("\n"));
 }
 
@@ -255,13 +238,21 @@ function wrapResourceIoTool(tool, options) {
       if (!target) return tool.execute(toolCallId, params, ...rest);
 
       if (target.kind === "url") {
-        if (toolName === "read") return readUrlAsText(target.url);
+        if (toolName === "read") return readUrlAsText(target.url, options.resourceIO);
         return textResult(`ResourceIO URL targets are read-only; ${toolName} cannot operate on ${target.url}.`);
       }
 
       if (target.kind === "session-file") {
         if (toolName === "read") {
-          return tool.execute(toolCallId, paramsForSessionFileTarget(params, target), ...rest);
+          if (!options.resourceIO || typeof options.resourceIO.materialize !== "function") {
+            return textResult("SessionFile reads require the ResourceIO kernel.");
+          }
+          const materialized = await options.resourceIO.materialize({
+            kind: "session-file",
+            fileId: target.fileId,
+            ...(target.sessionPath ? { sessionPath: target.sessionPath } : {}),
+          });
+          return tool.execute(toolCallId, paramsForLocalTarget(params, materialized.filePath), ...rest);
         }
         return textResult(`SessionFile ${target.fileId} is a reference and cannot be written or edited directly. Resolve or materialize it to a local path first.`);
       }

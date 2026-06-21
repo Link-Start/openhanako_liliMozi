@@ -4,6 +4,7 @@ import { normalizeResourceRef, resourceKeyForRef } from "../resource-refs.ts";
 import type {
   MaterializeResult,
   ResourceDescriptor,
+  ResourceEdit,
   ResourceListResult,
   ResourceMutationResult,
   ResourceReadResult,
@@ -93,6 +94,24 @@ export class LocalFsProvider {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, content);
     return this.mutationResult(filePath, existed ? "modified" : "created");
+  }
+
+  async edit(ref: ResourceRef | unknown, edits: ResourceEdit[]): Promise<ResourceMutationResult> {
+    const filePath = this.resolvePath(ref);
+    this.assertAllowed(filePath, "read");
+    this.assertAllowed(filePath, "write");
+    let text = fs.readFileSync(filePath, "utf-8");
+    for (const edit of edits || []) {
+      if (typeof edit?.oldText !== "string" || typeof edit?.newText !== "string") {
+        throw new Error("resource edit requires oldText and newText");
+      }
+      if (!text.includes(edit.oldText)) {
+        throw new Error("resource edit oldText not found");
+      }
+      text = text.replace(edit.oldText, edit.newText);
+    }
+    fs.writeFileSync(filePath, text, "utf-8");
+    return this.mutationResult(filePath, "modified");
   }
 
   async mkdir(ref: ResourceRef | unknown): Promise<ResourceMutationResult> {

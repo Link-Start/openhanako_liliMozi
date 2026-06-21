@@ -1,8 +1,10 @@
 import type { ResourceEventBus } from "./resource-event-bus.ts";
+import { capabilityDenied, providerNotAvailable } from "./errors.ts";
 import { normalizeResourceRef } from "./resource-refs.ts";
 import type {
   MaterializeResult,
   ResourceDeletedEvent,
+  ResourceEdit,
   ResourceEventSource,
   ResourceMutationResult,
   ResourceReadResult,
@@ -17,6 +19,7 @@ type Provider = {
   stat?: (ref: ResourceRef) => Promise<ResourceStat>;
   read?: (ref: ResourceRef) => Promise<ResourceReadResult>;
   write?: (ref: ResourceRef, content: string | Buffer) => Promise<ResourceMutationResult>;
+  edit?: (ref: ResourceRef, edits: ResourceEdit[]) => Promise<ResourceMutationResult>;
   mkdir?: (ref: ResourceRef) => Promise<ResourceMutationResult>;
   delete?: (ref: ResourceRef) => Promise<ResourceMutationResult>;
   list?: (ref: ResourceRef) => Promise<ResourceListResult>;
@@ -62,6 +65,13 @@ export class ResourceIO {
   async write(input: unknown, content: string | Buffer, options: MutationOptions = {}): Promise<ResourceMutationResult> {
     const ref = normalizeResourceRef(input);
     const result = await this.callProvider<ResourceMutationResult>(ref, "write", ref, content);
+    this.emitChanged(result, options);
+    return result;
+  }
+
+  async edit(input: unknown, edits: ResourceEdit[], options: MutationOptions = {}): Promise<ResourceMutationResult> {
+    const ref = normalizeResourceRef(input);
+    const result = await this.callProvider<ResourceMutationResult>(ref, "edit", ref, edits);
     this.emitChanged(result, options);
     return result;
   }
@@ -116,7 +126,7 @@ export class ResourceIO {
   providerFor(ref: ResourceRef): Provider {
     const id = providerIdForRef(ref);
     const provider = this.providers[id];
-    if (!provider) throw new Error(`ResourceIO provider not available: ${id}`);
+    if (!provider) throw providerNotAvailable(id);
     return provider;
   }
 
@@ -124,7 +134,7 @@ export class ResourceIO {
     const provider = this.providerFor(ref);
     const capabilities = provider.capabilities?.(ref) || {};
     if (capabilities[capability] === false || typeof provider[capability] !== "function") {
-      throw new Error(`ResourceIO capability not supported: ${providerIdForRef(ref)}.${String(capability)}`);
+      throw capabilityDenied(String(capability), providerIdForRef(ref));
     }
     return (provider[capability] as (...args: unknown[]) => Promise<T>)(...args);
   }

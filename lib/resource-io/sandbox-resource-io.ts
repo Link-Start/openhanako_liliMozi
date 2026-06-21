@@ -4,6 +4,10 @@ import { deriveSandboxPolicy } from "../sandbox/policy.ts";
 import { PathGuard } from "../sandbox/path-guard.ts";
 import { createManagedConfigWriteGuard } from "../sandbox/managed-config-guard.ts";
 import { LocalFsProvider } from "./providers/local-fs-provider.ts";
+import { MountProvider } from "./providers/mount-provider.ts";
+import { ResourceProvider } from "./providers/resource-provider.ts";
+import { SessionFileResolverProvider } from "./providers/session-file-resolver.ts";
+import { UrlProvider } from "./providers/url-provider.ts";
 import { ResourceEventBus } from "./resource-event-bus.ts";
 import { ResourceIO } from "./resource-io.ts";
 
@@ -19,6 +23,10 @@ type Options = {
   getExternalReadPaths?: () => string[];
   getSessionPath?: () => string | null;
   emitEvent?: (event: object, sessionPath?: string | null) => void;
+  sessionFiles?: any;
+  resourceService?: any;
+  studioId?: string | null;
+  urlMaterializeRoot?: string;
 };
 
 export function createSandboxResourceIO({
@@ -33,6 +41,10 @@ export function createSandboxResourceIO({
   getExternalReadPaths,
   getSessionPath,
   emitEvent,
+  sessionFiles,
+  resourceService,
+  studioId,
+  urlMaterializeRoot,
 }: Options) {
   const resolveAuthorizedFolders = () => {
     if (typeof getAuthorizedFolders === "function") {
@@ -70,10 +82,27 @@ export function createSandboxResourceIO({
     },
   };
 
+  const localFsProviderFactory = ({ cwd: providerCwd, guard }) => new LocalFsProvider({ cwd: providerCwd, guard });
+  const providers: Record<string, any> = {
+    local_fs: localFsProviderFactory({ cwd, guard: resourceAccessGuard }),
+    url: new UrlProvider({ materializeRoot: urlMaterializeRoot }),
+  };
+  if (sessionFiles) {
+    providers.session_file = new SessionFileResolverProvider({ sessionFiles });
+  }
+  if (resourceService) {
+    providers.resource = new ResourceProvider({ resourceService });
+  }
+  if (studioId) {
+    providers.mount = new MountProvider({
+      hanakoHome,
+      studioId,
+      localFsProviderFactory,
+    });
+  }
+
   return new ResourceIO({
-    providers: {
-      local_fs: new LocalFsProvider({ cwd, guard: resourceAccessGuard }),
-    },
+    providers,
     eventBus: new ResourceEventBus({
       emit: (event, sessionPath) => emitEvent?.(event, sessionPath),
     }),

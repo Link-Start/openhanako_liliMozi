@@ -215,6 +215,7 @@ export class HanaEngine {
   declare _prefs: any;
   declare _resourceAccess: any;
   declare _resourceLoader: any;
+  declare _resourceIO: any;
   declare _resourceWatchRegistry: any;
   declare _resources: any;
   declare _runtimeContext: any;
@@ -259,6 +260,7 @@ export class HanaEngine {
     this._runtimeContext = null;
     this._resources = null;
     this._resourceAccess = null;
+    this._resourceIO = null;
     this.agentsDir = path.join(hanakoHome, "agents");
     this.userDir = path.join(hanakoHome, "user");
     this.channelsDir = path.join(hanakoHome, "channels");
@@ -763,6 +765,26 @@ export class HanaEngine {
   getResourceAccessService() {
     if (!this._resourceAccess) throw new Error("resource access service is not initialized");
     return this._resourceAccess;
+  }
+  getResourceIO() {
+    if (!this._resourceIO) {
+      if (!this._runtimeContext?.studioId) throw new Error("runtime studioId unavailable");
+      this._resourceIO = createSandboxResourceIO({
+        cwd: this.userDir,
+        agentDir: this.agent?.dir || this.agentsDir,
+        workspace: null,
+        workspaceFolders: [],
+        authorizedFolders: [],
+        hanakoHome: this.hanakoHome,
+        getSandboxEnabled: () => false,
+        getSessionPath: () => this.currentSessionPath || null,
+        emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+        sessionFiles: this._sessionFiles,
+        resourceService: this.getResourceService(),
+        studioId: this._runtimeContext.studioId,
+      });
+    }
+    return this._resourceIO;
   }
   retainResourceWatch(resource) {
     if (!this._resourceWatchRegistry || typeof this._resourceWatchRegistry.retain !== "function") {
@@ -2204,6 +2226,9 @@ export class HanaEngine {
       getExternalReadPaths,
       getSessionPath,
       emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+      sessionFiles: this._sessionFiles,
+      resourceService: this._resources || null,
+      studioId: this._runtimeContext?.studioId || null,
     });
     let result = createSandboxedTools(cwd, allTools, {
       agentDir: effectiveAgentDir,

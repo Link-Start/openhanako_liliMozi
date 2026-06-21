@@ -107,6 +107,11 @@ export type ResourceMutationResult = {
   filePath?: string;
 };
 
+export type ResourceEdit = {
+  oldText: string;
+  newText: string;
+};
+
 export type ResourceListItem = {
   name: string;
   isDirectory: boolean;
