@@ -1,10 +1,12 @@
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { ResourceWatchRegistry } from "../lib/resource-io/resource-watch-registry.ts";
+import { resourceKeyForRef } from "../lib/resource-io/resource-refs.ts";
 
 describe("ResourceWatchRegistry", () => {
   it("shares backend watches across subscriptions and reports diagnostics", () => {
     const filePath = path.join("/workspace", "notes", "a.md");
+    const resourceKey = resourceKeyForRef({ kind: "local-file", path: filePath });
     const close = vi.fn();
     const watchPath = vi.fn(() => ({ close }));
     const registry = new ResourceWatchRegistry({
@@ -23,12 +25,12 @@ describe("ResourceWatchRegistry", () => {
     });
 
     expect(first.subscriptionId).toEqual(expect.any(String));
-    expect(first.resourceKeys).toEqual([`local_fs:${filePath.replace(/\\/g, "/")}`]);
+    expect(first.resourceKeys).toEqual([resourceKey]);
     expect(watchPath).toHaveBeenCalledTimes(1);
     expect(registry.diagnostics()).toMatchObject({
       subscriptions: 2,
       watches: [{
-        resourceKey: `local_fs:${filePath.replace(/\\/g, "/")}`,
+        resourceKey,
         refCount: 2,
       }],
     });
@@ -41,9 +43,50 @@ describe("ResourceWatchRegistry", () => {
     expect(registry.diagnostics()).toMatchObject({ subscriptions: 0, watches: [] });
   });
 
+  it("uses the resolved win32 path for local-file watch paths and resource keys", async () => {
+    vi.resetModules();
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("D:\\a\\openhanako\\openhanako");
+    vi.doMock("path", async () => {
+      const actual = await vi.importActual<typeof import("path")>("path");
+      return {
+        ...actual.win32,
+        default: actual.win32,
+        win32: actual.win32,
+        posix: actual.posix,
+      };
+    });
+
+    try {
+      const { ResourceWatchRegistry: WinResourceWatchRegistry } = await import("../lib/resource-io/resource-watch-registry.ts");
+      const close = vi.fn();
+      const watchPath = vi.fn(() => ({ close }));
+      const registry = new WinResourceWatchRegistry({
+        emitEvent: vi.fn(),
+        watchPath,
+      });
+
+      const subscription = registry.subscribe({
+        purpose: "preview",
+        resources: [{ kind: "local-file", path: "/workspace/notes/a.md" }],
+      });
+
+      expect(subscription.resourceKeys).toEqual(["local_fs:D:/workspace/notes/a.md"]);
+      expect(watchPath).toHaveBeenCalledWith("D:\\workspace\\notes\\a.md", expect.any(Function));
+      expect(registry.diagnostics().watches[0]).toMatchObject({
+        resourceKey: "local_fs:D:/workspace/notes/a.md",
+        filePath: "D:\\workspace\\notes\\a.md",
+      });
+    } finally {
+      vi.doUnmock("path");
+      vi.resetModules();
+      cwdSpy.mockRestore();
+    }
+  });
+
   it("emits a versioned resource.changed event after a watched local file changes", async () => {
     vi.useFakeTimers();
     const filePath = path.join("/workspace", "notes", "a.md");
+    const resourceKey = resourceKeyForRef({ kind: "local-file", path: filePath });
     const close = vi.fn();
     const emitEvent = vi.fn();
     let onChange: (() => void) | null = null;
@@ -70,11 +113,11 @@ describe("ResourceWatchRegistry", () => {
     expect(emitEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: "resource.changed",
       source: "provider_watch",
-      resourceKey: `local_fs:${filePath.replace(/\\/g, "/")}`,
+      resourceKey,
       resource: expect.objectContaining({
         kind: "local-file",
         provider: "local_fs",
-        path: filePath,
+        path: path.resolve(filePath),
       }),
       version: { mtimeMs: 123, size: 7 },
     }), null);
@@ -87,6 +130,8 @@ describe("ResourceWatchRegistry", () => {
   it("treats basename changes from a watched file as the file itself", async () => {
     vi.useFakeTimers();
     const filePath = path.join("/workspace", "notes", "a.md");
+    const resolvedFilePath = path.resolve(filePath);
+    const resourceKey = resourceKeyForRef({ kind: "local-file", path: filePath });
     const close = vi.fn();
     const emitEvent = vi.fn();
     let onChange: ((changedPath?: string | null) => void) | null = null;
@@ -104,7 +149,7 @@ describe("ResourceWatchRegistry", () => {
         ref: resource,
         filePath,
         isDirectory: false,
-        resourceKey: `local_fs:${filePath.replace(/\\/g, "/")}`,
+        resourceKey,
         resource: {
           kind: "local-file",
           provider: "local_fs",
@@ -112,7 +157,7 @@ describe("ResourceWatchRegistry", () => {
           filePath,
         },
         toResource: (eventPath) => ({
-          resourceKey: `local_fs:${eventPath.replace(/\\/g, "/")}`,
+          resourceKey: resourceKeyForRef({ kind: "local-file", path: eventPath }),
           resource: {
             kind: "local-file",
             provider: "local_fs",
@@ -132,15 +177,15 @@ describe("ResourceWatchRegistry", () => {
     onChange?.("a.md");
     await vi.runAllTimersAsync();
 
-    expect(statPath).toHaveBeenCalledWith(filePath);
+    expect(statPath).toHaveBeenCalledWith(resolvedFilePath);
     expect(emitEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: "resource.changed",
-      resourceKey: `local_fs:${filePath.replace(/\\/g, "/")}`,
+      resourceKey,
       resource: expect.objectContaining({
         kind: "local-file",
         provider: "local_fs",
-        path: filePath,
-        filePath,
+        path: resolvedFilePath,
+        filePath: resolvedFilePath,
       }),
       version: { mtimeMs: 321, size: 5 },
     }), null);
@@ -153,7 +198,9 @@ describe("ResourceWatchRegistry", () => {
   it("uses provider watch targets and emits canonical provider resources", async () => {
     vi.useFakeTimers();
     const mountRoot = path.join("/mnt", "docs");
+    const resolvedMountRoot = path.resolve(mountRoot);
     const changedPath = path.join(mountRoot, "notes", "a.md");
+    const resolvedChangedPath = path.resolve(changedPath);
     const close = vi.fn();
     const emitEvent = vi.fn();
     let onChange: ((changedPath?: string | null) => void) | null = null;
@@ -203,7 +250,7 @@ describe("ResourceWatchRegistry", () => {
     expect(subscription.resourceKeys).toEqual(["mount:mount_local:"]);
     expect(registry.diagnostics().watches[0]).toMatchObject({
       resourceKey: "mount:mount_local:",
-      filePath: mountRoot,
+      filePath: resolvedMountRoot,
     });
 
     onChange?.(changedPath);
@@ -218,7 +265,7 @@ describe("ResourceWatchRegistry", () => {
         mountId: "mount_local",
         path: "notes/a.md",
         provider: "mount",
-        filePath: changedPath,
+        filePath: resolvedChangedPath,
       }),
       version: { mtimeMs: 456, size: 11 },
     }), null);

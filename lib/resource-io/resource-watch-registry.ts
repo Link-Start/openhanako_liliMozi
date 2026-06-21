@@ -160,7 +160,7 @@ export class ResourceWatchRegistry {
     if (!target?.filePath || !target?.resourceKey || !target?.resource) {
       throw new Error("ResourceWatchRegistry resolver returned an invalid watch target");
     }
-    const filePath = path.isAbsolute(target.filePath) ? path.normalize(target.filePath) : path.resolve(target.filePath);
+    const filePath = normalizeWatchPath(target.filePath);
     return {
       ref: (target.ref || normalizeResourceRef(input)) as ResourceRef,
       filePath,
@@ -228,7 +228,7 @@ function defaultResolveWatchTarget(input: unknown): WatchTarget {
   if (ref.kind !== "local-file") {
     throw new Error(`ResourceWatchRegistry cannot resolve provider watch target for ${ref.kind}`);
   }
-  const filePath = path.isAbsolute(ref.path) ? path.normalize(ref.path) : path.resolve(ref.path);
+  const filePath = normalizeWatchPath(ref.path);
   const snapshot = localWatchSnapshot(filePath);
   return {
     ref: { kind: "local-file", path: filePath },
@@ -242,20 +242,21 @@ function defaultResolveWatchTarget(input: unknown): WatchTarget {
 function normalizeChangedPath(rootPath: string, changedPath?: string | null, rootIsDirectory = false): string {
   if (!changedPath) return rootPath;
   const value = String(changedPath);
-  if (path.isAbsolute(value)) return path.normalize(value);
+  if (path.isAbsolute(value)) return normalizeWatchPath(value);
   return rootIsDirectory ? path.join(rootPath, value) : rootPath;
 }
 
 function localWatchSnapshot(filePath: string): WatchResourceSnapshot {
+  const normalizedPath = normalizeWatchPath(filePath);
   return {
-    resourceKey: resourceKeyForRef({ kind: "local-file", path: filePath }),
+    resourceKey: resourceKeyForRef({ kind: "local-file", path: normalizedPath }),
     resource: {
       kind: "local-file" as const,
       provider: "local_fs",
-      path: filePath,
-      filePath,
+      path: normalizedPath,
+      filePath: normalizedPath,
     },
-    filePath,
+    filePath: normalizedPath,
   };
 }
 
@@ -266,11 +267,15 @@ function defaultWatchPath(targetPath: string, handler: (changedPath?: string | n
     let changedPath = rootPath;
     if (rootIsDirectory && filename) {
       const value = String(filename);
-      changedPath = path.isAbsolute(value) ? path.normalize(value) : path.join(rootPath, value);
+      changedPath = path.isAbsolute(value) ? normalizeWatchPath(value) : path.join(rootPath, value);
     }
     handler(changedPath);
   });
   return { close: () => watcher.close() };
+}
+
+function normalizeWatchPath(value: string): string {
+  return path.resolve(value);
 }
 
 function safeIsDirectory(targetPath: string): boolean {
