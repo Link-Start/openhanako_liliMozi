@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { upsertStudioMount } from "../core/studio-mounts.ts";
 
 function makeTmpDir() {
@@ -316,6 +316,108 @@ describe("mobile workbench route", () => {
     });
     expect(typeof data.version.mtimeMs).toBe("number");
     expect(fs.readFileSync(target, "utf-8")).toBe("new body");
+  });
+
+  it("emits ResourceEvents for successful Workbench text writes", async () => {
+    tmpDir = makeTmpDir();
+    const workspace = path.join(tmpDir, "workspace");
+    fs.mkdirSync(workspace, { recursive: true });
+    const target = path.join(workspace, "note.md");
+    fs.writeFileSync(target, "old", "utf-8");
+    const realTarget = fs.realpathSync(target);
+    const changed = vi.fn();
+    const app = await makeApp({
+      hanakoHome: path.join(tmpDir, "hana"),
+      deskCwd: workspace,
+      homeCwd: workspace,
+      getResourceIO: () => ({
+        eventBus: { changed },
+      }),
+    });
+
+    const res = await app.request("/api/workbench/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "writeText", name: "note.md", content: "new body" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(changed).toHaveBeenCalledWith(expect.objectContaining({
+      changeType: "modified",
+      resourceKey: expect.stringContaining("note.md"),
+      source: "api",
+      reason: "mobile_workbench.write",
+      resource: expect.objectContaining({
+        kind: "local-file",
+        provider: "local_fs",
+        filePath: realTarget,
+      }),
+      version: expect.objectContaining({
+        size: Buffer.byteLength("new body"),
+      }),
+    }));
+  });
+
+  it("emits ResourceEvents for Workbench mkdir, rename, and safe delete", async () => {
+    tmpDir = makeTmpDir();
+    const workspace = path.join(tmpDir, "workspace");
+    const hanakoHome = path.join(tmpDir, "hana");
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(workspace, "draft.md"), "draft", "utf-8");
+    const changed = vi.fn();
+    const renamed = vi.fn();
+    const deleted = vi.fn();
+    const app = await makeApp({
+      hanakoHome,
+      deskCwd: workspace,
+      homeCwd: workspace,
+      getResourceIO: () => ({
+        eventBus: { changed, renamed, deleted },
+      }),
+    });
+
+    const mkdir = await app.request("/api/workbench/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mkdir", name: "notes" }),
+    });
+    expect(mkdir.status).toBe(200);
+    expect(changed).toHaveBeenCalledWith(expect.objectContaining({
+      changeType: "created",
+      reason: "mobile_workbench.mkdir",
+      resource: expect.objectContaining({
+        filePath: fs.realpathSync(path.join(workspace, "notes")),
+      }),
+    }));
+
+    const rename = await app.request("/api/workbench/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "rename", oldName: "draft.md", newName: "renamed.md" }),
+    });
+    expect(rename.status).toBe(200);
+    expect(renamed).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "mobile_workbench.rename",
+      oldResource: expect.objectContaining({
+        filePath: expect.stringContaining("draft.md"),
+      }),
+      newResource: expect.objectContaining({
+        filePath: fs.realpathSync(path.join(workspace, "renamed.md")),
+      }),
+    }));
+
+    const remove = await app.request("/api/workbench/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "safeDelete", name: "renamed.md" }),
+    });
+    expect(remove.status).toBe(200);
+    expect(deleted).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "mobile_workbench.safe_delete",
+      resource: expect.objectContaining({
+        filePath: expect.stringContaining("renamed.md"),
+      }),
+    }));
   });
 
   it("rejects path traversal in mobile file names and subdirectories", async () => {

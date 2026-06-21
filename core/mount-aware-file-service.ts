@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { loadStudioMountRegistry } from "./studio-mounts.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
+import { resourceKeyForRef } from "../lib/resource-io/resource-refs.ts";
 
 const log = createModuleLogger("mount-files");
 
@@ -18,6 +19,7 @@ const SEARCH_SKIP_DIRS = new Set([
   "coverage",
 ]);
 const SEARCH_LIMIT = 80;
+export const WORKBENCH_RESOURCE_EVENTS = Symbol.for("hana.workbenchResourceEvents");
 
 export class MountAwareFileError extends Error {
   declare code: string;
@@ -113,7 +115,10 @@ export class MountAwareFileService {
     const target = resolveFileTarget(root.path, dir, name);
     if (!target) throw fileError("invalid path", "invalid_path", 400);
     fs.mkdirSync(target, { recursive: false });
-    return workbenchWriteResult(root, "mkdir", { files: await listFiles(dir) }, this._discloseNativeRoot);
+    return withWorkbenchResourceEvents(
+      workbenchWriteResult(root, "mkdir", { files: await listFiles(dir) }, this._discloseNativeRoot),
+      [changedWorkbenchResourceEvent(target, "created")],
+    );
   }
 
   async writeText(rootId, subdir, body: Record<string, any> = {}) {
@@ -121,6 +126,7 @@ export class MountAwareFileService {
     const name = normalizePlainNameOrThrow(body.name);
     const target = resolveFileTarget(root.path, dir, name);
     if (!target) throw fileError("invalid path", "invalid_path", 400);
+    const existed = fs.existsSync(target);
     const expectedVersion = normalizeExpectedVersionOrNull(body.expectedVersion);
     if (expectedVersion) {
       const currentVersion = statFileVersionOrNull(target);
@@ -141,7 +147,7 @@ export class MountAwareFileService {
       await this._createCheckpoint({ filePath: target, reason: "mobile-workbench-edit" }).catch(() => null);
     }
     fs.writeFileSync(target, String(body.content ?? ""), "utf-8");
-    return {
+    return withWorkbenchResourceEvents({
       ok: true,
       action: body.action,
       rootId: root.id,
@@ -149,7 +155,7 @@ export class MountAwareFileService {
       mount: publicRoot(root, this._discloseNativeRoot),
       version: statFileVersionOrNull(target),
       files: await listFiles(dir),
-    };
+    }, [changedWorkbenchResourceEvent(target, existed ? "modified" : "created")]);
   }
 
   async rename(rootId, subdir, body: Record<string, any> = {}) {
@@ -160,7 +166,10 @@ export class MountAwareFileService {
     const target = resolveFileTarget(root.path, dir, newName);
     if (!source || !target) throw fileError("invalid path", "invalid_path", 400);
     fs.renameSync(source, target);
-    return workbenchWriteResult(root, "rename", { files: await listFiles(dir) }, this._discloseNativeRoot);
+    return withWorkbenchResourceEvents(
+      workbenchWriteResult(root, "rename", { files: await listFiles(dir) }, this._discloseNativeRoot),
+      [renamedWorkbenchResourceEvent(source, target)],
+    );
   }
 
   async move(rootId, subdir, body: Record<string, any> = {}) {
@@ -171,8 +180,12 @@ export class MountAwareFileService {
     const destDir = resolveInsideRoot(root.path, destSubdir);
     if (!source || !destDir) throw fileError("invalid path", "invalid_path", 400);
     fs.mkdirSync(destDir, { recursive: true });
-    fs.renameSync(source, path.join(destDir, name));
-    return workbenchWriteResult(root, "move", { files: await listFiles(dir) }, this._discloseNativeRoot);
+    const target = path.join(destDir, name);
+    fs.renameSync(source, target);
+    return withWorkbenchResourceEvents(
+      workbenchWriteResult(root, "move", { files: await listFiles(dir) }, this._discloseNativeRoot),
+      [renamedWorkbenchResourceEvent(source, target)],
+    );
   }
 
   async movePaths(rootId, body: Record<string, any> = {}) {
@@ -186,6 +199,7 @@ export class MountAwareFileService {
     fs.mkdirSync(destDir, { recursive: true });
 
     const touchedSubdirs = new Set([currentSubdir, destSubdir]);
+    const events = [];
     for (const item of items) {
       const sourceSubdir = normalizeSubdirOrThrow(item?.sourceSubdir || "");
       const name = normalizePlainNameOrThrow(item?.name);
@@ -195,6 +209,7 @@ export class MountAwareFileService {
       const target = resolveFileTarget(root.path, destDir, name);
       if (!source || !target) throw fileError("invalid path", "invalid_path", 400);
       fs.renameSync(source, target);
+      events.push(renamedWorkbenchResourceEvent(source, target));
       touchedSubdirs.add(sourceSubdir);
     }
 
@@ -204,10 +219,13 @@ export class MountAwareFileService {
       if (dir) filesByPath[subdir] = await listFiles(dir);
     }
     const currentDir = resolveInsideRoot(root.path, currentSubdir);
-    return workbenchWriteResult(root, "movePaths", {
-      filesByPath,
-      files: currentDir ? await listFiles(currentDir) : [],
-    }, this._discloseNativeRoot);
+    return withWorkbenchResourceEvents(
+      workbenchWriteResult(root, "movePaths", {
+        filesByPath,
+        files: currentDir ? await listFiles(currentDir) : [],
+      }, this._discloseNativeRoot),
+      events,
+    );
   }
 
   async safeDelete(rootId, subdir, body: Record<string, any> = {}) {
@@ -229,7 +247,10 @@ export class MountAwareFileService {
       originalSubdir: normalizedSubdir,
       deletedAt: new Date().toISOString(),
     }, null, 2) + "\n", "utf-8");
-    return workbenchWriteResult(root, "safeDelete", { trashId, files: await listFiles(dir) }, this._discloseNativeRoot);
+    return withWorkbenchResourceEvents(
+      workbenchWriteResult(root, "safeDelete", { trashId, files: await listFiles(dir) }, this._discloseNativeRoot),
+      [deletedWorkbenchResourceEvent(source)],
+    );
   }
 
   writeFileTarget(rootId, subdir, name) {
@@ -301,6 +322,80 @@ function workbenchWriteResult(root, action, extra = {}, discloseNativeRoot = fal
     mount: publicRoot(root, discloseNativeRoot),
     ...extra,
   };
+}
+
+export function workbenchResourceEventsFromResult(result) {
+  return Array.isArray(result?.[WORKBENCH_RESOURCE_EVENTS])
+    ? result[WORKBENCH_RESOURCE_EVENTS]
+    : [];
+}
+
+function withWorkbenchResourceEvents(result, events) {
+  Object.defineProperty(result, WORKBENCH_RESOURCE_EVENTS, {
+    value: events.filter(Boolean),
+    enumerable: false,
+    configurable: false,
+  });
+  return result;
+}
+
+function changedWorkbenchResourceEvent(filePath, changeType) {
+  const version = resourceVersionForPath(filePath);
+  return {
+    type: "changed",
+    input: {
+      changeType,
+      resourceKey: resourceKeyForRef({ kind: "local-file", path: filePath }),
+      resource: localFileResource(filePath),
+      ...(version ? { version } : {}),
+      source: "api",
+    },
+  };
+}
+
+function deletedWorkbenchResourceEvent(filePath) {
+  return {
+    type: "deleted",
+    input: {
+      resourceKey: resourceKeyForRef({ kind: "local-file", path: filePath }),
+      resource: localFileResource(filePath),
+      source: "api",
+    },
+  };
+}
+
+function renamedWorkbenchResourceEvent(oldPath, newPath) {
+  return {
+    type: "renamed",
+    input: {
+      oldResourceKey: resourceKeyForRef({ kind: "local-file", path: oldPath }),
+      newResourceKey: resourceKeyForRef({ kind: "local-file", path: newPath }),
+      oldResource: localFileResource(oldPath),
+      newResource: localFileResource(newPath),
+      source: "api",
+    },
+  };
+}
+
+function localFileResource(filePath) {
+  return {
+    kind: "local-file",
+    provider: "local_fs",
+    path: filePath,
+    filePath,
+  };
+}
+
+function resourceVersionForPath(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return {
+      mtimeMs: stat.mtimeMs,
+      size: stat.isDirectory() ? null : stat.size,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function findLocalFsMount(hanakoHome, studioId, rootId) {

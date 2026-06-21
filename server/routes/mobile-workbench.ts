@@ -2,7 +2,11 @@ import fs from "fs";
 import path from "path";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { MountAwareFileError, MountAwareFileService } from "../../core/mount-aware-file-service.ts";
+import {
+  MountAwareFileError,
+  MountAwareFileService,
+  workbenchResourceEventsFromResult,
+} from "../../core/mount-aware-file-service.ts";
 import {
   consumeRemoteWriteLease,
   issueRemoteWriteLease,
@@ -235,11 +239,38 @@ async function writeActionResponse(c, engine, action, auth, mountId, operation) 
       mountId: mountId && mountId !== "default" ? mountId : null,
     } as any);
     const result = await operation();
+    emitWorkbenchResourceEvents(engine, result, action);
     if (lease) consumeRemoteWriteLease(engine?.hanakoHome, lease);
     return auditActionResult(c, engine, action, result, auth, lease);
   } catch (err) {
     if (lease) revokeRemoteWriteLease(engine?.hanakoHome, lease);
     throw err;
+  }
+}
+
+function emitWorkbenchResourceEvents(engine, result, reason) {
+  const eventBus = engine?.resourceIO?.eventBus || engine?.getResourceIO?.()?.eventBus;
+  if (!eventBus) return;
+  for (const event of workbenchResourceEventsFromResult(result)) {
+    if (event?.type === "changed" && typeof eventBus.changed === "function") {
+      eventBus.changed({
+        ...event.input,
+        source: event.input?.source || "api",
+        reason,
+      });
+    } else if (event?.type === "deleted" && typeof eventBus.deleted === "function") {
+      eventBus.deleted({
+        ...event.input,
+        source: event.input?.source || "api",
+        reason,
+      });
+    } else if (event?.type === "renamed" && typeof eventBus.renamed === "function") {
+      eventBus.renamed({
+        ...event.input,
+        source: event.input?.source || "api",
+        reason,
+      });
+    }
   }
 }
 
