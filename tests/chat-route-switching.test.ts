@@ -1736,6 +1736,84 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
+  it("normalizes live plugin chat surface blocks before broadcasting", () => {
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      getSessionManifest: vi.fn((sessionId) => sessionId === "sess_tavern"
+        ? {
+          sessionId,
+          currentLocator: { path: "/tmp/plugin-owned-current.jsonl" },
+          plugin: { ownerPluginId: "tavern", visibility: "private" },
+        }
+        : null),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    subscriber?.({
+      type: "message_end",
+      message: {
+        role: "custom",
+        customType: "tavern",
+        content: "",
+        display: true,
+        details: {
+          card: {
+            pluginId: "tavern",
+            type: "chat.surface",
+            sessionId: "sess_tavern",
+            title: "Tavern run",
+          },
+        },
+      },
+    }, "/tmp/root-session.jsonl");
+
+    const payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    expect(payloads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "content_block",
+        sessionPath: "/tmp/root-session.jsonl",
+        block: {
+          type: "plugin_card",
+          card: {
+            pluginId: "tavern",
+            type: "chat.surface",
+            sessionId: "sess_tavern",
+            sessionPath: "/tmp/plugin-owned-current.jsonl",
+            sessionRef: {
+              sessionId: "sess_tavern",
+              sessionPath: "/tmp/plugin-owned-current.jsonl",
+            },
+            title: "Tavern run",
+          },
+        },
+      }),
+    ]));
+
+    handlers.onClose({}, ws);
+  });
+
   it("broadcasts browser_status events emitted outside tool execution", () => {
     let createHandlers;
     let subscriber;

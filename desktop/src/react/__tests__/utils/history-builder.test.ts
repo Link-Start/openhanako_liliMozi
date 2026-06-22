@@ -398,6 +398,47 @@ describe('buildItemsFromHistory user image restoration', () => {
     });
   });
 
+  it('保留不依赖 iframe route 的 chat.surface 插件卡片', () => {
+    const items = buildItemsFromHistory({
+      messages: [{
+        id: 'a-chat-surface',
+        role: 'assistant',
+        content: '已创建插件会话',
+      }],
+      blocks: [{
+        type: 'plugin_card',
+        afterIndex: 0,
+        card: {
+          type: 'chat.surface',
+          pluginId: 'tavern',
+          sessionRef: {
+            sessionId: 'sess_tavern',
+            sessionPath: '/sessions/tavern.jsonl',
+          },
+          title: 'Tavern run',
+          description: 'Private transcript',
+        },
+      }],
+    });
+
+    const first = items[0];
+    expect(first.type).toBe('message');
+    if (first.type !== 'message') throw new Error('expected message');
+    expect(first.data.blocks?.at(-1)).toMatchObject({
+      type: 'plugin_card',
+      card: {
+        type: 'chat.surface',
+        pluginId: 'tavern',
+        sessionId: 'sess_tavern',
+        sessionPath: '/sessions/tavern.jsonl',
+        sessionRef: {
+          sessionId: 'sess_tavern',
+          sessionPath: '/sessions/tavern.jsonl',
+        },
+      },
+    });
+  });
+
   it('保留空 thinking 为已完成思考块', () => {
     const items = buildItemsFromHistory({
       messages: [{

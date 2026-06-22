@@ -306,13 +306,26 @@ export type RemoteContentRef = RemoteWorkbenchContentRef;
 
 // ── Plugin Card Protocol ──
 
+export interface PluginCardSessionRef {
+  sessionId?: string | null;
+  sessionPath?: string | null;
+  legacySessionPath?: string | null;
+  path?: string | null;
+}
+
 export interface PluginCardDetails {
-  type: string;         // "iframe" | future types
+  type: string;         // "iframe" | "webview" | "chat.surface" | future types
   pluginId: string;
-  route: string;
+  route?: string;
   title?: string;
   description: string;  // IM fallback / degradation text
   aspectRatio?: string;
+  sessionId?: string | null;
+  sessionRef?: PluginCardSessionRef | null;
+  sessionPath?: string | null;
+  mode?: 'transcript' | 'full' | string;
+  composer?: boolean;
+  unavailableReason?: string;
 }
 
 // ── 插件 UI 信息 ──

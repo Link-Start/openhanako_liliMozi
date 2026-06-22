@@ -1835,6 +1835,27 @@
     gap: var(--space-sm);
 }
 
+.cardSessionShell {
+    --chat-scrollbar-bottom-inset: 0px;
+    position: absolute;
+    inset: 0;
+    bottom: 0;
+    background: var(--bg, #fff);
+}
+
+.cardSessionShell .sessionPanel {
+    padding: var(--space-sm) var(--space-sm) 0;
+}
+
+.cardSessionShell .sessionMessages {
+    max-width: none;
+    gap: var(--space-xs);
+}
+
+.cardSessionShell .sessionFooter {
+    height: var(--space-md);
+}
+
 :global(.mobile-desktop-root) .sessionPanel {
     padding-left: var(--space-md);
     padding-right: var(--space-md);

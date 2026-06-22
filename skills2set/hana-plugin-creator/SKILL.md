@@ -36,7 +36,8 @@ Hana plugins can provide:
 
 - Agent-callable tools and slash-style actions.
 - Skills, agents, and knowledge that guide model behavior.
-- Iframe pages, widgets, and cards using Hana theme and host capabilities.
+- WebView/iframe pages, widgets, and cards using Hana theme and host capabilities.
+- Declarative `chat.surface` cards for showing plugin-owned private session transcripts in the main chat stream.
 - Lifecycle and EventBus handlers for full-access integrations.
 - Session and Agent control through `@hana/plugin-runtime`: create/list/update/send/abort/history sessions, subscribe to session events, create/read/update plugin-owned agents, and hide plugin-private resources from the main Hana UI.
 - Per-turn model context injection through `sendSessionMessage(..., { context })` or `session:send.context`, suitable for plugin-owned RAG, world lore, mood, character state, or routing hints. This affects only the current provider request and does not rewrite visible user text.
@@ -50,7 +51,7 @@ Hana plugins can provide:
 
 Hana provides install/enable/reload, per-agent skill toggles, manifest capability checks, iframe host messaging, theme tokens, toast/clipboard/external host APIs, EventBus, data directories, and SDK packages.
 
-Current boundaries: iframe UI is the stable extension surface. Native renderer components and code sandboxing are not the default path yet. Ordinary manifest `capabilities` are declaration metadata and can be used directly through the SDK/EventBus; `sensitiveCapabilities` records future user-granted permission intent. If a request depends on native renderer hooks, code sandboxing, or fine-grained permission prompts, explain the gap and propose the closest supported shape.
+Current boundaries: WebView/iframe UI is the stable escape hatch for existing web apps, remote sites, and standalone HTML. `chat.surface` is a thin native transcript surface for plugin-owned `plugin_private` / `private` sessions created through the runtime session API. Native renderer components, rich native card composition, and code sandboxing are not the default path yet. Ordinary manifest `capabilities` are declaration metadata and can be used directly through the SDK/EventBus; `sensitiveCapabilities` records future user-granted permission intent. If a request depends on native renderer hooks, code sandboxing, or fine-grained permission prompts, explain the gap and propose the closest supported shape.
 
 ## Environment Preflight
 
@@ -158,13 +159,14 @@ python3 skills2set/hana-plugin-creator/scripts/create_hana_plugin.py "Jimeng Pro
 - Store API keys, bearer tokens, and cookies through configuration schema and `ctx.config`; never place secrets in `assets/`, iframe JavaScript, route shell HTML, or checked-in examples.
 - Prefer runtime helpers over raw bus calls for stable host capabilities: `createSession`, `getSession`, `listSessions`, `updateSession`, `sendSessionMessage`, `subscribeSessionEvents`, `createAgent`, `updateAgent`, `sampleText`, `ctx.resources.watch`, `ctx.resources.subscribe`, `listMediaProviders`, `resolveMediaModel`, `generateImage`, `generateMedia`, `generateVideo`, and `transcribeAudio`.
 - `createSession()` creates a detached Hana session and does not switch the main UI focus. Use `visibility: "plugin_private"` and `ownerPluginId` for plugin-only sessions or Tavern-style parallel chat surfaces.
+- Use `createChatSurfaceCard(ctx, session.sessionRef ?? session, options)` when a plugin wants to display its own private session in chat. Do not hand-build path-only `chat.surface` payloads; the helper requires `sessionId` / `sessionRef` and Hana verifies plugin ownership before rendering.
 - `createAgent()` / `updateAgent()` can create plugin-owned hidden agents. Keep plugin-only characters and resources marked `visibility: "plugin_private"` unless the user expects them in the main Agent list.
 - Use `sendSessionMessage()` with `context.system`, `context.beforeUser`, or `context.afterUser` for per-turn RAG/world-lore/mood injection. Do not write JSONL history directly and do not mutate the visible user message to smuggle hidden context.
 - Use `sampleText()` for plugin-side reasoning tasks that do not need a full chat turn, such as query rewriting, summaries, classifiers, or routing.
 - Use `generateImage()` / `generateMedia()` for host media generation instead of calling provider internals directly. The media task pipeline owns progress, cancellation, delivery, and `SessionFile` registration. Image references should use `{ kind: "session_file", fileId }` instead of raw local paths. Provider models must declare reference-image support on each mode with `modes[].inputLimits.referenceImages`, such as `{ min: 0, max: 0 }` for text-only generation or `{ min: 1, max: 1 }` for a single-reference mode. Use `transcribeAudio()` for ASR over registered `SessionFile` audio.
 - Do not call legacy `media-gen:*` events from newly generated plugins. They remain only for old adapter compatibility. New provider plugins must declare `providers/*.js` with `capabilities.media.*`, then use stable media helpers or the formal Adapter Plugin API once available.
 - Local files returned to users must go through `toolCtx.stageFile({ sessionId, sessionRef, filePath, label })`, then media details. `sessionPath` is legacy locator metadata only, not identity. Do not hand-build local `MEDIA:` or `file://` output.
-- Page and widget contributions require `"trust": "full-access"` and route-backed iframe UI.
+- Page and widget contributions require `"trust": "full-access"` and route-backed WebView/iframe UI. WebView/iframe cards remain valid for plugin web UI; native `chat.surface` cards are only for plugin-owned private session transcripts.
 - Iframe browser code must call this plugin's own route handlers with `hana.api.fetch('route/path', init)` or `hana.api.url('route/path')`. Do not hard-code `/api/plugins/{pluginId}/...` in browser code, do not reuse `pluginIframeTicket` for XHR/fetch, and do not ask authors to manually pass `pluginSurfaceSession` unless documenting the low-level protocol.
 - `pluginIframeTicket` is only for iframe document loading. Do not append it to CSS, JS, image, font, video, or XHR URLs.
 - Pi SDK extension factories under `extensions/*.js` require `"trust": "full-access"`. They are for provider request rewriting, context filtering, and tool-call observation; use ordinary `tools/*.js` for Agent-callable actions.

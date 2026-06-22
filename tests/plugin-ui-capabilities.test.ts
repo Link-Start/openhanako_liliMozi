@@ -28,6 +28,10 @@ describe('default plugin UI capabilities', () => {
     useStore.setState({ toasts: [] });
     (window as any).platform = {
       openExternal: vi.fn(),
+      openFile: vi.fn(),
+      showInFinder: vi.fn(),
+      selectFiles: vi.fn(async () => ['/workspace/a.md', '/workspace/b.md']),
+      selectFolder: vi.fn(async () => '/workspace'),
     };
     Object.assign(navigator, {
       clipboard: {
@@ -83,5 +87,52 @@ describe('default plugin UI capabilities', () => {
     });
     await expect(cap.handle(context, { text: 'copy me' })).resolves.toEqual({ written: true });
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('copy me');
+  });
+
+  it('opens local-file resources through the platform bridge', async () => {
+    const cap = capability(PLUGIN_UI_CAPABILITY.RESOURCE_OPEN);
+    const payload = { resource: { kind: 'local-file', path: '/workspace/a.md' }, mode: 'preview' };
+
+    expect(cap.requiresGrant).toBe(true);
+    expect(cap.allowedSlots).toEqual(['page', 'widget', 'card', 'settings']);
+    expect(cap.validatePayload(payload)).toEqual({ ok: true, value: payload });
+    await expect(cap.handle(context, payload)).resolves.toEqual({ opened: true });
+    expect((window as any).platform.openFile).toHaveBeenCalledWith('/workspace/a.md');
+  });
+
+  it('reveals local-file resources when requested', async () => {
+    const cap = capability(PLUGIN_UI_CAPABILITY.RESOURCE_OPEN);
+    const payload = { resource: { kind: 'local-file', path: '/workspace/a.md' }, mode: 'reveal' };
+
+    await expect(cap.handle(context, payload)).resolves.toEqual({ opened: true });
+    expect((window as any).platform.showInFinder).toHaveBeenCalledWith('/workspace/a.md');
+  });
+
+  it('uses platform pickers for resource.pick', async () => {
+    const cap = capability(PLUGIN_UI_CAPABILITY.RESOURCE_PICK);
+
+    expect(cap.validatePayload({ multiple: false })).toEqual({
+      ok: true,
+      value: { mode: 'file', multiple: false },
+    });
+    await expect(cap.handle(context, { mode: 'file', multiple: false })).resolves.toEqual({
+      resources: [{ kind: 'local-file', path: '/workspace/a.md', name: 'a.md' }],
+    });
+    await expect(cap.handle(context, { mode: 'directory', multiple: false })).resolves.toEqual({
+      resources: [{ kind: 'local-file', path: '/workspace', name: 'workspace', isDirectory: true }],
+    });
+  });
+
+  it('returns explicit denial for resource.requestAccess until a grant UI exists', async () => {
+    const cap = capability(PLUGIN_UI_CAPABILITY.RESOURCE_REQUEST_ACCESS);
+
+    expect(cap.validatePayload({ capability: 'resource.read', reason: 'open file' })).toEqual({
+      ok: true,
+      value: { capability: 'resource.read', reason: 'open file' },
+    });
+    await expect(cap.handle(context, { capability: 'resource.read' })).resolves.toEqual({
+      granted: false,
+      capability: 'resource.read',
+    });
   });
 });

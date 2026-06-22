@@ -2603,6 +2603,72 @@ describe("sessions route", () => {
     }]);
   });
 
+  it("normalizes plugin chat surface cards from extension custom messages", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const msgUtils = await import("../core/message-utils.ts");
+    const app = new Hono();
+    const sessionPath = "/tmp/agents/hana/sessions/plugin-chat-surface.jsonl";
+
+    vi.mocked(msgUtils.extractTextContent)
+      .mockReturnValueOnce({ text: "chat surface produced", images: [], thinking: "", toolUses: [] });
+    vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
+      { role: "assistant", content: "chat surface produced" },
+      {
+        role: "custom",
+        customType: "tavern",
+        content: "",
+        display: true,
+        details: {
+          card: {
+            pluginId: "tavern",
+            type: "chat.surface",
+            sessionRef: {
+              sessionId: "sess_tavern",
+              sessionPath: "/tmp/agents/hana/sessions/stale.jsonl",
+            },
+            title: "Tavern run",
+          },
+        },
+      },
+    ]);
+
+    const engine = {
+      agentsDir: "/tmp/agents",
+      currentSessionPath: sessionPath,
+      deferredResults: null,
+      getSessionManifest: vi.fn((sessionId) => sessionId === "sess_tavern"
+        ? {
+          sessionId,
+          currentLocator: { path: "/tmp/agents/hana/sessions/tavern-current.jsonl" },
+          plugin: { ownerPluginId: "tavern", visibility: "plugin_private" },
+        }
+        : null),
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request(`/api/sessions/messages?path=${encodeURIComponent(sessionPath)}`);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.blocks).toEqual([{
+      type: "plugin_card",
+      afterIndex: 0,
+      sourceIndex: 1,
+      card: {
+        pluginId: "tavern",
+        type: "chat.surface",
+        sessionId: "sess_tavern",
+        sessionPath: "/tmp/agents/hana/sessions/tavern-current.jsonl",
+        sessionRef: {
+          sessionId: "sess_tavern",
+          sessionPath: "/tmp/agents/hana/sessions/tavern-current.jsonl",
+        },
+        title: "Tavern run",
+      },
+    }]);
+  });
+
   it("restores completed image generation from a non-context deferred result record", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const msgUtils = await import("../core/message-utils.ts");

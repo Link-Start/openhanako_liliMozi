@@ -52,7 +52,7 @@ The production smoke test is: install the exact folder or zip that users will re
 
 - Tool-only plugins can stay `restricted`. No-build tools may export the static tool contract directly; tools that import `@hana/plugin-runtime` must still satisfy the production install checklist above.
 - Runtime plugins use `index.js` for lifecycle, EventBus handlers, background tasks, schedules, or dynamic tools. They require `trust: "full-access"`.
-- UI plugins use iframe routes plus `@hana/plugin-sdk` and, for React UI, `@hana/plugin-components`. They require `trust: "full-access"` and explicit `ui.hostCapabilities` grants for host calls such as `external.open`, `clipboard.writeText`, `resource.open`, `resource.pick`, or `resource.requestAccess`.
+- UI plugins use WebView/iframe routes plus `@hana/plugin-sdk` and, for React UI, `@hana/plugin-components`. They require `trust: "full-access"` and explicit `ui.hostCapabilities` grants for host calls such as `external.open`, `clipboard.writeText`, `resource.open`, `resource.pick`, or `resource.requestAccess`. Native `chat.surface` cards are declarative transcript surfaces for plugin-owned private sessions and use `createChatSurfaceCard()`.
 - Provider contribution plugins use `providers/*.js` declarations. They require `trust: "full-access"` and should declare `capabilities.chat` separately from `capabilities.media.*` so chat selectors stay clean while image, video, or speech tools discover media providers. Provider declarations, `listMediaProviders()`, and `resolveMediaModel()` are the stable discovery entrypoints; media adapter / executor authoring remains a separate API surface. Legacy `media-gen:*` adapter/runtime events remain compatibility-only for older image generation plugins.
 - Pi SDK extension plugins use `extensions/*.js` factories. They require `trust: "full-access"` because they run inside the LLM request pipeline. Hana reloads idle sessions after full-access plugin install/enable/reload so existing chats can pick up new extension handlers without requiring an app restart; busy sessions are not reloaded and will retain old extension handlers until the session is naturally rebuilt.
 - Marketplace metadata lives outside the app repo in `OH-Plugins`, the official community plugin catalog. The app reads the generated catalog URL by default, installs `distribution.kind = "release"` entries by downloading the zip package and verifying `sha256`, and keeps `distribution.kind = "source"` for local file marketplace development only. `versions[]` lets the catalog keep multiple SemVer releases; Hana selects the highest app-compatible version, blocks implicit downgrades, backs up old installs, and records successful installs in `${HANA_HOME}/plugin-installs.json`. `readmePath` is resolved relative to the catalog when the official URL is used.
@@ -270,6 +270,7 @@ Plugins can use the same session-facing operations that Hana's own UI and server
 ```js
 import {
   createAgent,
+  createChatSurfaceCard,
   createSession,
   getAgentProfile,
   listSessions,
@@ -310,6 +311,22 @@ const off = subscribeSessionEvents(ctx, sessionTarget, (event) => {
 `context.system`, `context.beforeUser`, and `context.afterUser` are injected into the model request through Hana's Pi SDK context hook for that turn only. They do not change the visible user message and are cleared after the prompt finishes. Use this for plugin-side RAG, world lore, mood, or scene state.
 
 `visibility: 'plugin_private'` keeps plugin-owned agents and sessions out of Hana's main agent/session lists by default. The owning plugin can list them with `listAgents(ctx, { ownerPluginId: ctx.pluginId })` or `listSessions(ctx, { ownerPluginId: ctx.pluginId })`.
+
+To show one of those plugin-owned private sessions inside the main chat stream, return a declarative `chat.surface` card:
+
+```js
+return {
+  content: [{ type: 'text', text: 'Created a plugin-private run.' }],
+  details: {
+    card: createChatSurfaceCard(ctx, session.sessionRef ?? session, {
+      title: 'Tavern run',
+      description: 'Plugin-private transcript',
+    }),
+  },
+};
+```
+
+`createChatSurfaceCard()` requires `sessionId` / `sessionRef`; path-only locators are rejected. Hana resolves the current session path from the manifest and only renders sessions owned by the same plugin with `visibility: 'plugin_private'` or `'private'`. In main this is a thin native transcript surface. Rich composer and native card composition belong to the Workbench plugin SDK layer.
 
 ### Runtime Model and Media API
 

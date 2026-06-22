@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createMediaDetails,
   cancelTask,
+  createChatSurfaceCard,
   completeTask,
   defineBusHandler,
   defineCommand,
@@ -610,5 +611,31 @@ describe('plugin runtime SDK', () => {
         ],
       },
     });
+  });
+
+  it('creates declarative chat surface cards from session refs', () => {
+    expect(createChatSurfaceCard(
+      { pluginId: 'tavern' },
+      { sessionId: 'sess_private', sessionPath: '/sessions/tavern.jsonl' },
+      { title: 'Tavern run', description: 'Private transcript' },
+    )).toEqual({
+      type: 'chat.surface',
+      pluginId: 'tavern',
+      sessionId: 'sess_private',
+      sessionPath: '/sessions/tavern.jsonl',
+      sessionRef: {
+        sessionId: 'sess_private',
+        sessionPath: '/sessions/tavern.jsonl',
+      },
+      title: 'Tavern run',
+      description: 'Private transcript',
+      mode: 'transcript',
+    });
+  });
+
+  it('requires chat surface cards to use session identity, not path-only locators', () => {
+    expect(() => createChatSurfaceCard({ pluginId: 'tavern' }, '/sessions/legacy.jsonl')).toThrow(
+      'createChatSurfaceCard requires sessionId or sessionRef',
+    );
   });
 });

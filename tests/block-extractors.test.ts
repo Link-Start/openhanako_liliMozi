@@ -933,6 +933,27 @@ describe('extractBlocks: plugin card extraction', () => {
     expect(blocks[0].card.type).toBe('native');
   });
 
+  it('allows declarative chat surface cards without iframe routes', () => {
+    const details = {
+      card: {
+        pluginId: 'tavern',
+        type: 'chat.surface',
+        sessionRef: { sessionId: 'sess_tavern_private' },
+        title: 'Tavern run',
+      },
+    };
+    const blocks = (extractBlocks as any)('unknown_tool', details);
+    expect(blocks[0]).toEqual({
+      type: 'plugin_card',
+      card: {
+        pluginId: 'tavern',
+        type: 'chat.surface',
+        sessionRef: { sessionId: 'sess_tavern_private' },
+        title: 'Tavern run',
+      },
+    });
+  });
+
   it('strips legacy file payload fields from plugin cards', () => {
     const details = {
       card: {

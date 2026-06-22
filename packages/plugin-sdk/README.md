@@ -66,10 +66,11 @@ Grant-required capabilities must be declared in `manifest.json`:
 }
 ```
 
-Browser-side resource helpers are host requests only. They can ask Hana to open,
-pick, or request access to a resource, but they do not expose direct filesystem
-read or write APIs inside the iframe. Runtime code that actually reads or edits
-user resources should use `ctx.resources` from `@hana/plugin-runtime`.
+Browser-side resource helpers are host requests only. They can ask Hana to open
+or reveal local/session/url resources, show the host picker, or request access,
+but they do not expose direct filesystem read or write APIs inside the iframe.
+Runtime code that actually reads or edits user resources should use
+`ctx.resources` from `@hana/plugin-runtime`.
 
 Do not mirror runtime ResourceIO operations into iframe code. The browser SDK is
 for presentation and host-mediated actions; server-side plugin tools, routes, or

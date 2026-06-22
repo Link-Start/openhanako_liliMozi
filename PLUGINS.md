@@ -333,7 +333,12 @@ route.get("/live-scores", async (c) => {
 
 #### 可视化卡片
 
-工具可以在聊天中自动渲染可视化卡片（iframe），在返回值的 `details` 中声明 `card`：
+工具可以在聊天中自动渲染可视化卡片，在返回值的 `details` 中声明 `card`。当前有两条稳定形态：
+
+- `type: "iframe"` / `type: "webview"`：用于插件自己的 Web UI、远程网站、单独 HTML 或复杂浏览器 UI。旧 `iframe` 卡继续兼容；新文档把它定位成正式 WebView escape hatch。
+- `type: "chat.surface"`：用于把插件自己创建的 `plugin_private` / `private` session 作为原生聊天 transcript 嵌进当前聊天流。它只接受 `sessionId/sessionRef`，宿主会校验该 session 属于当前 plugin 且不是公开 session。
+
+WebView 卡片示例：
 
 ```js
 return {
@@ -349,7 +354,7 @@ return {
 };
 ```
 
-- `route`：插件路由路径，iframe 自行从该路径拉数据渲染
+- `route`：插件路由路径，WebView / iframe 自行从该路径拉数据渲染
 - `title`：卡片标题（可选）
 - `description`：纯文本摘要，用于 IM 平台降级显示和插件卸载后的 fallback
 - `pluginId` 由框架自动注入，工具无需填写
@@ -357,6 +362,30 @@ return {
 - 卡片数据随 toolResult 存入 JSONL，会话重载时自动恢复
 - 插件 route / Session Bus 发送的自定义消息如果携带同样的 `details.card`，也会被提取成 `plugin_card`，历史回放时保持一致
 - 卡片本身可以随 Bridge 或移动端做不同呈现；卡片关联的文件仍通过 `SessionFile` 生命周期恢复
+
+原生聊天 surface 示例：
+
+```js
+import { createChatSurfaceCard, createSession } from "@hana/plugin-runtime";
+
+const child = await createSession(ctx, {
+  kind: "tavern-run",
+  visibility: "plugin_private",
+  cwd: ctx.dataDir,
+});
+
+return {
+  content: [{ type: "text", text: "已创建插件私有会话。" }],
+  details: {
+    card: createChatSurfaceCard(ctx, child.sessionRef ?? child, {
+      title: "Tavern run",
+      description: "插件私有会话 transcript",
+    }),
+  },
+};
+```
+
+`chat.surface` 在 main 当前版本是薄兼容层，只提供原生 transcript 展示；复杂 composer、可组合 native cards 和组件生态会由 Workbench 插件 SDK 继续扩展。
 
 ### Skills（知识注入）
 
@@ -647,7 +676,7 @@ const value = await ctx.config.get("agentMode", { scope: "per-agent", agentId: "
 - 悬停 tab 时显示插件全名（tooltip）
 - Tab 超过 5 个时自动折叠到 overflow 下拉菜单，用户可拖拽排序
 
-插件页面通过 iframe 渲染。新插件建议使用 `@hana/plugin-sdk` 发送握手和宿主请求：
+插件页面通过 iframe/WebView 渲染。旧 iframe 是兼容名称，新的插件设计可以把它理解成 WebView：适合展示已有 Web 应用、远程网站或单独 HTML。Hana 原生聊天 surface 和未来 Workbench native cards 不依赖 iframe/WebView。新插件建议使用 `@hana/plugin-sdk` 发送握手和宿主请求：
 
 ```js
 import { hana } from '@hana/plugin-sdk';
@@ -1029,6 +1058,7 @@ import {
   transcribeAudio,
   sampleText,
   sendSessionMessage,
+  createChatSurfaceCard,
 } from "@hana/plugin-runtime";
 
 const agent = await createAgent(ctx, {

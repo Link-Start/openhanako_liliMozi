@@ -324,9 +324,38 @@ function normalizeHistoryBlock(raw: unknown): Record<string, any> | null {
   if (type === 'plugin_card') {
     if (!isRecord(raw.card)) return null;
     const pluginId = nonEmptyString(raw.card.pluginId);
+    if (!pluginId) return null;
+    const cardType = nonEmptyString(raw.card.type) || 'iframe';
+    if (cardType === 'chat.surface') {
+      const rawSessionRef = isRecord(raw.card.sessionRef) ? raw.card.sessionRef : {};
+      const sessionId = nonEmptyString(raw.card.sessionId) || nonEmptyString(rawSessionRef.sessionId);
+      if (!sessionId) return null;
+      const sessionPath = nonEmptyString(raw.card.sessionPath)
+        || nonEmptyString(rawSessionRef.sessionPath)
+        || nonEmptyString(rawSessionRef.path)
+        || null;
+      const sessionRef = {
+        ...rawSessionRef,
+        sessionId,
+        ...(sessionPath ? { sessionPath } : {}),
+      };
+      return {
+        ...raw,
+        type,
+        afterIndex,
+        card: {
+          ...raw.card,
+          pluginId,
+          type: cardType,
+          sessionId,
+          ...(sessionPath ? { sessionPath } : {}),
+          sessionRef,
+        },
+      };
+    }
     const route = nonEmptyString(raw.card.route);
-    if (!pluginId || !route) return null;
-    return { ...raw, type, afterIndex, card: { ...raw.card, pluginId, route } };
+    if (!route) return null;
+    return { ...raw, type, afterIndex, card: { ...raw.card, pluginId, type: cardType, route } };
   }
 
   if (type === 'cron_confirm') {

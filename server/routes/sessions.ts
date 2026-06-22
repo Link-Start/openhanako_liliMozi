@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { safeJson } from "../hono-helpers.ts";
 import { t } from "../../lib/i18n.ts";
 import { extractBlocks, resolveMediaGenerationBlocks } from "../block-extractors.ts";
+import { normalizePluginChatSurfaceBlocks } from "../plugin-chat-surface.ts";
 import { buildDeferredResultInterludeBlock, resolveDeferredReceiverName } from "../deferred-result-interlude.ts";
 import { BrowserManager } from "../../lib/browser/browser-manager.ts";
 import { isSessionJsonlFilename, sessionIdFromFilename } from "../../lib/session-jsonl.ts";
@@ -1109,10 +1110,13 @@ export function createSessionsRoute(engine, hub = null) {
           recordDeferredInterlude(parsed, null);
         }
       }
-      const resolvedBlocks = resolveMediaGenerationBlocks(
-        blocks,
-        mediaGenerationResults,
-        standaloneMediaGenerationResults,
+      const resolvedBlocks = normalizePluginChatSurfaceBlocks(
+        resolveMediaGenerationBlocks(
+          blocks,
+          mediaGenerationResults,
+          standaloneMediaGenerationResults,
+        ),
+        engine,
       );
 
       // 重映射 afterIndex 到切片内偏移，过滤超出范围的

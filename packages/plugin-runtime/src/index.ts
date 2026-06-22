@@ -215,6 +215,27 @@ export interface HanaMediaDetails {
   };
 }
 
+export interface HanaChatSurfaceCardOptions {
+  title?: string;
+  description?: string;
+  mode?: 'transcript' | 'full' | string;
+  composer?: boolean;
+  aspectRatio?: string;
+}
+
+export interface HanaChatSurfaceCardDetails {
+  type: 'chat.surface';
+  pluginId: string;
+  sessionId: string;
+  sessionRef: HanaSessionRef;
+  sessionPath?: string;
+  title?: string;
+  description: string;
+  mode: 'transcript' | 'full' | string;
+  composer?: boolean;
+  aspectRatio?: string;
+}
+
 export interface HanaPluginNetworkFetchInit extends RequestInit {
   timeoutMs?: number;
   cacheTtlMs?: number;
@@ -1105,6 +1126,39 @@ function normalizeSessionTarget(target: HanaSessionTarget): Record<string, unkno
 function sessionRefFromTarget(target: HanaSessionTarget): HanaSessionRef | null {
   const payload = normalizeSessionTarget(target);
   return (payload.sessionRef as HanaSessionRef | undefined) || null;
+}
+
+export function createChatSurfaceCard(
+  ctx: { pluginId?: string | null },
+  target: HanaSessionTarget,
+  options: HanaChatSurfaceCardOptions = {},
+): HanaChatSurfaceCardDetails {
+  const pluginId = pluginIdFromContext(ctx);
+  if (!pluginId) {
+    throw new Error('createChatSurfaceCard requires ctx.pluginId');
+  }
+  const payload = normalizeSessionTarget(target);
+  const sessionId = textOrNull(payload.sessionId);
+  const sessionPath = textOrNull(payload.sessionPath);
+  if (!sessionId) {
+    throw new Error('createChatSurfaceCard requires sessionId or sessionRef; sessionPath alone is legacy locator metadata');
+  }
+  const sessionRef: HanaSessionRef = {
+    sessionId,
+    ...(sessionPath ? { sessionPath } : {}),
+  };
+  return {
+    type: 'chat.surface',
+    pluginId,
+    sessionId,
+    sessionRef,
+    ...(sessionPath ? { sessionPath } : {}),
+    ...(options.title ? { title: options.title } : {}),
+    description: options.description || 'Plugin private chat session.',
+    mode: options.mode || 'transcript',
+    ...(options.composer !== undefined ? { composer: options.composer } : {}),
+    ...(options.aspectRatio ? { aspectRatio: options.aspectRatio } : {}),
+  };
 }
 
 export function createSession(

@@ -384,6 +384,38 @@ export const renderImage = defineTool({
 
 Use `stageFile()` for plugin-generated local files. `createMediaDetails()` normalizes staged files, existing `session_file` media items, and serialized `SessionFile` records into the `details.media.items` shape consumed by desktop, Bridge, Mobile PWA, and future remote clients.
 
+## Plugin-private chat surfaces
+
+Use `createChatSurfaceCard()` when a tool creates or updates a plugin-owned private session and wants to show its transcript in the current chat stream:
+
+```ts
+import { createChatSurfaceCard, createSession, defineTool } from '@hana/plugin-runtime';
+
+export const startRun = defineTool({
+  name: 'start_run',
+  description: 'Start a plugin-private chat run',
+  async execute(_input, ctx) {
+    const child = await createSession(ctx, {
+      kind: 'plugin-run',
+      visibility: 'plugin_private',
+      cwd: ctx.dataDir,
+    });
+
+    return {
+      content: [{ type: 'text', text: 'Created a plugin-private run.' }],
+      details: {
+        card: createChatSurfaceCard(ctx, child.sessionRef ?? child, {
+          title: 'Plugin run',
+          description: 'Plugin-private transcript',
+        }),
+      },
+    };
+  },
+});
+```
+
+The helper requires `sessionId` / `sessionRef`; passing only a legacy `sessionPath` throws. Hana resolves the current path through the session manifest and only renders sessions owned by the same plugin with `plugin_private` or `private` visibility. Main currently provides a thin native transcript surface; richer composer and native card composition are reserved for the Workbench SDK.
+
 ## Provider contributions
 
 Provider plugins live in `providers/*.js` and require `trust: "full-access"`.
