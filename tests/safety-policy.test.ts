@@ -18,27 +18,17 @@ function request(overrides = {}) {
 }
 
 describe("SafetyPolicy", () => {
-  it("blocks git push as a hard invariant independent of approvals", () => {
+  it("does not block ordinary git push so it can use normal Hana permissions", () => {
     const decision = evaluateToolSafetyPolicy(request());
 
-    expect(decision).toMatchObject({
-      action: "block",
-      code: "ACTION_BLOCKED_BY_SAFETY_POLICY",
-      reviewer: "safety_policy",
-      risk: "critical",
-      ruleIds: ["privacy-push-required"],
-    });
-    expect(decision?.reason).toContain("/privacy-push");
+    expect(decision).toBeNull();
   });
 
   it("detects git push through global git options", () => {
     expect(evaluateToolSafetyPolicy(request({
       params: { command: "git -C /repo push origin main" },
       target: { type: "command", label: "git -C /repo push origin main" },
-    }))).toMatchObject({
-      action: "block",
-      ruleIds: ["privacy-push-required"],
-    });
+    }))).toBeNull();
     expect(evaluateToolSafetyPolicy(request({
       params: { command: "git --git-dir /repo/.git push origin --tags" },
       target: { type: "command", label: "git --git-dir /repo/.git push origin --tags" },
@@ -53,16 +43,27 @@ describe("SafetyPolicy", () => {
       action: "block",
       ruleIds: ["force-push-blocked"],
     });
+    expect(evaluateToolSafetyPolicy(request({
+      params: { command: "git push --all origin" },
+      target: { type: "command", label: "git push --all origin" },
+    }))).toMatchObject({
+      action: "block",
+      ruleIds: ["push-all-blocked"],
+    });
+    expect(evaluateToolSafetyPolicy(request({
+      params: { command: "git push --mirror origin" },
+      target: { type: "command", label: "git push --mirror origin" },
+    }))).toMatchObject({
+      action: "block",
+      ruleIds: ["push-mirror-blocked"],
+    });
   });
 
   it("detects git push nested inside common shell command arguments", () => {
     expect(evaluateToolSafetyPolicy(request({
       params: { command: "bash -lc \"cd /repo && git push origin main\"" },
       target: { type: "command", label: "bash -lc \"cd /repo && git push origin main\"" },
-    }))).toMatchObject({
-      action: "block",
-      ruleIds: ["privacy-push-required"],
-    });
+    }))).toBeNull();
     expect(evaluateToolSafetyPolicy(request({
       params: { command: "pwsh -NoProfile -Command \"git.exe push --tags\"" },
       target: { type: "command", label: "pwsh -NoProfile -Command \"git.exe push --tags\"" },

@@ -192,7 +192,33 @@ describe("session permission wrapper", () => {
     expect(result.details.executed).toBe(true);
   });
 
-  it("hard safety policy blocks git push even in operate mode before approval can run", async () => {
+  it("operate mode lets ordinary git push behave like regular bash", async () => {
+    const tool = makeTool("bash");
+    const confirmStore = { create: vi.fn() };
+    const approvalGateway = {
+      review: vi.fn(async () => ({
+        action: "deny_and_continue",
+        reviewer: "small_tool_model",
+        reason: "should not review operate bash",
+        risk: "high",
+      })),
+    };
+    const [wrapped] = wrapWithSessionPermission([tool], {
+      getPermissionMode: () => "operate",
+      getConfirmStore: () => confirmStore,
+      getApprovalGateway: () => approvalGateway,
+      emitEvent: vi.fn(),
+    });
+
+    const result = await wrapped.execute("call-1", { command: "git push origin main" }, null, null, ctx);
+
+    expect(tool.execute).toHaveBeenCalledOnce();
+    expect(approvalGateway.review).not.toHaveBeenCalled();
+    expect(confirmStore.create).not.toHaveBeenCalled();
+    expect(result.details.executed).toBe(true);
+  });
+
+  it("hard safety policy blocks dangerous git push variants even in operate mode", async () => {
     const tool = makeTool("bash");
     const confirmStore = { create: vi.fn() };
     const approvalGateway = {
@@ -205,14 +231,14 @@ describe("session permission wrapper", () => {
       emitEvent: vi.fn(),
     });
 
-    const result = await wrapped.execute("call-1", { command: "git push origin main" }, null, null, ctx);
+    const result = await wrapped.execute("call-1", { command: "git push --force-with-lease origin main" }, null, null, ctx);
 
     expect(tool.execute).not.toHaveBeenCalled();
     expect(approvalGateway.review).not.toHaveBeenCalled();
     expect(confirmStore.create).not.toHaveBeenCalled();
     expect(result.details).toMatchObject({
       errorCode: "ACTION_BLOCKED_BY_SAFETY_POLICY",
-      ruleIds: ["privacy-push-required"],
+      ruleIds: ["force-push-blocked"],
       toolName: "bash",
     });
   });

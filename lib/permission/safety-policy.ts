@@ -1,15 +1,19 @@
 const GIT_PUSH_RULES = {
   force: {
     id: "force-push-blocked",
-    reason: "Force push is blocked by SafetyPolicy.",
+    reason: "Force push is blocked by Hana safety policy.",
   },
   tags: {
     id: "push-tags-blocked",
-    reason: "Pushing tags is blocked by SafetyPolicy.",
+    reason: "Bulk tag push is blocked by Hana safety policy. Push one explicit tag ref after release review.",
   },
-  push: {
-    id: "privacy-push-required",
-    reason: "Git remote push must go through /privacy-push and explicit final user confirmation.",
+  all: {
+    id: "push-all-blocked",
+    reason: "Pushing all branches is blocked by Hana safety policy.",
+  },
+  mirror: {
+    id: "push-mirror-blocked",
+    reason: "Mirror push is blocked by Hana safety policy.",
   },
 };
 
@@ -128,8 +132,13 @@ function detectGitPush(command, depth = 0) {
       if (token === "push") {
         const args = tokens.slice(j + 1);
         return {
-          hasForce: args.some((arg) => arg === "--force" || arg.startsWith("--force-with-lease")),
-          hasTags: args.includes("--tags"),
+          hasForce: args.some((arg) => arg === "-f"
+            || arg === "--force"
+            || arg.startsWith("--force-with-lease")
+            || arg.startsWith("+")),
+          hasTags: args.includes("--tags") || args.includes("--follow-tags"),
+          hasAll: args.includes("--all"),
+          hasMirror: args.includes("--mirror"),
         };
       }
       if (token === "--") break;
@@ -150,7 +159,14 @@ export function evaluateToolSafetyPolicy(request: any = {}) {
   if (!gitPush) return null;
   const rule = gitPush.hasForce
     ? GIT_PUSH_RULES.force
-    : (gitPush.hasTags ? GIT_PUSH_RULES.tags : GIT_PUSH_RULES.push);
+    : gitPush.hasMirror
+      ? GIT_PUSH_RULES.mirror
+      : gitPush.hasAll
+        ? GIT_PUSH_RULES.all
+        : gitPush.hasTags
+          ? GIT_PUSH_RULES.tags
+          : null;
+  if (!rule) return null;
   return {
     action: "block",
     code: "ACTION_BLOCKED_BY_SAFETY_POLICY",

@@ -18,7 +18,7 @@ function request(overrides = {}) {
 }
 
 describe("ApprovalGateway", () => {
-  it("does not own hard safety boundaries such as git push", async () => {
+  it("falls back when asked to review ordinary git push without a reviewer", async () => {
     const gateway = createApprovalGateway();
 
     const decision = await gateway.review(request({
@@ -37,7 +37,7 @@ describe("ApprovalGateway", () => {
     expect(decision.reason).toContain("reviewer unavailable");
   });
 
-  it("lets reviewer policy evaluate commands after hard safety has already been checked by the caller", async () => {
+  it("lets reviewer policy evaluate ordinary git push when the caller asks for review", async () => {
     const smallToolModelReviewer = vi.fn(async () => ({ action: "allow", reason: "caller safety already checked", risk: "low" }));
     const gateway = createApprovalGateway({ smallToolModelReviewer });
 
