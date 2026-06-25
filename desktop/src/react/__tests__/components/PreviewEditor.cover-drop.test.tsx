@@ -86,6 +86,7 @@ describe('PreviewEditor markdown cover drop', () => {
       onFileChanged: vi.fn(),
     } as unknown as PlatformApi;
     mocks.hanaFetch.mockReset();
+    mocks.refreshPreviewDocumentTarget.mockClear();
     mocks.hanaFetch.mockResolvedValue(new Response(JSON.stringify({
       ok: true,
       cover: { image: '文本附件/demo-cover.png' },
@@ -139,6 +140,12 @@ describe('PreviewEditor markdown cover drop', () => {
           agentId: undefined,
         }),
       }));
+    });
+    await waitFor(() => {
+      expect(mocks.refreshPreviewDocumentTarget).toHaveBeenCalledWith({
+        kind: 'local-file',
+        filePath: '/tmp/workspace/demo.md',
+      });
     });
     expect(ref.current?.getView()?.state.doc.toString()).toBe(content);
   });
@@ -213,6 +220,12 @@ describe('PreviewEditor markdown cover drop', () => {
           agentId: undefined,
         }),
       }));
+    });
+    await waitFor(() => {
+      expect(mocks.refreshPreviewDocumentTarget).toHaveBeenCalledWith({
+        kind: 'local-file',
+        filePath: '/tmp/workspace/demo.md',
+      });
     });
     expect(ref.current?.getView()?.state.doc.toString()).toBe(content);
   });

@@ -10,6 +10,11 @@ import {
   type MarkdownCoverTargetInput,
   type WorkbenchMarkdownCoverTarget,
 } from './markdown-cover-generation';
+import {
+  refreshPreviewDocumentTarget,
+  type PreviewDocumentTarget,
+} from './preview-document-refresh';
+import { encodeWorkbenchContentPath } from './remote-file-preview';
 import type { RemoteWorkbenchContentRef } from '../types';
 
 function draggedFileIsImage(file: AppDraggedFile): boolean {
@@ -69,6 +74,31 @@ function coverTargetInput(filePath: string | null | undefined, target?: Workbenc
   return null;
 }
 
+function previewDocumentTargetFromCoverInput(input: MarkdownCoverTargetInput): PreviewDocumentTarget {
+  if ('filePath' in input && input.filePath) {
+    return { kind: 'local-file', filePath: input.filePath };
+  }
+  if (!('target' in input) || !input.target) {
+    throw new Error('markdown cover target is required');
+  }
+  const target = input.target;
+  const mountId = target.mountId || target.rootId || 'default';
+  const rootId = target.rootId || mountId;
+  const subdir = target.subdir || '';
+  const name = target.name;
+  return {
+    kind: 'workbench-file',
+    target: {
+      kind: 'workbench-file',
+      mountId,
+      rootId,
+      subdir,
+      name,
+      contentPath: encodeWorkbenchContentPath({ mountId, rootId, subdir, name }),
+    },
+  };
+}
+
 export async function applyMarkdownCoverImageDrop({
   filePath,
   target,
@@ -99,10 +129,18 @@ export async function applyMarkdownCoverImageDrop({
         ...targetInput,
         imageFilePath: imageFilePath!,
       });
-    dispatchCoverNotice(
-      result.ok ? 'Cover 已更新。' : `Cover 更新失败：${result.error}`,
-      result.ok ? 'success' : 'error',
-    );
+    if (!result.ok) {
+      dispatchCoverNotice(`Cover 更新失败：${result.error}`, 'error');
+      return true;
+    }
+
+    try {
+      await refreshPreviewDocumentTarget(previewDocumentTargetFromCoverInput(targetInput));
+      dispatchCoverNotice('Cover 已更新。', 'success');
+    } catch (refreshErr) {
+      const message = refreshErr instanceof Error ? refreshErr.message : String(refreshErr);
+      dispatchCoverNotice(`Cover 已更新，但刷新失败：${message}`, 'error');
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     dispatchCoverNotice(`Cover 更新失败：${message}`, 'error');
