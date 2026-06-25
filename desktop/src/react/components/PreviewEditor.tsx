@@ -236,7 +236,8 @@ function replaceDocumentPreservingSelection(view: EditorView, content: string): 
 
 function syncEditorRootToDom(view: EditorView): void {
   const root = view.dom.getRootNode();
-  if (root === view.root) return;
+  const currentRoot: unknown = view.root;
+  if (root === currentRoot) return;
   const nodeType = (root as Node).nodeType;
   const isDocument = nodeType === 9;
   const isShadowRoot = nodeType === 11 && 'host' in root;
