@@ -37,7 +37,7 @@
     position: absolute;
     left: 50%;
     top: -10px;
-    width: 184px;
+    width: 72%;
     height: 1px;
     transform: translateX(-50%);
     background: color-mix(in srgb, var(--text-muted) 18%, transparent);
