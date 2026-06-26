@@ -172,6 +172,18 @@ describe('ChatArea continuous bottom scroll', () => {
     expect(container.querySelector('[data-testid="transcript"]')).toBeTruthy();
   });
 
+  it('marks the active session shell for a lightweight reveal animation', async () => {
+    const { container } = render(<ChatArea />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[class*="sessionShell"]')).toBeTruthy();
+    });
+
+    const shell = container.querySelector('[class*="sessionShell"]') as HTMLElement;
+    expect(shell).toHaveAttribute('data-active', 'true');
+    expect(shell.className).toContain('sessionShellActive');
+  });
+
   it('captures chat text selection from the active panel on mouseup', async () => {
     useStore.setState({
       currentSessionPath: '/chat/scroll.jsonl',

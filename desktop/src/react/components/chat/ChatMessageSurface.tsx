@@ -9,10 +9,11 @@ import { useContinuousBottomScroll } from '../../hooks/use-continuous-bottom-scr
 import type { ChatListItem } from '../../stores/chat-types';
 import { ChatTimelineNavigator } from './ChatTimelineNavigator';
 import { ChatTranscript } from './ChatTranscript';
-import { buildTimelineAnchors } from './timeline-anchors';
+import { buildTimelineAnchors, type TimelineAnchor } from './timeline-anchors';
 import styles from './Chat.module.css';
 
 const EMPTY_ITEMS: ChatListItem[] = [];
+const EMPTY_TIMELINE_ANCHORS: TimelineAnchor[] = [];
 const LOAD_MORE_THRESHOLD = 200;
 const SCROLL_THRESHOLD = 50;
 const TIMELINE_HOVER_ZONE_PX = 64;
@@ -48,13 +49,16 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
   const contentRef = useRef<HTMLDivElement>(null);
   const messageElementsRef = useRef(new Map<string, HTMLDivElement>());
   const [timelineRailVisible, setTimelineRailVisible] = useState(false);
+  const [timelinePrepared, setTimelinePrepared] = useState(false);
   const bottomScroll = useContinuousBottomScroll({
     scrollRef: ref,
     contentRef,
     active,
     stickyThreshold: SCROLL_THRESHOLD,
   });
-  const timelineAnchors = useMemo(() => buildTimelineAnchors(items), [items]);
+  const timelineAnchors = useMemo(() => (
+    active && timelinePrepared ? buildTimelineAnchors(items) : EMPTY_TIMELINE_ANCHORS
+  ), [active, items, timelinePrepared]);
   const emitScrollButton = useCallback((state: ChatScrollButtonState) => {
     onScrollButtonChange?.(state);
   }, [onScrollButtonChange]);
@@ -85,10 +89,17 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
     const inRailY = yFromTop >= TIMELINE_TOP_OFFSET_PX
       && yFromTop <= TIMELINE_TOP_OFFSET_PX + rect.height * TIMELINE_HEIGHT_RATIO;
     setTimelineRailVisible(inRailX && inRailY);
-  }, []);
+    if (active && inRailX && inRailY) setTimelinePrepared(true);
+  }, [active]);
   const handleShellPointerLeave = useCallback(() => {
     setTimelineRailVisible(false);
   }, []);
+
+  useEffect(() => {
+    if (active) return;
+    setTimelineRailVisible(false);
+    setTimelinePrepared(false);
+  }, [active]);
 
   useEffect(() => {
     const el = ref.current;
@@ -183,11 +194,12 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
 
   const shellClassName = variant === 'card'
     ? `${styles.sessionShell} ${styles.cardSessionShell}`
-    : styles.sessionShell;
+    : `${styles.sessionShell}${active ? ` ${styles.sessionShellActive}` : ''}`;
 
   return (
     <div
       className={shellClassName}
+      data-active={active ? 'true' : 'false'}
       onPointerMove={handleShellPointerMove}
       onPointerLeave={handleShellPointerLeave}
       style={{

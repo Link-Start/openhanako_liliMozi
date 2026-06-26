@@ -1818,6 +1818,10 @@
     overflow: hidden;
 }
 
+.sessionShellActive {
+    animation: hana-fade-in var(--duration-fast) var(--ease-out);
+}
+
 .sessionPanel {
     position: absolute;
     inset: 0;
@@ -1873,6 +1877,12 @@
 :global(.mobile-desktop-root) .sessionPanel {
     padding-left: var(--space-16);
     padding-right: var(--space-16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sessionShellActive {
+        animation: none;
+    }
 }
 
 :global(.mobile-desktop-root) .messageUser,

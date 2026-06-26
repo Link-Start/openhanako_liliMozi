@@ -16,6 +16,13 @@ function readTimelineNavigatorSource(): string {
   );
 }
 
+function readChatMessageSurfaceSource(): string {
+  return fs.readFileSync(
+    path.join(process.cwd(), 'desktop/src/react/components/chat/ChatMessageSurface.tsx'),
+    'utf8',
+  );
+}
+
 function cssBlock(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return css.match(new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`))?.groups?.body || '';
@@ -72,6 +79,16 @@ describe('ChatTimelineNavigator layout', () => {
     expect(source).toContain('finiteNumber(panel.scrollTop)');
     expect(source).toContain('finiteNumber(rect.top)');
     expect(source).toContain('markerWidthEm');
+    expect(source).toContain('const shouldMeasure = active && anchors.length > 0');
+    expect(source).toContain('if (!panel || !shouldMeasure) return');
     expect(source).not.toContain('panel.scrollTop + rect.top - panelRect.top');
+  });
+
+  it('keeps timeline anchor construction behind the active hover preparation gate', () => {
+    const source = readChatMessageSurfaceSource();
+
+    expect(source).toContain('active && timelinePrepared ? buildTimelineAnchors(items) : EMPTY_TIMELINE_ANCHORS');
+    expect(source).toContain('if (active && inRailX && inRailY) setTimelinePrepared(true)');
+    expect(source).toContain('setTimelinePrepared(false)');
   });
 });

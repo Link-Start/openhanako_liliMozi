@@ -618,6 +618,7 @@ function SessionListInner() {
       key={s.path}
       session={s}
       isActive={!pendingNewSession && s.path === activeSessionPath}
+      isPending={!pendingNewSession && pendingSessionSwitchPath === s.path}
       isStreaming={sessionScopedListIncludes(useStore.getState(), streamingSessions, s.path)}
       isPinned={!!s.pinnedAt}
       hasUnreadOutput={sessionScopedListIncludes(useStore.getState(), unreadOutputSessionPaths, s.path)}
@@ -1483,9 +1484,10 @@ const SessionSearchItem = memo(function SessionSearchItem({
 
 // ── Session Item ──
 
-const SessionItem = memo(function SessionItem({ session: s, isActive, isStreaming, isPinned, hasUnreadOutput, agents, browserState, rowMode, onCloseBrowser, draggable = false, onDragStart, onDragEnd }: {
+const SessionItem = memo(function SessionItem({ session: s, isActive, isPending, isStreaming, isPinned, hasUnreadOutput, agents, browserState, rowMode, onCloseBrowser, draggable = false, onDragStart, onDragEnd }: {
   session: Session;
   isActive: boolean;
+  isPending: boolean;
   isStreaming: boolean;
   isPinned: boolean;
   hasUnreadOutput: boolean;
@@ -1573,8 +1575,8 @@ const SessionItem = memo(function SessionItem({ session: s, isActive, isStreamin
   const rcLabel = s.rcAttachment ? `${formatRcPlatform(s.rcAttachment.platform)} 接管中` : null;
   const browserUrl = browserState?.url || null;
   const hasStatusSlot = !!browserUrl;
-  const showStatusDot = isStreaming || hasUnreadOutput;
-  const statusDotState = isStreaming ? 'running' : 'unread';
+  const showStatusDot = isPending || isStreaming || hasUnreadOutput;
+  const statusDotState = isPending ? 'pending' : isStreaming ? 'running' : 'unread';
   const isSingleLine = rowMode === 'single-line';
   const displayTitle = s.title || s.firstMessage || t('session.untitled');
   const metaText = parts.join(' · ');
@@ -1599,10 +1601,11 @@ const SessionItem = memo(function SessionItem({ session: s, isActive, isStreamin
   return (
     <>
       <button
-        className={`${styles.sessionItem}${isSingleLine ? ` ${styles.sessionItemSingleLine}` : ''}${isActive ? ` ${styles.sessionItemActive}` : ''}${isDeletedAgentSession ? ` ${styles.sessionItemReadOnly}` : ''}`}
+        className={`${styles.sessionItem}${isSingleLine ? ` ${styles.sessionItemSingleLine}` : ''}${isActive ? ` ${styles.sessionItemActive}` : ''}${isPending ? ` ${styles.sessionItemPending}` : ''}${isDeletedAgentSession ? ` ${styles.sessionItemReadOnly}` : ''}`}
         data-session-path={s.path}
         data-row-mode={rowMode}
         data-unread-output={hasUnreadOutput ? 'true' : 'false'}
+        data-switch-pending={isPending ? 'true' : 'false'}
         title={itemTitle}
         draggable={draggable && !editing && !isDeletedAgentSession}
         onClick={handleClick}

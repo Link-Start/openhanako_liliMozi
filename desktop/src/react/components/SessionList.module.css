@@ -206,6 +206,10 @@
     background: var(--accent-light);
 }
 
+.sessionItemPending {
+    box-shadow: inset 2px 0 0 rgba(var(--accent-rgb), 0.38);
+}
+
 .sessionItemTitle {
     font-size: var(--fs-ui);
     color: var(--text);
@@ -219,6 +223,10 @@
 .sessionItemActive .sessionItemTitle {
     color: var(--accent);
     font-weight: 600;
+}
+
+.sessionItemPending .sessionItemTitle {
+    opacity: 0.9;
 }
 
 .sessionItemMeta {
@@ -413,6 +421,11 @@
 
 .sessionStreamingDot[data-state="running"] {
     animation: hana-pulse 2s ease-in-out infinite;
+}
+
+.sessionStreamingDot[data-state="pending"] {
+    opacity: 0.78;
+    animation: hana-pulse 1.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

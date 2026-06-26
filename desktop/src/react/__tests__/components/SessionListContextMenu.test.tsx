@@ -412,6 +412,26 @@ describe('SessionList context menu', () => {
     expect(dot).toHaveAttribute('data-state', 'running');
   });
 
+  it('marks the pending switch row immediately without changing the committed session path', () => {
+    useStore.setState({
+      currentSessionPath: '/tmp/agents/hana/sessions/no-summary.jsonl',
+      pendingSessionSwitchPath: '/tmp/agents/hana/sessions/with-summary.jsonl',
+      streamingSessions: [],
+      unreadOutputSessionPaths: [],
+    } as never);
+
+    render(<SessionList />);
+
+    const pendingRow = sessionButton('Has summary');
+    expect(pendingRow).toHaveAttribute('data-switch-pending', 'true');
+    const dot = pendingRow.querySelector('[data-session-status-dot]');
+    expect(dot).toBeInTheDocument();
+    expect(dot).toHaveAttribute('data-state', 'pending');
+
+    const currentRow = sessionButton('No summary');
+    expect(currentRow).toHaveAttribute('data-switch-pending', 'false');
+  });
+
   it('keeps the status dot after a background session finishes until the user opens it', () => {
     useStore.setState({
       currentSessionPath: '/tmp/agents/hana/sessions/no-summary.jsonl',

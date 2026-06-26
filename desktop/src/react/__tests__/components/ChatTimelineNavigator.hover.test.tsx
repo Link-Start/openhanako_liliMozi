@@ -24,7 +24,7 @@ function scrollPanel(): HTMLDivElement {
   return panel;
 }
 
-function renderNavigator() {
+function renderNavigator({ active = true }: { active?: boolean } = {}) {
   const panel = scrollPanel();
   const content = measuredDiv(new DOMRect(0, 0, 640, 1440));
   const firstMessage = measuredDiv(new DOMRect(0, 120, 420, 80));
@@ -61,7 +61,7 @@ function renderNavigator() {
       scrollRef={scrollRef}
       contentRef={contentRef}
       messageElementsRef={messageElementsRef}
-      active
+      active={active}
       railVisible={false}
     />,
   );
@@ -113,5 +113,19 @@ describe('ChatTimelineNavigator hover behavior', () => {
     });
 
     expect(nav.className).not.toContain('timelineNavExpanded');
+  });
+
+  it('does not attach layout observers for inactive preserved panels', () => {
+    const observe = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      observe(...args: unknown[]) { observe(...args); }
+      unobserve() {}
+      disconnect() {}
+    });
+
+    renderNavigator({ active: false });
+
+    expect(observe).not.toHaveBeenCalled();
+    expect(screen.queryByRole('navigation', { name: 'Turn navigation' })).not.toBeInTheDocument();
   });
 });

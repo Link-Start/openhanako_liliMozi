@@ -36,6 +36,7 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
   const [layouts, setLayouts] = useState<Record<string, MarkerLayout>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const rafRef = useRef<number | null>(null);
+  const shouldMeasure = active && anchors.length > 0;
 
   const measure = useCallback(() => {
     const panel = scrollRef.current;
@@ -86,22 +87,27 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
   }, [anchors, layouts, scrollRef]);
 
   useLayoutEffect(() => {
+    if (!shouldMeasure) {
+      setLayouts({});
+      setActiveId(null);
+      return;
+    }
     measure();
-  }, [measure]);
+  }, [measure, shouldMeasure]);
 
   useEffect(() => {
     const panel = scrollRef.current;
-    if (!panel) return;
+    if (!panel || !shouldMeasure) return;
     const content = contentRef.current;
     const observer = new ResizeObserver(() => measure());
     observer.observe(panel);
     if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [contentRef, measure, scrollRef]);
+  }, [contentRef, measure, scrollRef, shouldMeasure]);
 
   useEffect(() => {
     const panel = scrollRef.current;
-    if (!panel || !active) return;
+    if (!panel || !shouldMeasure) return;
 
     const schedule = () => {
       if (rafRef.current != null) return;
@@ -120,7 +126,7 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
         rafRef.current = null;
       }
     };
-  }, [active, scrollRef, updateActive]);
+  }, [scrollRef, shouldMeasure, updateActive]);
 
   const jumpTo = useCallback((anchor: TimelineAnchor) => {
     const panel = scrollRef.current;
