@@ -42,7 +42,7 @@ export function initQuotedSelectionLifecycle(target: Document = document): () =>
   const handledSelectionCommitEvents = new WeakSet<Event>();
   const handleSelectionCommit = (event: Event) => {
     if (handledSelectionCommitEvents.has(event)) return;
-    if (event instanceof MouseEvent && event.button === 2) return;
+    if ('button' in event && (event as MouseEvent).button === 2) return;
     handledSelectionCommitEvents.add(event);
     if (suppressNextSelectionCommit) {
       suppressNextSelectionCommit = false;

@@ -834,7 +834,7 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
       const handledSelectionCommitEvents = new WeakSet<Event>();
       const onSelectionCommitEvent = (event: Event) => {
         if (handledSelectionCommitEvents.has(event)) return;
-        if (event instanceof MouseEvent && event.button === 2) return;
+        if ('button' in event && (event as MouseEvent).button === 2) return;
         handledSelectionCommitEvents.add(event);
         selectionCommitCbRef.current?.(view);
       };
