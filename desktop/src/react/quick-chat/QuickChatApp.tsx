@@ -722,6 +722,7 @@ export function QuickChatApp() {
             onCompositionStart={() => { isComposingRef.current = true; }}
             onCompositionEnd={() => { isComposingRef.current = false; }}
             placeholder={t('input.placeholder')}
+            spellCheck={false}
             rows={expanded ? 2 : 3}
           />
 

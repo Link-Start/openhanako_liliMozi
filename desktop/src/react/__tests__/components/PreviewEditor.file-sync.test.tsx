@@ -142,6 +142,21 @@ describe('PreviewEditor file sync', () => {
     expect(codeContainer.querySelector('.cm-selectionLayer')).toBeTruthy();
   });
 
+  it('keeps spellcheck disabled on the editable CodeMirror content surface', () => {
+    const ref = createRef<PreviewEditorHandle>();
+    const { container } = render(
+      <PreviewEditor
+        ref={ref}
+        content="中文正文"
+        filePath="/tmp/hana-note.md"
+        mode="markdown"
+      />,
+    );
+
+    expect(ref.current?.getView()).toBeTruthy();
+    expect(container.querySelector('.cm-content')?.getAttribute('spellcheck')).toBe('false');
+  });
+
   it('emits selection commit only after a user commit event', () => {
     const ref = createRef<PreviewEditorHandle>();
     const onSelectionChange = vi.fn();

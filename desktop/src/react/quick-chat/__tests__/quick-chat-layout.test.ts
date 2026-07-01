@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const CSS_PATH = path.join(process.cwd(), 'desktop/src/react/quick-chat/QuickChatApp.module.css');
+const APP_PATH = path.join(process.cwd(), 'desktop/src/react/quick-chat/QuickChatApp.tsx');
 
 function cssBlock(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\ /g, '\\s+');
@@ -21,5 +22,12 @@ describe('QuickChatApp compact layout', () => {
     expect(dragStripBlock).toMatch(/display:\s*none/);
     expect(dragStripBlock).not.toMatch(/flex:\s*0 0 12px/);
     expect(dragStripBlock).not.toMatch(/-webkit-app-region:\s*drag/);
+  });
+
+  it('keeps the quick chat composer spellcheck disabled for Chinese text input', () => {
+    const source = fs.readFileSync(APP_PATH, 'utf8');
+    const textareaBlock = source.match(/<textarea[\s\S]*?\/>/)?.[0] ?? '';
+
+    expect(textareaBlock).toContain('spellCheck={false}');
   });
 });

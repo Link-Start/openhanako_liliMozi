@@ -235,6 +235,7 @@ export const UserMessage = memo(function UserMessage({
                 }
               }}
               disabled={busy}
+              spellCheck={false}
             />
           ) : (
             message.textHtml && <MarkdownContent html={message.textHtml} linkContext={{ origin: 'session', sessionPath, messageId: message.id }} />

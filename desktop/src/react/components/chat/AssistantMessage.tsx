@@ -1050,6 +1050,7 @@ const CronConfirmBlock = memo(function CronConfirmBlock({ block, sessionPath }: 
               value={draftLabel}
               onChange={e => setDraftLabel(e.target.value)}
               placeholder={window.t('automation.draftTitle')}
+              spellCheck={false}
             />
             <button className={styles.automationDraftIconButton} type="button" title={window.t('automation.closeDraft')} onClick={() => setModalOpen(false)}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1064,6 +1065,7 @@ const CronConfirmBlock = memo(function CronConfirmBlock({ block, sessionPath }: 
             onChange={e => setDraftPrompt(e.target.value)}
             placeholder={window.t('automation.promptPlaceholder', { agent: agentInfo.displayName })}
             aria-label={window.t('automation.field.prompt')}
+            spellCheck={false}
           />
           <div className={styles.automationDraftFooter}>
             <ScheduleEditor draft={scheduleDraft} onChange={setScheduleDraft} className={styles.automationDraftSchedule} />

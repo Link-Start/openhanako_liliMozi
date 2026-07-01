@@ -148,7 +148,7 @@ export function AutomationCard({
           <div className={styles.fieldGrid}>
             <label className={styles.field}>
               <span>{t('automation.field.label')}</span>
-              <input value={label} onChange={e => setLabel(e.target.value)} />
+              <input value={label} onChange={e => setLabel(e.target.value)} spellCheck={false} />
             </label>
           </div>
           <ScheduleEditor draft={scheduleDraft} onChange={updateScheduleDraft} />
@@ -159,6 +159,7 @@ export function AutomationCard({
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 placeholder={t('automation.promptPlaceholder', { agent: agentInfo.displayName })}
+                spellCheck={false}
               />
             </label>
           ) : null}

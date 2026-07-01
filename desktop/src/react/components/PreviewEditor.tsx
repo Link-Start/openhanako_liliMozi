@@ -740,6 +740,7 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
         history(),
         bracketMatching(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
+        EditorView.contentAttributes.of({ spellcheck: 'false' }),
         EditorView.lineWrapping,
         ...(isMd && !readOnly ? [
           EditorView.domEventHandlers({
