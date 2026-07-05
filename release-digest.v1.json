@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.357.13",
-  "version": "0.357.13",
-  "previousTag": "v0.357.8",
-  "generatedAt": "2026-07-05T19:10:00.000Z",
+  "tag": "v0.357.14",
+  "version": "0.357.14",
+  "previousTag": "v0.357.13",
+  "generatedAt": "2026-07-05T20:21:08.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "多语言界面更完整，定时任务更可靠，国内用户也能从 AtomGit 镜像收到更新。",
-    "en": "Broader locale coverage, more reliable scheduled tasks, and AtomGit mirror delivery for users in China."
+    "zh": "国内更新镜像更可靠，AtomGit/GitCode 附件上传会正确保留签名头，并在重跑时安全跳过已同步文件。",
+    "en": "Domestic update mirroring is more reliable: AtomGit/GitCode asset uploads now preserve signed headers and safely skip files that are already mirrored."
   },
   "counts": {
-    "feature": 1,
+    "feature": 0,
     "fix": 1,
     "improvement": 1,
     "migration": 0
@@ -18,61 +18,56 @@
   "source": {
     "owner": "liliMozi",
     "repo": "openhanako",
-    "commitRange": "v0.357.8..0c1170027",
-    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.357.13",
+    "commitRange": "v0.357.13..HEAD",
+    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.357.14",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "atomgit-release-mirror",
-      "kind": "feature",
-      "importance": "high",
-      "title": {
-        "zh": "AtomGit 发布镜像",
-        "en": "AtomGit release mirror"
-      },
-      "summary": {
-        "zh": "正式版构建完成后会自动同步到 AtomGit 发布仓库，自动更新优先走国内镜像。",
-        "en": "Release builds now sync to the AtomGit release repo so in-app updates can prefer the domestic mirror."
-      },
-      "details": [],
-      "sources": [
-        { "type": "commit", "ref": "5973592e4", "title": "feat: mirror releases to atomgit after build" },
-        { "type": "commit", "ref": "bcc3640e8", "title": "fix: target normal atomgit release repo" }
-      ]
-    },
-    {
-      "id": "locale-parity",
-      "kind": "improvement",
-      "importance": "high",
-      "title": {
-        "zh": "多语言界面补全",
-        "en": "Locale parity across the UI"
-      },
-      "summary": {
-        "zh": "日语、韩语、繁体中文补齐主要界面文案，聊天、输入框和设置里的硬编码文字也改走翻译。",
-        "en": "Japanese, Korean, and Traditional Chinese now cover the main UI, with chat, input, and settings strings routed through i18n."
-      },
-      "details": [],
-      "sources": [
-        { "type": "commit", "ref": "9bdb96621", "title": "fix(i18n): backfill locale parity and replace hardcoded UI strings" }
-      ]
-    },
-    {
-      "id": "cron-next-run",
+      "id": "atomgit-asset-upload-repair",
       "kind": "fix",
+      "importance": "high",
+      "title": {
+        "zh": "修复 AtomGit 附件上传",
+        "en": "Fixed AtomGit asset uploads"
+      },
+      "summary": {
+        "zh": "发布镜像会按 GitCode 返回的签名上传要求发送安装包，避免国内镜像缺少安装附件。",
+        "en": "Release mirroring now sends installers with the signed upload headers returned by GitCode, preventing missing installer assets on the domestic mirror."
+      },
+      "details": [
+        {
+          "zh": "上传请求改为一次性字节上传，并保留对象存储签名绑定的 Content-Type。",
+          "en": "Uploads now use buffered bytes and preserve the Content-Type bound to the object-storage signature."
+        }
+      ],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "cd8bc91d3cb9",
+          "title": "fix: upload atomgit release assets as buffered puts"
+        }
+      ]
+    },
+    {
+      "id": "atomgit-mirror-rerun-safety",
+      "kind": "improvement",
       "importance": "medium",
       "title": {
-        "zh": "定时任务调度更准",
-        "en": "More reliable cron scheduling"
+        "zh": "镜像重跑更安全",
+        "en": "Safer mirror reruns"
       },
       "summary": {
-        "zh": "修复下次运行时间的游标计算，Studio 定时任务不再漏跑或重复触发。",
-        "en": "Fixes next-run cursor calculation so Studio scheduled tasks fire on time without duplicate triggers."
+        "zh": "如果同名附件已经在 AtomGit 上存在，脚本会先校验大小，相同才跳过，避免重复上传或静默覆盖不一致文件。",
+        "en": "When an asset already exists on AtomGit, the script verifies its size before skipping it, avoiding duplicate uploads or silent mismatches."
       },
       "details": [],
       "sources": [
-        { "type": "commit", "ref": "9e089f792", "title": "fix: repair cron next run cursor" }
+        {
+          "type": "commit",
+          "ref": "cd8bc91d3cb9",
+          "title": "fix: upload atomgit release assets as buffered puts"
+        }
       ]
     }
   ]
