@@ -250,19 +250,12 @@ jobs:
         run: |
           node scripts/merge-latest-mac-yml.cjs artifacts latest-mac.yml
 
-      # 生成 About 页展示的双语更新摘要。release job 只在 tag 上跑；
-      # 摘要使用当前 draft release notes + 上一个 tag 到当前 tag 的 commits。
-      - name: Generate bilingual release digest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_RELEASE_DIGEST_MODEL || 'gpt-5.5' }}
+      # 更新摘要必须在本地 tag 前生成并提交。CI 只校验，不调用 LLM。
+      - name: Validate committed release digest
         run: |
-          node scripts/generate-release-digest.mjs \
+          node scripts/validate-release-digest.mjs \
             --tag "${{ github.ref_name }}" \
-            --previous-tag auto \
-            --out release-digest.v1.json \
-            --source-out release-digest-source.json
+            --file release-digest.v1.json
 
       # 单点上传所有 release assets（dmg/zip/exe/AppImage/deb/yml），blockmap 不上传
       - name: Upload release assets

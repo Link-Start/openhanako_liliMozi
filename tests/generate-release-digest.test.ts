@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { generateDigestWithOpenAI, parseArgs } from "../scripts/generate-release-digest.mjs";
 
 describe("generate-release-digest", () => {
-  it("parses tag workflow defaults without requiring network", () => {
+  it("parses local pre-tag defaults without requiring release lookup", () => {
     const args = parseArgs(["--out", "tmp/digest.json"], {
       GITHUB_REF_NAME: "v0.425.4",
       GITHUB_REPOSITORY: "liliMozi/openhanako",
@@ -10,9 +10,24 @@ describe("generate-release-digest", () => {
     expect(args).toEqual(expect.objectContaining({
       tag: "v0.425.4",
       previousTag: "auto",
+      ref: "HEAD",
       owner: "liliMozi",
       repo: "openhanako",
       out: "tmp/digest.json",
+    }));
+  });
+
+  it("accepts an explicit git ref and local release notes file", () => {
+    const args = parseArgs([
+      "--tag", "v0.425.4",
+      "--ref", "HEAD",
+      "--release-notes-file", "notes.md",
+    ], {});
+
+    expect(args).toEqual(expect.objectContaining({
+      tag: "v0.425.4",
+      ref: "HEAD",
+      releaseNotesFile: "notes.md",
     }));
   });
 

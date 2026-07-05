@@ -17,10 +17,13 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
   const args = {
     tag: env.GITHUB_REF_NAME || null,
     previousTag: "auto",
+    ref: env.GITHUB_SHA || "HEAD",
     owner: null,
     repo: null,
     out: DIGEST_ASSET_NAME,
     sourceOut: null,
+    releaseNotesFile: null,
+    releaseUrl: "",
     noLlm: false,
     model: env.OPENAI_MODEL || DEFAULT_MODEL,
   };
@@ -29,10 +32,13 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     const arg = argv[i];
     if (arg === "--tag") args.tag = argv[++i];
     else if (arg === "--previous-tag") args.previousTag = argv[++i];
+    else if (arg === "--ref") args.ref = argv[++i];
     else if (arg === "--owner") args.owner = argv[++i];
     else if (arg === "--repo") args.repo = argv[++i];
     else if (arg === "--out") args.out = argv[++i];
     else if (arg === "--source-out") args.sourceOut = argv[++i];
+    else if (arg === "--release-notes-file") args.releaseNotesFile = argv[++i];
+    else if (arg === "--release-url") args.releaseUrl = argv[++i];
     else if (arg === "--model") args.model = argv[++i];
     else if (arg === "--no-llm") args.noLlm = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -55,10 +61,13 @@ function printHelp() {
 
 Options:
   --previous-tag <tag|auto>  Previous tag used for commit range. Default: auto
+  --ref <git-ref>            Git ref to summarize before the tag exists. Default: HEAD
   --owner <owner>           GitHub owner. Default: GITHUB_REPOSITORY owner
   --repo <repo>             GitHub repo. Default: GITHUB_REPOSITORY repo
   --out <path>              Digest JSON output. Default: ${DIGEST_ASSET_NAME}
   --source-out <path>       Write the LLM source packet for audit/debugging
+  --release-notes-file <p>   Optional local release notes file
+  --release-url <url>        Optional release URL embedded into digest source
   --model <model>           OpenAI model. Default: ${DEFAULT_MODEL}
   --no-llm                  Only collect/write the source packet; do not call OpenAI
 `);
@@ -84,21 +93,17 @@ function tagToVersion(tag) {
   return normalized.startsWith("v") ? normalized.slice(1) : normalized;
 }
 
-export function resolvePreviousTag(tag, explicitPreviousTag = "auto") {
-  const normalizedTag = normalizeTag(tag);
-  if (!normalizedTag) throw new Error("Cannot resolve previous tag without current tag");
+export function resolvePreviousTag(ref = "HEAD", explicitPreviousTag = "auto") {
   if (explicitPreviousTag && explicitPreviousTag !== "auto") return explicitPreviousTag;
 
-  const previous = git(["describe", "--tags", "--abbrev=0", `${normalizedTag}^`], { allowFailure: true });
+  const previous = git(["describe", "--tags", "--abbrev=0", `${ref}^`], { allowFailure: true });
   if (previous) return previous;
 
   const sortedTags = git(["tag", "--sort=-creatordate"], { allowFailure: true })
     .split("\n")
     .map(item => item.trim())
     .filter(Boolean);
-  const currentIndex = sortedTags.indexOf(normalizedTag);
-  if (currentIndex >= 0 && sortedTags[currentIndex + 1]) return sortedTags[currentIndex + 1];
-  return "";
+  return sortedTags[0] || "";
 }
 
 function parseCommitLog(raw) {
@@ -118,41 +123,23 @@ function parseCommitLog(raw) {
     });
 }
 
-function collectCommits(previousTag, tag) {
-  const range = previousTag ? `${previousTag}..${tag}` : tag;
+function collectCommits(previousTag, ref) {
+  const range = previousTag ? `${previousTag}..${ref}` : ref;
   const raw = git(["log", "--no-merges", "--format=%H%x00%s%x00%b%x1e", range], { allowFailure: true });
   return { range, commits: parseCommitLog(raw) };
 }
 
-async function fetchGithubRelease({ owner, repo, tag, env = process.env, fetchImpl = fetch }) {
-  const token = env.GITHUB_TOKEN || env.GH_TOKEN || "";
-  const response = await fetchImpl(`https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-  if (response.status === 404) {
-    return { name: tag, body: "", html_url: `https://github.com/${owner}/${repo}/releases/tag/${tag}` };
-  }
-  if (!response.ok) {
-    throw new Error(`GitHub release lookup failed: ${response.status} ${await response.text()}`);
-  }
-  return response.json();
+async function readReleaseNotes(filePath) {
+  if (!filePath) return "";
+  return fs.promises.readFile(filePath, "utf-8");
 }
 
-export async function collectDigestSource(options, { env = process.env, fetchImpl = fetch } = {}) {
+export async function collectDigestSource(options) {
   const tag = normalizeTag(options.tag);
-  const previousTag = resolvePreviousTag(tag, options.previousTag);
-  const { range, commits } = collectCommits(previousTag, tag);
-  const release = await fetchGithubRelease({
-    owner: options.owner,
-    repo: options.repo,
-    tag,
-    env,
-    fetchImpl,
-  });
+  const ref = options.ref || "HEAD";
+  const previousTag = resolvePreviousTag(ref, options.previousTag);
+  const { range, commits } = collectCommits(previousTag, ref);
+  const releaseNotes = await readReleaseNotes(options.releaseNotesFile);
 
   return {
     schemaVersion: DIGEST_SCHEMA_VERSION,
@@ -170,9 +157,10 @@ export async function collectDigestSource(options, { env = process.env, fetchImp
     tag,
     version: tagToVersion(tag),
     previousTag,
+    ref,
     generatedAt: new Date().toISOString(),
-    releaseUrl: release.html_url || `https://github.com/${options.owner}/${options.repo}/releases/tag/${tag}`,
-    releaseNotes: release.body || "",
+    releaseUrl: options.releaseUrl || `https://github.com/${options.owner}/${options.repo}/releases/tag/${tag}`,
+    releaseNotes,
     commitRange: range,
     commits,
   };
@@ -270,7 +258,7 @@ export async function run(argv = process.argv.slice(2), { env = process.env, fet
     return;
   }
 
-  const source = await collectDigestSource(args, { env, fetchImpl });
+  const source = await collectDigestSource(args);
   if (args.sourceOut) {
     await writeJson(args.sourceOut, source);
   }
