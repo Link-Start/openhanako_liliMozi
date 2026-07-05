@@ -35,6 +35,7 @@
 :global(body.paper-texture) .agent-delete-card,
 :global(body.paper-texture) .agent-name-input,
 :global(body.paper-texture) .model-capsule-input,
+:global(body.paper-texture) .model-capsule-trigger,
 :global(body.paper-texture) .settings-input,
 :global(body.paper-texture) .settings-textarea,
 :global(body.paper-texture) .settings-folder-browse,
@@ -1842,9 +1843,26 @@
 }
 
 .model-capsule-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: var(--space-8) var(--space-12);
+    font-family: inherit;
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    color: var(--text);
     border: none;
     border-radius: 0;
-    background: transparent;
+    background-color: var(--bg-card);
+    cursor: default;
+    text-align: left;
+    transition: color var(--duration-fast) var(--ease-out);
+}
+
+.model-capsule:has(.model-capsule-trigger:hover),
+.model-capsule:has(.model-capsule-trigger[data-open="true"]) {
+    border-color: var(--accent);
 }
 
 .model-capsule-provider-icon {

@@ -282,6 +282,7 @@ export function AgentTab() {
             <span className={styles['model-capsule-label']}>{t('settings.agent.chatModel')}</span>
             <SelectWidget
               className={styles['model-capsule-select']}
+              triggerBare
               triggerClassName={styles['model-capsule-trigger']}
               options={modelOptions}
               value={currentModel}
