@@ -45,4 +45,19 @@ describe('ChatResourceCard layout', () => {
 
     expect(interactiveButton).toMatch(/cursor:\s*pointer/);
   });
+
+  it('gives the task variant the task-family container language', () => {
+    const css = readResourceCss();
+    const task = cssRule(css, '.task');
+
+    expect(task).toMatch(/background:\s*var\(--tool-bg\)/);
+    expect(task).toMatch(/border:\s*none/);
+    expect(task).toMatch(/border-radius:\s*var\(--radius-sm\)/);
+    expect(task).toMatch(/box-shadow:\s*none/);
+  });
+
+  it('keeps the running tone neutral inside the task variant', () => {
+    const css = readResourceCss();
+    expect(css).toMatch(/\.task\s+\.status-accent\s*\{[^}]*color:\s*var\(--tool-text\)/);
+  });
 });

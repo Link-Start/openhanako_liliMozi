@@ -95,6 +95,7 @@ export const SubagentCard = memo(function SubagentCard({ block }: SubagentCardPr
 
   return (
     <ChatResourceCard
+      variant="task"
       className={`${styles.subagentResourceCard} ${styles[`subagent-${status}`]}`}
       icon={(
         <AgentAvatar

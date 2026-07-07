@@ -3,6 +3,8 @@ import styles from './ChatResourceCard.module.css';
 
 export type ChatResourceCardStatusTone = 'neutral' | 'success' | 'danger' | 'muted' | 'accent';
 
+export type ChatResourceCardVariant = 'panel' | 'task';
+
 interface ChatResourceCardProps {
   icon: ReactNode;
   title: ReactNode;
@@ -19,6 +21,7 @@ interface ChatResourceCardProps {
   disabled?: boolean;
   className?: string;
   ariaLabel?: string;
+  variant?: ChatResourceCardVariant;
   children?: ReactNode;
 }
 
@@ -78,12 +81,14 @@ export function ChatResourceCard({
   disabled = false,
   className,
   ariaLabel,
+  variant = 'panel',
   children,
 }: ChatResourceCardProps) {
   const activate = onToggle ?? onClick;
   const interactive = !!activate && !disabled;
   const rootClass = cx(
     styles.card,
+    variant === 'task' && styles.task,
     interactive && styles.interactive,
     expanded && styles.expanded,
     disabled && styles.disabled,
@@ -91,7 +96,7 @@ export function ChatResourceCard({
   );
 
   return (
-    <div className={rootClass} data-chat-resource-card="">
+    <div className={rootClass} data-chat-resource-card="" data-variant={variant}>
       <div className={styles.header}>
         {interactive ? (
           <button

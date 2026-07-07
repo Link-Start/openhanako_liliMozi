@@ -81,6 +81,7 @@ export const WorkflowInlineCard = memo(function WorkflowInlineCard({ block }: Wo
 
   return (
     <ChatResourceCard
+      variant="task"
       icon={<WorkflowResourceIcon />}
       title={block.taskTitle || t('rightWorkspace.workflow.title')}
       titleMeta={titleMeta}

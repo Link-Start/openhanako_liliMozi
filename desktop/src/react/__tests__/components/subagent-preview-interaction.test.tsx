@@ -160,6 +160,7 @@ describe('SubagentCard static resource card', () => {
     expect(screen.queryByText('Preview A')).toBeNull();
     expect(screen.queryByRole('button', { name: /SORA/i })).toBeNull();
     expect(useStore.getState().subagentPreviewByTaskId).toEqual({});
+    expect(document.querySelector('[data-chat-resource-card]')?.getAttribute('data-variant')).toBe('task');
   });
 
   it('收起态显式信任 taskTitle，而不是再从 task 猜摘要', () => {

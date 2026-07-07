@@ -38,4 +38,9 @@ describe('WorkflowInlineCard', () => {
     const { container } = render(<WorkflowInlineCard block={mk({ streamStatus: 'failed', finishedAt: 2000 })} />);
     expect(container.textContent).toContain('✗ 失败');
   });
+
+  it('走任务族容器 variant', () => {
+    const { container } = render(<WorkflowInlineCard block={mk({})} />);
+    expect(container.querySelector('[data-chat-resource-card]')?.getAttribute('data-variant')).toBe('task');
+  });
 });

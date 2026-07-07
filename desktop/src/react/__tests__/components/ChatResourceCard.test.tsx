@@ -59,4 +59,14 @@ describe('ChatResourceCard', () => {
     expect(screen.getByRole('button', { name: '已展开卡片' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('详情内容')).toBeInTheDocument();
   });
+
+  it('defaults to the panel variant contract', () => {
+    const { container } = render(<ChatResourceCard icon={<Icon />} title="默认卡片" />);
+    expect(container.querySelector('[data-chat-resource-card]')).toHaveAttribute('data-variant', 'panel');
+  });
+
+  it('marks the task variant for the task-block family', () => {
+    const { container } = render(<ChatResourceCard icon={<Icon />} title="任务卡片" variant="task" />);
+    expect(container.querySelector('[data-chat-resource-card]')).toHaveAttribute('data-variant', 'task');
+  });
 });

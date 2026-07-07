@@ -182,6 +182,18 @@ button.main:focus-visible {
   border-top: 1px solid var(--overlay-light, rgba(0, 0, 0, 0.08));
 }
 
+/* ── task variant：任务族容器，与工具条同族（低调色块，无纸面卡感） ── */
+.task {
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--tool-bg);
+  box-shadow: none;
+}
+
+.task .status-accent {
+  color: var(--tool-text);
+}
+
 @media (max-width: 720px) {
   .card {
     width: 100%;
