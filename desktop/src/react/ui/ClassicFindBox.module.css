@@ -5,10 +5,10 @@
     z-index: 12;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-4);
     width: min(330px, calc(100% - 28px));
     height: 32px;
-    padding: 0 5px 0 9px;
+    padding: 0 calc(var(--space-4) + 1px) 0 calc(var(--space-8) + 1px);
     border: 1px solid var(--overlay-light);
     border-radius: var(--radius-sm);
     background: var(--bg-glass, rgba(255, 253, 247, 0.86));
