@@ -1613,6 +1613,9 @@
     border: 0.5px solid var(--border, rgba(0,0,0,0.08));
     border-radius: var(--radius-chat-card);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    contain: layout paint;
+    content-visibility: auto;
+    contain-intrinsic-size: 360px 450px;
     transition: border-color var(--duration-fast);
 }
 
@@ -1664,6 +1667,7 @@
 .imageOutputPreview {
     display: block;
     max-width: 100%;
+    height: auto;
     max-height: 450px;
     object-fit: contain;
     border-radius: var(--radius-chat-card-inner);
@@ -1778,11 +1782,16 @@
 .browserScreenshot {
     margin: 8px 0;
     max-width: 600px;
+    contain: layout paint;
+    content-visibility: auto;
+    contain-intrinsic-size: 600px 360px;
     animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
 }
 
 .browserScreenshot img {
+    display: block;
     max-width: 100%;
+    height: auto;
     border-radius: var(--radius-chat-card);
     border: 1px solid var(--border);
     cursor: default;

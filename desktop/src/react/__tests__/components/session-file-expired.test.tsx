@@ -504,7 +504,10 @@ describe('expired session file presentation', () => {
       />,
     );
 
-    expect(screen.getByRole('img', { name: 'img.png' })).toHaveAttribute(
+    const preview = screen.getByRole('img', { name: 'img.png' });
+    expect(preview).toHaveAttribute('loading', 'lazy');
+    expect(preview).toHaveAttribute('decoding', 'async');
+    expect(preview).toHaveAttribute(
       'src',
       'https://hana.example/api/resources/res_sf_img/content',
     );

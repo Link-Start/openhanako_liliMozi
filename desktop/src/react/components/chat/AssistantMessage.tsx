@@ -477,6 +477,8 @@ const ImageOutputCard = memo(function ImageOutputCard({ fileId, filePath, label,
         src={imageSrc}
         alt={displayName}
         className={styles.imageOutputPreview}
+        loading="lazy"
+        decoding="async"
         onError={() => setFailed(true)}
         draggable={false}
       />
@@ -793,7 +795,12 @@ const ScreenshotBlock = memo(function ScreenshotBlock({ block, sessionPath, mess
 
   return (
     <div className={styles.browserScreenshot} onClick={handleClick} style={{ cursor: 'default' }}>
-      <img src={`data:${block.mimeType};base64,${block.base64}`} alt={window.t('chat.browserScreenshot')} />
+      <img
+        src={`data:${block.mimeType};base64,${block.base64}`}
+        alt={window.t('chat.browserScreenshot')}
+        loading="lazy"
+        decoding="async"
+      />
     </div>
   );
 });
