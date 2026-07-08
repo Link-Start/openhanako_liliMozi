@@ -1333,7 +1333,7 @@ export class HanaEngine {
   resolveUtilityConfig( options: any = {}) {
     const resolvedOptions = { ...(options || {}) };
     if (!resolvedOptions.agentId && resolvedOptions.sessionPath) {
-      const ownerAgentId = this.agentIdFromSessionPath(resolvedOptions.sessionPath);
+      const ownerAgentId = this.resolveSessionOwnership(resolvedOptions.sessionPath).agentId;
       if (ownerAgentId) resolvedOptions.agentId = ownerAgentId;
     }
     const config = this._configCoord.resolveUtilityConfig(resolvedOptions);
@@ -2524,7 +2524,7 @@ export class HanaEngine {
   _utilityOptionsForContext( opts: any = {}) {
     if (opts?.agentId) return { agentId: opts.agentId, sessionPath: opts.sessionPath || null };
     if (opts?.sessionPath) {
-      const agentId = this.agentIdFromSessionPath(opts.sessionPath);
+      const agentId = this.resolveSessionOwnership(opts.sessionPath).agentId;
       if (agentId) return { agentId, sessionPath: opts.sessionPath };
     }
     return undefined;

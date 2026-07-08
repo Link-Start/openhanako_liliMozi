@@ -233,7 +233,7 @@ export function buildDeferredResultInterludeBlock(event, { receiverName = "Hana"
 }
 
 export function resolveDeferredReceiverName(engine, sessionPath) {
-  const agentId = sessionPath ? engine?.agentIdFromSessionPath?.(sessionPath) || null : null;
+  const agentId = sessionPath ? engine?.resolveSessionOwnership?.(sessionPath)?.agentId || null : null;
   const agent = agentId ? engine?.getAgent?.(agentId) || null : null;
   return agent?.agentName || engine?.agentName || "Hana";
 }

@@ -1684,6 +1684,7 @@ describe("sessions route", () => {
       agentsDir: "/tmp/agents",
       currentSessionPath: sessionPath,
       agentIdFromSessionPath: vi.fn(() => "hana"),
+      resolveSessionOwnership: vi.fn(() => ({ agentId: "hana", source: "path", agentDeleted: false })),
       getAgent: vi.fn((id) => (id === "hana" ? { agentName: "小花" } : null)),
       deferredResults: {
         query: vi.fn(() => ({

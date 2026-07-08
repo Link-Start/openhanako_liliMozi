@@ -209,6 +209,11 @@ describe("HanaEngine.buildTools", () => {
     const engine = Object.create(HanaEngine.prototype);
     engine._agentMgr = { activeAgentId: "focus" };
     engine.agentIdFromSessionPath = vi.fn(() => "target");
+    engine.resolveSessionOwnership = vi.fn((ref) => {
+      const sp = typeof ref === "string" ? ref : ref?.sessionPath || null;
+      const agentId = sp ? engine.agentIdFromSessionPath?.(sp) || null : null;
+      return { agentId, source: agentId ? "path" : "none", agentDeleted: false };
+    });
     engine._configCoord = {
       resolveUtilityConfig: vi.fn(() => ({ utility: { id: "target-utility" } })),
     };
