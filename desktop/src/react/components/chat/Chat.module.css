@@ -1849,6 +1849,18 @@
     gap: var(--space-8);
 }
 
+.sessionMessages > .messageGroup {
+    contain: layout paint;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 220px;
+}
+
+.sessionMessages.selectionModeActive > .messageGroup,
+.sessionMessages > .messageGroupSelected,
+.sessionMessages > .locateFlash {
+    content-visibility: visible;
+}
+
 .cardSessionShell {
     --chat-scrollbar-bottom-inset: 0px;
     position: absolute;
