@@ -141,6 +141,13 @@ describe("known-models dictionary", () => {
       image: true,
       reasoning: true,
     });
+    expect(defaultModels.xai[0]).toBe("grok-4.5");
+    expect(lookupKnown("xai", "grok-4.5")).toMatchObject({
+      name: "Grok 4.5",
+      context: 500000,
+      image: true,
+      reasoning: true,
+    });
   });
 
   it("lists provider-specific known model ids without exposing the raw dictionary", () => {

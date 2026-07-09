@@ -5362,6 +5362,34 @@
       "maxOutput": 131072,
       "reasoning": true
     },
+    "grok-4.5": {
+      "name": "Grok 4.5",
+      "context": 500000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true
+    },
+    "grok-4.5-latest": {
+      "name": "Grok 4.5 Latest",
+      "context": 500000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true
+    },
+    "grok-build-latest": {
+      "name": "Grok Build Latest",
+      "context": 500000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true
+    },
+    "grok-4.3": {
+      "name": "Grok 4.3",
+      "context": 1000000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true
+    },
     "grok-4": {
       "name": "Grok 4",
       "context": 256000,
