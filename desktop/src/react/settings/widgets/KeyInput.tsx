@@ -8,12 +8,13 @@ interface KeyInputProps {
   value: string;
   onChange: (val: string) => void;
   placeholder?: string;
-  onBlur?: () => void;
+  ariaLabel?: string;
+  onBlur?: (event: React.FocusEvent<HTMLDivElement>) => void;
   onReveal?: () => Promise<string | null | undefined>;
   onRevealError?: (err: unknown) => void;
 }
 
-export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRevealError }: KeyInputProps) {
+export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onReveal, onRevealError }: KeyInputProps) {
   const t = window.t || ((k: string) => k);
   const [visible, setVisible] = useState(false);
   const [revealing, setRevealing] = useState(false);
@@ -56,13 +57,21 @@ export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRev
   };
 
   return (
-    <div className={styles['settings-key-wrapper']}>
+    <div
+      className={styles['settings-key-wrapper']}
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+        onBlur?.(event);
+      }}
+    >
       <input
         className={`${styles['settings-input']} ${styles['settings-key-input']}`}
         type={visible ? 'text' : 'password'}
         value={displayValue}
         readOnly={isTransientSecretVisible}
         data-secret-visible={isTransientSecretVisible ? 'true' : undefined}
+        aria-label={ariaLabel}
         onChange={(e) => {
           if (isTransientSecretVisible) {
             replaceTransientSecret(e.target.value);
@@ -108,7 +117,6 @@ export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRev
           }
         }}
         placeholder={placeholder}
-        onBlur={onBlur}
       />
       <button
         className={styles['settings-key-toggle']}

@@ -3,6 +3,7 @@ import { t } from '../helpers';
 import { PlatformSection } from './bridge/PlatformSection';
 import { WechatSection } from './bridge/WechatSection';
 import { useBridgeState } from './bridge/useBridgeState';
+import type { BridgeSecretDraft } from './bridge/useBridgeSecretDrafts';
 import { BridgeAgentRow } from './bridge/BridgeAgentRow';
 import { BridgePermissionModeSelect, type BridgePermissionMode } from './bridge/BridgeWidgets';
 import {
@@ -15,6 +16,34 @@ import { SettingsRow } from '../components/SettingsRow';
 import { Toggle } from '../widgets/Toggle';
 import { useSettingsStore } from '../store';
 import styles from '../Settings.module.css';
+
+function pendingSecret(draft: BridgeSecretDraft) {
+  const value = draft.value.trim();
+  return draft.dirty && value ? value : null;
+}
+
+function hasUsableSecret(draft: BridgeSecretDraft) {
+  return draft.dirty ? pendingSecret(draft) !== null : draft.hasStored;
+}
+
+function credentialPayload(
+  fields: Record<string, string>,
+  secretField: string,
+  draft: BridgeSecretDraft,
+) {
+  if (!draft.dirty) return fields;
+  return { ...fields, [secretField]: draft.value.trim() };
+}
+
+function shouldUseSavedSecret(draft: BridgeSecretDraft) {
+  return !draft.dirty && draft.hasStored;
+}
+
+function storedSecretPlaceholder(draft: BridgeSecretDraft) {
+  return draft.hasStored && !draft.dirty
+    ? t('settings.bridge.secretStoredPlaceholder')
+    : '';
+}
 
 export function BridgeTab() {
   const b = useBridgeState();
@@ -56,18 +85,38 @@ export function BridgeTab() {
         title={bridgePlatformLabel('telegram', t)}
         status={tgInfo}
         credentialFields={[
-          { key: 'token', label: t('settings.bridge.telegramToken'), type: 'secret', value: b.tgToken, onChange: b.setTgToken },
+          {
+            key: 'token',
+            label: t('settings.bridge.telegramToken'),
+            type: 'secret',
+            value: b.tgToken,
+            placeholder: storedSecretPlaceholder(b.tgTokenDraft),
+            onChange: b.setTgToken,
+          },
         ]}
         onToggle={async (on) => {
-          if (on && !b.tgToken.trim()) { b.showToast(t('settings.bridge.noToken'), 'error'); return; }
-          await b.saveBridgeConfig('telegram', b.tgToken.trim() ? { token: b.tgToken.trim() } : null, on);
+          if (on && !hasUsableSecret(b.tgTokenDraft)) { b.showToast(t('settings.bridge.noToken'), 'error'); return; }
+          const credentials = b.tgTokenDraft.dirty
+            ? { token: b.tgToken.trim() }
+            : null;
+          await b.saveBridgeConfig('telegram', credentials, on);
         }}
         onTest={() => {
-          if (!b.tgToken.trim()) { b.showToast(t('settings.bridge.noToken'), 'error'); return; }
-          b.testPlatform('telegram', { token: b.tgToken.trim() });
+          if (!hasUsableSecret(b.tgTokenDraft)) { b.showToast(t('settings.bridge.noToken'), 'error'); return; }
+          b.testPlatform(
+            'telegram',
+            credentialPayload({}, 'token', b.tgTokenDraft),
+            shouldUseSavedSecret(b.tgTokenDraft),
+          );
         }}
         onCredentialBlur={async () => {
-          if (b.tgToken.trim()) await b.saveBridgeConfig('telegram', { token: b.tgToken.trim() }, undefined);
+          if (b.tgTokenDraft.dirty) {
+            await b.saveBridgeConfig(
+              'telegram',
+              credentialPayload({}, 'token', b.tgTokenDraft),
+              undefined,
+            );
+          }
         }}
         testing={b.testingPlatform === 'telegram'}
         hint={t('settings.bridge.telegramHint')}
@@ -89,26 +138,50 @@ export function BridgeTab() {
             value: b.fsRegion,
             onChange: (value) => {
               b.setFsRegion(value as typeof b.fsRegion);
-              if (b.fsAppId.trim() && b.fsAppSecret.trim()) {
-                b.saveBridgeConfig('feishu', { appId: b.fsAppId.trim(), appSecret: b.fsAppSecret.trim(), region: value }, undefined);
+              if (b.fsAppId.trim() && hasUsableSecret(b.fsAppSecretDraft)) {
+                b.saveBridgeConfig('feishu', credentialPayload(
+                  { appId: b.fsAppId.trim(), region: value },
+                  'appSecret',
+                  b.fsAppSecretDraft,
+                ), undefined);
               }
             },
             options: feishuRegionOptions,
           },
           { key: 'appId', label: t('settings.bridge.feishuAppId'), type: 'text', value: b.fsAppId, onChange: b.setFsAppId },
-          { key: 'appSecret', label: t('settings.bridge.feishuAppSecret'), type: 'secret', value: b.fsAppSecret, onChange: b.setFsAppSecret },
+          {
+            key: 'appSecret',
+            label: t('settings.bridge.feishuAppSecret'),
+            type: 'secret',
+            value: b.fsAppSecret,
+            placeholder: storedSecretPlaceholder(b.fsAppSecretDraft),
+            onChange: b.setFsAppSecret,
+          },
         ]}
         onToggle={async (on) => {
-          if (on && (!b.fsAppId.trim() || !b.fsAppSecret.trim())) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
-          await b.saveBridgeConfig('feishu', { appId: b.fsAppId.trim(), appSecret: b.fsAppSecret.trim(), region: b.fsRegion }, on);
+          if (on && (!b.fsAppId.trim() || !hasUsableSecret(b.fsAppSecretDraft))) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
+          await b.saveBridgeConfig('feishu', credentialPayload(
+            { appId: b.fsAppId.trim(), region: b.fsRegion },
+            'appSecret',
+            b.fsAppSecretDraft,
+          ), on);
         }}
         onTest={() => {
-          if (!b.fsAppId.trim() || !b.fsAppSecret.trim()) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
-          b.testPlatform('feishu', { appId: b.fsAppId.trim(), appSecret: b.fsAppSecret.trim(), region: b.fsRegion });
+          if (!b.fsAppId.trim() || !hasUsableSecret(b.fsAppSecretDraft)) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
+          b.testPlatform('feishu', credentialPayload(
+            { appId: b.fsAppId.trim(), region: b.fsRegion },
+            'appSecret',
+            b.fsAppSecretDraft,
+          ), shouldUseSavedSecret(b.fsAppSecretDraft));
         }}
         onCredentialBlur={async () => {
-          if (b.fsAppId.trim() && b.fsAppSecret.trim())
-            await b.saveBridgeConfig('feishu', { appId: b.fsAppId.trim(), appSecret: b.fsAppSecret.trim(), region: b.fsRegion }, undefined);
+          if (b.fsAppId.trim() && (b.fsAppSecretDraft.dirty || b.fsAppSecretDraft.hasStored)) {
+            await b.saveBridgeConfig('feishu', credentialPayload(
+              { appId: b.fsAppId.trim(), region: b.fsRegion },
+              'appSecret',
+              b.fsAppSecretDraft,
+            ), undefined);
+          }
         }}
         testing={b.testingPlatform === 'feishu'}
         hint={t('settings.bridge.feishuHint')}
@@ -123,37 +196,46 @@ export function BridgeTab() {
         title={bridgePlatformLabel('dingtalk', t)}
         status={dtInfo}
         credentialFields={[
+          { key: 'corpId', label: t('settings.bridge.dingtalkCorpId'), type: 'text', value: b.dtCorpId, onChange: b.setDtCorpId },
           { key: 'clientId', label: t('settings.bridge.dingtalkClientId'), type: 'text', value: b.dtClientId, onChange: b.setDtClientId },
-          { key: 'clientSecret', label: t('settings.bridge.dingtalkClientSecret'), type: 'secret', value: b.dtClientSecret, onChange: b.setDtClientSecret },
+          {
+            key: 'clientSecret',
+            label: t('settings.bridge.dingtalkClientSecret'),
+            type: 'secret',
+            value: b.dtClientSecret,
+            placeholder: storedSecretPlaceholder(b.dtClientSecretDraft),
+            onChange: b.setDtClientSecret,
+          },
           { key: 'robotCode', label: t('settings.bridge.dingtalkRobotCode'), type: 'text', value: b.dtRobotCode, onChange: b.setDtRobotCode },
-          { key: 'restBaseUrl', label: t('settings.bridge.dingtalkRestBaseUrl'), type: 'text', value: b.dtRestBaseUrl, onChange: b.setDtRestBaseUrl },
+          { key: 'apiBaseUrl', label: t('settings.bridge.dingtalkApiBaseUrl'), type: 'text', value: b.dtApiBaseUrl, onChange: b.setDtApiBaseUrl },
         ]}
         onToggle={async (on) => {
-          if (on && (!b.dtClientId.trim() || !b.dtClientSecret.trim() || !b.dtRobotCode.trim() || !b.dtRestBaseUrl.trim())) { b.showToast(t('settings.bridge.noDingtalkCredentials'), 'error'); return; }
-          await b.saveBridgeConfig('dingtalk', {
+          if (on && (!b.dtCorpId.trim() || !b.dtClientId.trim() || !hasUsableSecret(b.dtClientSecretDraft) || !b.dtRobotCode.trim() || !b.dtApiBaseUrl.trim())) { b.showToast(t('settings.bridge.noDingtalkCredentials'), 'error'); return; }
+          await b.saveBridgeConfig('dingtalk', credentialPayload({
+            corpId: b.dtCorpId.trim(),
             clientId: b.dtClientId.trim(),
-            clientSecret: b.dtClientSecret.trim(),
             robotCode: b.dtRobotCode.trim(),
-            restBaseUrl: b.dtRestBaseUrl.trim(),
-          }, on);
+            apiBaseUrl: b.dtApiBaseUrl.trim(),
+          }, 'clientSecret', b.dtClientSecretDraft), on);
         }}
         onTest={() => {
-          if (!b.dtClientId.trim() || !b.dtClientSecret.trim() || !b.dtRobotCode.trim() || !b.dtRestBaseUrl.trim()) { b.showToast(t('settings.bridge.noDingtalkCredentials'), 'error'); return; }
-          b.testPlatform('dingtalk', {
+          if (!b.dtCorpId.trim() || !b.dtClientId.trim() || !hasUsableSecret(b.dtClientSecretDraft) || !b.dtRobotCode.trim() || !b.dtApiBaseUrl.trim()) { b.showToast(t('settings.bridge.noDingtalkCredentials'), 'error'); return; }
+          b.testPlatform('dingtalk', credentialPayload({
+            corpId: b.dtCorpId.trim(),
             clientId: b.dtClientId.trim(),
-            clientSecret: b.dtClientSecret.trim(),
             robotCode: b.dtRobotCode.trim(),
-            restBaseUrl: b.dtRestBaseUrl.trim(),
-          });
+            apiBaseUrl: b.dtApiBaseUrl.trim(),
+          }, 'clientSecret', b.dtClientSecretDraft), shouldUseSavedSecret(b.dtClientSecretDraft));
         }}
         onCredentialBlur={async () => {
-          if (b.dtClientId.trim() && b.dtClientSecret.trim() && b.dtRobotCode.trim() && b.dtRestBaseUrl.trim())
-            await b.saveBridgeConfig('dingtalk', {
+          if (b.dtCorpId.trim() && b.dtClientId.trim() && (b.dtClientSecretDraft.dirty || b.dtClientSecretDraft.hasStored) && b.dtRobotCode.trim() && b.dtApiBaseUrl.trim()) {
+            await b.saveBridgeConfig('dingtalk', credentialPayload({
+              corpId: b.dtCorpId.trim(),
               clientId: b.dtClientId.trim(),
-              clientSecret: b.dtClientSecret.trim(),
               robotCode: b.dtRobotCode.trim(),
-              restBaseUrl: b.dtRestBaseUrl.trim(),
-            }, undefined);
+              apiBaseUrl: b.dtApiBaseUrl.trim(),
+            }, 'clientSecret', b.dtClientSecretDraft), undefined);
+          }
         }}
         testing={b.testingPlatform === 'dingtalk'}
         hint={t('settings.bridge.dingtalkHint')}
@@ -169,19 +251,39 @@ export function BridgeTab() {
         status={qqInfo}
         credentialFields={[
           { key: 'appID', label: t('settings.bridge.qqAppId'), type: 'text', value: b.qqAppId, onChange: b.setQqAppId },
-          { key: 'appSecret', label: t('settings.bridge.qqAppSecret'), type: 'secret', value: b.qqAppSecret, onChange: b.setQqAppSecret },
+          {
+            key: 'appSecret',
+            label: t('settings.bridge.qqAppSecret'),
+            type: 'secret',
+            value: b.qqAppSecret,
+            placeholder: storedSecretPlaceholder(b.qqAppSecretDraft),
+            onChange: b.setQqAppSecret,
+          },
         ]}
         onToggle={async (on) => {
-          if (on && (!b.qqAppId.trim() || !b.qqAppSecret.trim())) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
-          await b.saveBridgeConfig('qq', { appID: b.qqAppId.trim(), appSecret: b.qqAppSecret.trim() }, on);
+          if (on && (!b.qqAppId.trim() || !hasUsableSecret(b.qqAppSecretDraft))) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
+          await b.saveBridgeConfig('qq', credentialPayload(
+            { appID: b.qqAppId.trim() },
+            'appSecret',
+            b.qqAppSecretDraft,
+          ), on);
         }}
         onTest={() => {
-          if (!b.qqAppId.trim() || !b.qqAppSecret.trim()) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
-          b.testPlatform('qq', { appID: b.qqAppId.trim(), appSecret: b.qqAppSecret.trim() });
+          if (!b.qqAppId.trim() || !hasUsableSecret(b.qqAppSecretDraft)) { b.showToast(t('settings.bridge.noCredentials'), 'error'); return; }
+          b.testPlatform('qq', credentialPayload(
+            { appID: b.qqAppId.trim() },
+            'appSecret',
+            b.qqAppSecretDraft,
+          ), shouldUseSavedSecret(b.qqAppSecretDraft));
         }}
         onCredentialBlur={async () => {
-          if (b.qqAppId.trim() && b.qqAppSecret.trim())
-            await b.saveBridgeConfig('qq', { appID: b.qqAppId.trim(), appSecret: b.qqAppSecret.trim() }, undefined);
+          if (b.qqAppId.trim() && (b.qqAppSecretDraft.dirty || b.qqAppSecretDraft.hasStored)) {
+            await b.saveBridgeConfig('qq', credentialPayload(
+              { appID: b.qqAppId.trim() },
+              'appSecret',
+              b.qqAppSecretDraft,
+            ), undefined);
+          }
         }}
         testing={b.testingPlatform === 'qq'}
         hint={t('settings.bridge.qqHint')}

@@ -59,6 +59,7 @@ function makeAdapter(
   overrides: Record<string, any> = {},
 ) {
   return createDingTalkAdapter({
+    corpId: "corp-1",
     clientId: "dt-client",
     clientSecret: "dt-secret",
     robotCode: "ding-robot",
@@ -204,7 +205,7 @@ describe("DingTalk bridge adapter", () => {
     FakeWebSocket.instances = [];
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ endpoint: "wss://api.dingtalk.com/connect", ticket: "ticket-1" }))
-      .mockResolvedValueOnce(jsonResponse({ accessToken: "token-1", expireIn: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "token-1", expires_in: 7200 }))
       .mockResolvedValueOnce(jsonResponse({ processQueryKey: "dm-task" }))
       .mockResolvedValueOnce(jsonResponse({ processQueryKey: "group-task" }));
 
@@ -216,15 +217,19 @@ describe("DingTalk bridge adapter", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "https://api.dingtalk.io/v1.0/oauth2/accessToken",
+      "https://api.dingtalk.com/v1.0/oauth2/corp-1/token",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ appKey: "dt-client", appSecret: "dt-secret" }),
+        body: JSON.stringify({
+          client_id: "dt-client",
+          client_secret: "dt-secret",
+          grant_type: "client_credentials",
+        }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "https://api.dingtalk.io/v1.0/robot/oToMessages/batchSend",
+      "https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "x-acs-dingtalk-access-token": "token-1" }),
@@ -238,7 +243,7 @@ describe("DingTalk bridge adapter", () => {
     });
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      "https://api.dingtalk.io/v1.0/robot/groupMessages/send",
+      "https://api.dingtalk.com/v1.0/robot/groupMessages/send",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "x-acs-dingtalk-access-token": "token-1" }),
@@ -254,16 +259,17 @@ describe("DingTalk bridge adapter", () => {
     adapter.stop();
   });
 
-  it("builds token and robot send requests from the DingTalk REST base URL only", async () => {
+  it("builds token and robot send requests from the DingTalk API base URL only", async () => {
     FakeWebSocket.instances = [];
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ endpoint: "wss://stream.example/connect", ticket: "ticket-1" }))
-      .mockResolvedValueOnce(jsonResponse({ accessToken: "token-1", expireIn: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "token-1", expires_in: 7200 }))
       .mockResolvedValueOnce(jsonResponse({ processQueryKey: "dm-task" }))
       .mockResolvedValueOnce(jsonResponse({ processQueryKey: "group-task" }));
 
     const adapter = makeAdapter(fetchMock, vi.fn(), vi.fn(), {
-      restBaseUrl: "https://tenant-gateway.example/dingtalk/v1.0/",
+      corpId: "corp/custom",
+      apiBaseUrl: "https://tenant-gateway.example/dingtalk/v1.0/",
       streamOpenUrl: "https://stream-gateway.example/v1.0/gateway/connections/open",
     });
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
@@ -273,10 +279,91 @@ describe("DingTalk bridge adapter", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "https://stream-gateway.example/v1.0/gateway/connections/open",
-      "https://tenant-gateway.example/dingtalk/v1.0/oauth2/accessToken",
+      "https://tenant-gateway.example/dingtalk/v1.0/oauth2/corp%2Fcustom/token",
       "https://tenant-gateway.example/dingtalk/v1.0/robot/oToMessages/batchSend",
       "https://tenant-gateway.example/dingtalk/v1.0/robot/groupMessages/send",
     ]);
+
+    adapter.stop();
+  });
+
+  it("reports outbound degradation after token failure and clears it after a successful reply", async () => {
+    FakeWebSocket.instances = [];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ endpoint: "wss://api.dingtalk.com/connect", ticket: "ticket-1" }))
+      .mockResolvedValueOnce(jsonResponse({ code: "dt-secret", message: "invalid dt-secret" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "token-2", expires_in: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ processQueryKey: "dm-task" }));
+    const onStatus = vi.fn();
+    const adapter = makeAdapter(fetchMock, vi.fn(), onStatus);
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0].emit("open");
+
+    await expect(adapter.sendReply("manager1234", "hello", { targetScope: "dm" }))
+      .rejects.toThrow(/invalid \[redacted\].*code=\[redacted\]/);
+    expect(onStatus).toHaveBeenCalledWith("connected");
+    expect(onStatus).toHaveBeenCalledWith(
+      "error",
+      expect.stringMatching(/invalid \[redacted\].*code=\[redacted\]/),
+    );
+    expect(JSON.stringify(onStatus.mock.calls)).not.toContain("dt-secret");
+
+    await expect(adapter.sendReply("manager1234", "retry", { targetScope: "dm" }))
+      .resolves.toMatchObject({ processQueryKey: "dm-task" });
+    expect(onStatus.mock.calls.at(-1)).toEqual(["connected"]);
+
+    adapter.stop();
+  });
+
+  it("redacts the access token from robot-send errors and degraded status", async () => {
+    FakeWebSocket.instances = [];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ endpoint: "wss://api.dingtalk.com/connect", ticket: "ticket-1" }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "token-must-not-leak", expires_in: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({
+        code: "token-must-not-leak",
+        message: "rejected token-must-not-leak",
+      }, 403));
+    const onStatus = vi.fn();
+    const adapter = makeAdapter(fetchMock, vi.fn(), onStatus);
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0].emit("open");
+
+    await expect(adapter.sendReply("manager1234", "hello", { targetScope: "dm" }))
+      .rejects.toThrow(/rejected \[redacted\].*code=\[redacted\]/);
+    expect(JSON.stringify(onStatus.mock.calls)).not.toContain("token-must-not-leak");
+    expect(onStatus).toHaveBeenCalledWith(
+      "error",
+      expect.stringMatching(/rejected \[redacted\].*code=\[redacted\]/),
+    );
+
+    adapter.stop();
+  });
+
+  it("redacts the one-time Stream ticket from WebSocket construction errors", async () => {
+    class ThrowingWebSocket {
+      static CLOSED = 3;
+
+      constructor(url: string) {
+        throw new Error(`failed to connect ${url}`);
+      }
+    }
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      endpoint: "wss://api.dingtalk.com/connect",
+      ticket: "ticket-must-not-leak",
+    }));
+    const onStatus = vi.fn();
+    const adapter = makeAdapter(fetchMock, vi.fn(), onStatus, {
+      WebSocketImpl: ThrowingWebSocket as any,
+      reconnectDelayMs: 60_000,
+    });
+
+    await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith(
+      "error",
+      expect.stringContaining("[redacted]"),
+    ));
+    expect(JSON.stringify(onStatus.mock.calls)).not.toContain("ticket-must-not-leak");
 
     adapter.stop();
   });
@@ -294,7 +381,7 @@ describe("DingTalk bridge adapter", () => {
     FakeWebSocket.instances = [];
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ endpoint: "wss://api.dingtalk.com/connect", ticket: "ticket-1" }))
-      .mockResolvedValueOnce(jsonResponse({ accessToken: "token-1", expireIn: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "token-1", expires_in: 7200 }))
       .mockResolvedValueOnce(jsonResponse({ processQueryKey: "part-1" }))
       .mockResolvedValueOnce(jsonResponse({ processQueryKey: "part-2" }));
     const adapter = makeAdapter(fetchMock);

@@ -3,12 +3,21 @@ export const MASKED_SECRET = "********";
 type SecretKeyInput = Set<string> | string[] | undefined;
 type SecretRecord = Record<string, unknown>;
 
+// This is intentionally an exact-key registry. Do not replace it with suffix or
+// substring matching: callers may store non-secret metadata beside credentials.
 const DEFAULT_SECRET_KEYS = new Set<string>([
   "api_key",
   "apiKey",
   "token",
   "botToken",
+  "webhookToken",
+  "robotToken",
   "appSecret",
+  "clientSecret",
+  "corpSecret",
+  "webhookSecret",
+  "oauthClientSecret",
+  "suiteSecret",
   "secret",
   "password",
   "accessToken",

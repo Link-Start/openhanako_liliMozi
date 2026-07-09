@@ -45,6 +45,14 @@ function cleanBridgeMetadataString(value) {
   return text || null;
 }
 
+function canonicalCredentialValue(cfg, canonicalKey, legacyKey) {
+  if (!cfg || typeof cfg !== "object") return "";
+  if (Object.prototype.hasOwnProperty.call(cfg, canonicalKey)) {
+    return typeof cfg[canonicalKey] === "string" ? cfg[canonicalKey] : "";
+  }
+  return typeof cfg[legacyKey] === "string" ? cfg[legacyKey] : "";
+}
+
 function normalizeProactiveBridgeDeliveryTarget(value, fallbackAgentId = null) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (value.kind && value.kind !== "bridge") return null;
@@ -119,10 +127,11 @@ const ADAPTER_REGISTRY = {
   },
   dingtalk: {
     create: (creds, onMessage, hooks, agentId) => createDingTalkAdapter({
-      appKey: creds.appKey,
-      appSecret: creds.appSecret,
+      corpId: creds.corpId,
+      clientId: creds.clientId,
+      clientSecret: creds.clientSecret,
       robotCode: creds.robotCode,
-      restBaseUrl: creds.restBaseUrl,
+      apiBaseUrl: creds.apiBaseUrl,
       streamOpenUrl: creds.streamOpenUrl,
       agentId,
       onMessage,
@@ -140,7 +149,7 @@ const ADAPTER_REGISTRY = {
       onStatus: hooks?.onStatus,
     }),
     getCredentials: (cfg) => {
-      const secret = cfg?.appSecret || cfg?.token; // 兼容旧版 token 字段
+      const secret = canonicalCredentialValue(cfg, "appSecret", "token");
       return cfg?.enabled && cfg?.appID && secret
         ? { appID: cfg.appID, appSecret: secret, dmGuildMap: cfg.dmGuildMap }
         : null;

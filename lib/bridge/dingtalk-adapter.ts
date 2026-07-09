@@ -4,19 +4,18 @@
  * 官方协议边界：
  * - Stream 注册：POST https://api.dingtalk.com/v1.0/gateway/connections/open
  * - Bot 回调 topic：/v1.0/im/bot/messages/get
- * - 内部应用 accessToken：POST https://api.dingtalk.io/v1.0/oauth2/accessToken
- * - 单聊发送：POST https://api.dingtalk.io/v1.0/robot/oToMessages/batchSend
- * - 群聊发送：POST https://api.dingtalk.io/v1.0/robot/groupMessages/send
+ * - 应用 accessToken：POST https://api.dingtalk.com/v1.0/oauth2/{corpId}/token
+ * - 单聊发送：POST https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend
+ * - 群聊发送：POST https://api.dingtalk.com/v1.0/robot/groupMessages/send
  */
 
 import WebSocket from "ws";
 import { createModuleLogger, debugLog } from "../debug-log.ts";
 import { webSocketOptionsForUrl } from "../net/outbound-proxy.ts";
+import { formatSecretFingerprintComparison, redactSecretsFromText } from "../secret-fingerprint.ts";
 import { createBridgeOutboundHttp } from "./outbound-http.ts";
 import { createStreamingCapabilities } from "./streaming-capabilities.ts";
 import {
-  DINGTALK_ACCESS_TOKEN_PATH,
-  DINGTALK_ACCESS_TOKEN_URL,
   DINGTALK_BOT_CALLBACK_TOPIC,
   DINGTALK_DM_SEND_PATH,
   DINGTALK_DM_SEND_URL,
@@ -26,11 +25,11 @@ import {
   buildDingTalkUrl,
   normalizeDingTalkBridgeCredentials,
 } from "./dingtalk-contract.ts";
+import { requestDingTalkAccessToken } from "./dingtalk-api.ts";
 
 const log = createModuleLogger("dingtalk");
 
 export {
-  DINGTALK_ACCESS_TOKEN_URL,
   DINGTALK_BOT_CALLBACK_TOPIC,
   DINGTALK_DM_SEND_URL,
   DINGTALK_GROUP_SEND_URL,
@@ -90,16 +89,20 @@ async function responseJsonOrText(res: any) {
   }
 }
 
-function dingTalkApiError(stage: string, data: any, status?: number) {
-  const code = data?.code ?? data?.errcode ?? data?.errorCode ?? status ?? "unknown";
-  const message = data?.message || data?.errmsg || data?.msg || data?.errorMessage || data?.error || JSON.stringify(data);
+function dingTalkApiError(stage: string, data: any, status?: number, secrets: unknown[] = []) {
+  const rawCode = data?.code ?? data?.errcode ?? data?.errorCode ?? status ?? "unknown";
+  const code = typeof rawCode === "number" ? rawCode : redactSecretsFromText(rawCode, secrets);
+  const message = redactSecretsFromText(
+    data?.message || data?.errmsg || data?.msg || data?.errorMessage || data?.error || "request failed",
+    secrets,
+  );
   return new Error(`[dingtalk:${stage}] ${message || "request failed"} (code=${code})`);
 }
 
-function validateDingTalkApiResponse(stage: string, res: any, data: any) {
+function validateDingTalkApiResponse(stage: string, res: any, data: any, secrets: unknown[] = []) {
   const code = data?.code ?? data?.errcode ?? data?.errorCode;
-  if (!res?.ok) throw dingTalkApiError(stage, data, res?.status);
-  if (code !== undefined && code !== 0 && code !== "0") throw dingTalkApiError(stage, data, res?.status);
+  if (!res?.ok) throw dingTalkApiError(stage, data, res?.status, secrets);
+  if (code !== undefined && code !== 0 && code !== "0") throw dingTalkApiError(stage, data, res?.status, secrets);
 }
 
 function appendTicket(endpoint: string, ticket: string) {
@@ -219,10 +222,11 @@ function normalizeDingTalkInboundMessage(payload: Record<string, any>, agentId: 
 
 /**
  * @param {object} opts
- * @param {string} opts.clientId - 钉钉企业内部应用 AppKey / clientId
- * @param {string} opts.clientSecret - 钉钉企业内部应用 AppSecret / clientSecret
+ * @param {string} opts.corpId - 钉钉组织 ID
+ * @param {string} opts.clientId - 钉钉应用 Client ID
+ * @param {string} opts.clientSecret - 钉钉应用 Client Secret
  * @param {string} opts.robotCode - 机器人编码
- * @param {string} [opts.restBaseUrl] - 钉钉 REST OpenAPI base URL
+ * @param {string} [opts.apiBaseUrl] - 钉钉 OpenAPI base URL
  * @param {string} [opts.streamOpenUrl] - 钉钉 Stream 连接注册 endpoint
  * @param {string} opts.agentId
  * @param {(msg: object) => void} opts.onMessage
@@ -231,11 +235,13 @@ function normalizeDingTalkInboundMessage(payload: Record<string, any>, agentId: 
  * @param {typeof WebSocket} [opts.WebSocketImpl]
  */
 export function createDingTalkAdapter({
+  corpId,
   appKey,
   appSecret,
   clientId,
   clientSecret,
   robotCode,
+  apiBaseUrl,
   restBaseUrl,
   streamOpenUrl,
   agentId,
@@ -246,11 +252,13 @@ export function createDingTalkAdapter({
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
   ...extraConfig
 }: {
+  corpId: string;
   appKey?: string;
   appSecret?: string;
   clientId?: string;
   clientSecret?: string;
   robotCode: string;
+  apiBaseUrl?: string;
   restBaseUrl?: string;
   streamOpenUrl?: string;
   agentId: string;
@@ -263,11 +271,13 @@ export function createDingTalkAdapter({
 }) {
   const contract = normalizeDingTalkBridgeCredentials({
     ...extraConfig,
+    corpId,
     appKey,
     appSecret,
     clientId,
     clientSecret,
     robotCode,
+    apiBaseUrl,
     restBaseUrl,
     streamOpenUrl,
   });
@@ -275,27 +285,37 @@ export function createDingTalkAdapter({
   let accessToken: string | null = null;
   let tokenExpiresAt = 0;
   let ws: any = null;
+  let streamConnected = false;
+  let outboundError: string | null = null;
   let stopped = false;
   let reconnectTimer: any = null;
   const profileCache = new Map<string, any>();
 
   async function getAccessToken() {
     if (accessToken && Date.now() < tokenExpiresAt - TOKEN_EXPIRY_SKEW_MS) return accessToken;
-    const res = await http.request({
-      stage: "token",
-      url: buildDingTalkUrl(contract.restBaseUrl, DINGTALK_ACCESS_TOKEN_PATH),
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appKey: contract.appKey, appSecret: contract.appSecret }),
-      idempotent: true,
-    });
-    const data = await responseJsonOrText(res);
-    validateDingTalkApiResponse("token", res, data);
-    const token = data?.accessToken || data?.access_token;
-    if (!token) throw dingTalkApiError("token", data, res?.status);
-    const expiresIn = Number(data?.expireIn || data?.expiresIn || data?.expires_in || 7200);
-    accessToken = String(token);
-    tokenExpiresAt = Date.now() + Math.max(60, expiresIn) * 1000;
+    const result = await requestDingTalkAccessToken(
+      contract,
+      (request) => http.request({
+        stage: "token",
+        url: request.url,
+        ...request.init,
+        idempotent: true,
+      }),
+      (request) => {
+        debugLog()?.log(
+          "bridge",
+          `[dingtalk] ${formatSecretFingerprintComparison({
+            stage: "runtime_token",
+            beforeLabel: "normalized",
+            before: contract.clientSecret,
+            afterLabel: "outbound",
+            after: request.payload.client_secret,
+          })}`,
+        );
+      },
+    );
+    accessToken = result.token;
+    tokenExpiresAt = Date.now() + result.expiresIn * 1000;
     return accessToken;
   }
 
@@ -306,8 +326,8 @@ export function createDingTalkAdapter({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        clientId: contract.appKey,
-        clientSecret: contract.appSecret,
+        clientId: contract.clientId,
+        clientSecret: contract.clientSecret,
         subscriptions: [
           { topic: DINGTALK_BOT_CALLBACK_TOPIC, type: "CALLBACK" },
         ],
@@ -316,10 +336,10 @@ export function createDingTalkAdapter({
       idempotent: true,
     });
     const data = await responseJsonOrText(res);
-    validateDingTalkApiResponse("stream_open", res, data);
+    validateDingTalkApiResponse("stream_open", res, data, [contract.clientSecret]);
     const endpoint = cleanString(data?.endpoint);
     const ticket = cleanString(data?.ticket);
-    if (!endpoint || !ticket) throw dingTalkApiError("stream_open", data, res?.status);
+    if (!endpoint || !ticket) throw dingTalkApiError("stream_open", data, res?.status, [contract.clientSecret]);
     return { endpoint, ticket };
   }
 
@@ -383,28 +403,43 @@ export function createDingTalkAdapter({
   async function connect() {
     if (stopped) return;
     clearReconnectTimer();
+    let streamTicket = "";
+    let streamUrl = "";
     try {
       const { endpoint, ticket } = await openStreamRegistration();
+      streamTicket = ticket;
       if (stopped) return;
       const url = appendTicket(endpoint, ticket);
+      streamUrl = url;
       ws = new WebSocketImpl(url, webSocketOptionsForUrl(url));
       ws.on("open", () => {
+        streamConnected = true;
         log.log("stream connected");
-        onStatus?.("connected");
+        if (outboundError) onStatus?.("error", outboundError);
+        else onStatus?.("connected");
       });
       ws.on("message", handleStreamMessage);
       ws.on("error", (err: any) => {
-        const message = err?.message || String(err);
+        streamConnected = false;
+        const message = redactSecretsFromText(
+          err?.message || String(err),
+          [contract.clientSecret, streamTicket, streamUrl],
+        );
         log.error(`stream error: ${message}`);
         onStatus?.("error", message);
       });
       ws.on("close", () => {
+        streamConnected = false;
         if (stopped) return;
         log.warn("stream closed, reconnecting");
         scheduleReconnect("stream closed");
       });
     } catch (err: any) {
-      const message = err?.message || String(err);
+      streamConnected = false;
+      const message = redactSecretsFromText(
+        err?.message || String(err),
+        [contract.clientSecret, streamTicket, streamUrl],
+      );
       log.error(`connect failed: ${message}`);
       onStatus?.("error", message);
       scheduleReconnect(message);
@@ -412,21 +447,36 @@ export function createDingTalkAdapter({
   }
 
   async function requestRobotApi(stage: string, url: string, body: Record<string, any>) {
-    const token = await getAccessToken();
-    const res = await http.request({
-      stage,
-      url,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-acs-dingtalk-access-token": token,
-      },
-      body: JSON.stringify(body),
-      idempotent: false,
-    });
-    const data = await responseJsonOrText(res);
-    validateDingTalkApiResponse(stage, res, data);
-    return data;
+    let token: string | null = null;
+    try {
+      token = await getAccessToken();
+      const res = await http.request({
+        stage,
+        url,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-acs-dingtalk-access-token": token,
+        },
+        body: JSON.stringify(body),
+        idempotent: false,
+      });
+      const data = await responseJsonOrText(res);
+      validateDingTalkApiResponse(stage, res, data, [contract.clientSecret, token]);
+      const shouldRestoreConnected = outboundError !== null && streamConnected;
+      outboundError = null;
+      if (shouldRestoreConnected) onStatus?.("connected");
+      return data;
+    } catch (err: any) {
+      const message = redactSecretsFromText(
+        err?.message || String(err),
+        [contract.clientSecret, token, accessToken],
+      );
+      outboundError = message;
+      onStatus?.("error", message);
+      if (err instanceof Error && err.message === message) throw err;
+      throw new Error(message);
+    }
   }
 
   void connect();
@@ -442,14 +492,14 @@ export function createDingTalkAdapter({
       for (let i = 0; i < chunks.length; i += 1) {
         const msgParam = markdownPayload(chunks[i], i, chunks.length);
         if (scope === "group") {
-          results.push(await requestRobotApi("send_group", buildDingTalkUrl(contract.restBaseUrl, DINGTALK_GROUP_SEND_PATH), {
+          results.push(await requestRobotApi("send_group", buildDingTalkUrl(contract.apiBaseUrl, DINGTALK_GROUP_SEND_PATH), {
             robotCode: contract.robotCode,
             openConversationId: String(chatId),
             msgKey: "sampleMarkdown",
             msgParam,
           }));
         } else {
-          results.push(await requestRobotApi("send_dm", buildDingTalkUrl(contract.restBaseUrl, DINGTALK_DM_SEND_PATH), {
+          results.push(await requestRobotApi("send_dm", buildDingTalkUrl(contract.apiBaseUrl, DINGTALK_DM_SEND_PATH), {
             robotCode: contract.robotCode,
             userIds: [String(chatId)],
             msgKey: "sampleMarkdown",
@@ -462,6 +512,7 @@ export function createDingTalkAdapter({
 
     stop() {
       stopped = true;
+      streamConnected = false;
       clearReconnectTimer();
       const current = ws;
       ws = null;

@@ -26,6 +26,7 @@ vi.mock('../../settings/tabs/bridge/BridgeAgentRow', () => ({
 }));
 
 function bridgeState(overrides = {}) {
+  const emptyDraft = { ownerId: 'hana', value: '', dirty: false, revision: 0, hasStored: false };
   return {
     status: {
       telegram: {},
@@ -47,24 +48,30 @@ function bridgeState(overrides = {}) {
     setPublicIshiki: vi.fn(),
     savePublicIshiki: vi.fn(),
     tgToken: '',
+    tgTokenDraft: emptyDraft,
     setTgToken: vi.fn(),
     fsAppId: '',
     setFsAppId: vi.fn(),
     fsAppSecret: '',
+    fsAppSecretDraft: emptyDraft,
     setFsAppSecret: vi.fn(),
     fsRegion: 'feishu_cn',
     setFsRegion: vi.fn(),
     dtClientId: '',
     setDtClientId: vi.fn(),
+    dtCorpId: '',
+    setDtCorpId: vi.fn(),
     dtClientSecret: '',
+    dtClientSecretDraft: emptyDraft,
     setDtClientSecret: vi.fn(),
     dtRobotCode: '',
     setDtRobotCode: vi.fn(),
-    dtRestBaseUrl: '',
-    setDtRestBaseUrl: vi.fn(),
+    dtApiBaseUrl: '',
+    setDtApiBaseUrl: vi.fn(),
     qqAppId: '',
     setQqAppId: vi.fn(),
     qqAppSecret: '',
+    qqAppSecretDraft: emptyDraft,
     setQqAppSecret: vi.fn(),
     saveBridgeConfig: vi.fn(),
     testPlatform: vi.fn(),

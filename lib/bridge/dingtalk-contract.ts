@@ -1,9 +1,11 @@
-export const DINGTALK_STREAM_API_BASE_URL = "https://api.dingtalk.com/v1.0";
-export const DINGTALK_REST_API_BASE_URL = "https://api.dingtalk.io/v1.0";
+export const DINGTALK_API_BASE_URL = "https://api.dingtalk.com/v1.0";
+export const DINGTALK_LEGACY_REST_API_BASE_URL = "https://api.dingtalk.io/v1.0";
+// Compatibility export for callers that have not renamed the setting yet.
+export const DINGTALK_REST_API_BASE_URL = DINGTALK_API_BASE_URL;
+export const DINGTALK_STREAM_API_BASE_URL = DINGTALK_API_BASE_URL;
 
 export const DINGTALK_BOT_CALLBACK_TOPIC = "/v1.0/im/bot/messages/get";
 export const DINGTALK_STREAM_OPEN_PATH = "/gateway/connections/open";
-export const DINGTALK_ACCESS_TOKEN_PATH = "/oauth2/accessToken";
 export const DINGTALK_DM_SEND_PATH = "/robot/oToMessages/batchSend";
 export const DINGTALK_GROUP_SEND_PATH = "/robot/groupMessages/send";
 
@@ -11,16 +13,12 @@ export const DINGTALK_STREAM_OPEN_URL = buildDingTalkUrl(
   DINGTALK_STREAM_API_BASE_URL,
   DINGTALK_STREAM_OPEN_PATH,
 );
-export const DINGTALK_ACCESS_TOKEN_URL = buildDingTalkUrl(
-  DINGTALK_REST_API_BASE_URL,
-  DINGTALK_ACCESS_TOKEN_PATH,
-);
 export const DINGTALK_DM_SEND_URL = buildDingTalkUrl(
-  DINGTALK_REST_API_BASE_URL,
+  DINGTALK_API_BASE_URL,
   DINGTALK_DM_SEND_PATH,
 );
 export const DINGTALK_GROUP_SEND_URL = buildDingTalkUrl(
-  DINGTALK_REST_API_BASE_URL,
+  DINGTALK_API_BASE_URL,
   DINGTALK_GROUP_SEND_PATH,
 );
 
@@ -36,10 +34,11 @@ const CUSTOM_ROBOT_FIELDS: Record<string, string> = {
 };
 
 export interface DingTalkBridgeCredentials {
-  appKey: string;
-  appSecret: string;
+  corpId: string;
+  clientId: string;
+  clientSecret: string;
   robotCode: string;
-  restBaseUrl: string;
+  apiBaseUrl: string;
   streamOpenUrl: string;
 }
 
@@ -52,8 +51,33 @@ function hasValue(value: unknown) {
   return cleanString(value).length > 0;
 }
 
+function firstNonEmpty(...values: unknown[]) {
+  for (const value of values) {
+    const cleaned = cleanString(value);
+    if (cleaned) return cleaned;
+  }
+  return "";
+}
+
+function hasOwn(input: Record<string, any>, key: string) {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+function canonicalField(
+  input: Record<string, any>,
+  canonicalKey: string,
+  legacyKey: string,
+) {
+  // Once the canonical field exists it owns the value, including an explicit
+  // empty string. Falling back only on truthiness would resurrect a legacy
+  // credential that the user already cleared.
+  return hasOwn(input, canonicalKey)
+    ? cleanString(input[canonicalKey])
+    : cleanString(input[legacyKey]);
+}
+
 export function buildDingTalkUrl(baseUrl: string, path: string) {
-  const base = normalizeDingTalkBaseUrl(baseUrl, "DingTalk REST base URL");
+  const base = normalizeDingTalkBaseUrl(baseUrl, "DingTalk API base URL");
   const url = new URL(path.startsWith("/") ? path.slice(1) : path, `${base}/`);
   return url.toString();
 }
@@ -73,6 +97,13 @@ export function normalizeDingTalkBaseUrl(value: unknown, label = "DingTalk base 
   url.hash = "";
   url.search = "";
   return url.toString().replace(/\/$/, "");
+}
+
+export function normalizeDingTalkApiBaseUrl(value: unknown) {
+  const normalized = normalizeDingTalkBaseUrl(value, "DingTalk API base URL");
+  return normalized === DINGTALK_LEGACY_REST_API_BASE_URL
+    ? DINGTALK_API_BASE_URL
+    : normalized;
 }
 
 export function normalizeDingTalkEndpointUrl(value: unknown, label: string) {
@@ -98,29 +129,61 @@ export function assertNoUnsupportedDingTalkRobotFields(input: Record<string, any
   if (customFields.length) {
     throw new Error(
       `DingTalk custom robot webhook fields (${Array.from(new Set(customFields)).join(", ")}) ` +
-      "cannot be used by the Enterprise Stream connector. Configure internal app appKey/appSecret, robotCode, and REST base URL instead.",
+      "cannot be used by the Enterprise Stream connector. Configure corpId, clientId/clientSecret, robotCode, and API base URL instead.",
     );
   }
 }
 
-export function normalizeDingTalkBridgeCredentials(input: Record<string, any> = {}): DingTalkBridgeCredentials {
+/**
+ * Converts persisted legacy aliases at the route boundary. `null` is
+ * intentional: Agent config deepMerge interprets it as deletion.
+ */
+export function canonicalizeDingTalkBridgeConfig(input: Record<string, any> = {}) {
   assertNoUnsupportedDingTalkRobotFields(input);
-  const appKey = cleanString(input.appKey ?? input.clientId);
-  const appSecret = cleanString(input.appSecret ?? input.clientSecret);
-  const robotCode = cleanString(input.robotCode);
+  const streamOpenUrl = cleanString(input.streamOpenUrl);
+  const apiBaseUrl = hasOwn(input, "apiBaseUrl")
+    ? cleanString(input.apiBaseUrl) || DINGTALK_API_BASE_URL
+    : firstNonEmpty(input.restBaseUrl, DINGTALK_API_BASE_URL);
+  const result: Record<string, any> = {
+    ...input,
+    corpId: cleanString(input.corpId),
+    clientId: canonicalField(input, "clientId", "appKey"),
+    clientSecret: canonicalField(input, "clientSecret", "appSecret"),
+    robotCode: cleanString(input.robotCode),
+    apiBaseUrl: normalizeDingTalkApiBaseUrl(apiBaseUrl),
+    appKey: null,
+    appSecret: null,
+    restBaseUrl: null,
+  };
+  if (streamOpenUrl) {
+    result.streamOpenUrl = normalizeDingTalkEndpointUrl(streamOpenUrl, "DingTalk Stream open endpoint");
+  } else if (Object.prototype.hasOwnProperty.call(input, "streamOpenUrl")) {
+    result.streamOpenUrl = null;
+  }
+  return result;
+}
+
+export function normalizeDingTalkBridgeCredentials(input: Record<string, any> = {}): DingTalkBridgeCredentials {
+  const canonical = canonicalizeDingTalkBridgeConfig(input);
+  const corpId = canonical.corpId;
+  const clientId = canonical.clientId;
+  const clientSecret = canonical.clientSecret;
+  const robotCode = canonical.robotCode;
   const missing = [];
-  if (!appKey) missing.push("internal app appKey/clientId");
-  if (!appSecret) missing.push("internal app appSecret/clientSecret");
+  if (!corpId) missing.push("organization corpId");
+  if (!clientId) missing.push("internal app clientId");
+  if (!clientSecret) missing.push("internal app clientSecret");
   if (!robotCode) missing.push("enterprise robotCode");
   if (missing.length) {
     throw new Error(`DingTalk Enterprise Stream connector requires ${missing.join(", ")}`);
   }
 
   return {
-    appKey,
-    appSecret,
+    corpId,
+    clientId,
+    clientSecret,
     robotCode,
-    restBaseUrl: normalizeDingTalkBaseUrl(input.restBaseUrl || DINGTALK_REST_API_BASE_URL, "DingTalk REST base URL"),
-    streamOpenUrl: normalizeDingTalkEndpointUrl(input.streamOpenUrl || DINGTALK_STREAM_OPEN_URL, "DingTalk Stream open endpoint"),
+    apiBaseUrl: canonical.apiBaseUrl,
+    streamOpenUrl: normalizeDingTalkEndpointUrl(canonical.streamOpenUrl || DINGTALK_STREAM_OPEN_URL, "DingTalk Stream open endpoint"),
   };
 }

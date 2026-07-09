@@ -4,6 +4,7 @@ import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { createSettingsSnapshotRoute } from "../server/routes/settings-snapshot.ts";
+import { MASKED_SECRET } from "../shared/secret-custody.ts";
 
 let tmpRoot: string | null = null;
 
@@ -225,6 +226,57 @@ describe("settings snapshot route", () => {
       richStreamingEnabled: true,
     });
     expect(JSON.stringify(body)).not.toContain("tg-secret");
+  });
+
+  it("redacts DingTalk credential aliases from the real settings snapshot response", async () => {
+    const engine = await makeEngine();
+    await writeFile(path.join(engine.agentsDir, "agent-a", "config.yaml"), [
+      "agent:",
+      "  name: Agent A",
+      "bridge:",
+      "  dingtalk:",
+      "    appSecret: test-only-app-secret",
+      "    clientSecret: test-only-client-secret",
+      "    corpSecret: test-only-corp-secret",
+      "    webhookSecret: test-only-webhook-secret",
+      "    webhookToken: test-only-webhook-token",
+      "    robotToken: test-only-robot-token",
+      "    oauthClientSecret: test-only-oauth-client-secret",
+      "    suiteSecret: test-only-suite-secret",
+      "    clientSecretLabel: visible label",
+      "",
+    ].join("\n"));
+    const app = new Hono();
+    app.route("/api", createSettingsSnapshotRoute(engine));
+
+    const res = await app.request("/api/settings/snapshot?agentId=agent-a");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.config.bridge.dingtalk).toEqual({
+      appSecret: MASKED_SECRET,
+      clientSecret: MASKED_SECRET,
+      corpSecret: MASKED_SECRET,
+      webhookSecret: MASKED_SECRET,
+      webhookToken: MASKED_SECRET,
+      robotToken: MASKED_SECRET,
+      oauthClientSecret: MASKED_SECRET,
+      suiteSecret: MASKED_SECRET,
+      clientSecretLabel: "visible label",
+    });
+    const serializedConfig = JSON.stringify(body.config);
+    for (const secretMarker of [
+      "test-only-app-secret",
+      "test-only-client-secret",
+      "test-only-corp-secret",
+      "test-only-webhook-secret",
+      "test-only-webhook-token",
+      "test-only-robot-token",
+      "test-only-oauth-client-secret",
+      "test-only-suite-secret",
+    ]) {
+      expect(serializedConfig).not.toContain(secretMarker);
+    }
   });
 
   it("includes first-frame Computer Use truth in the unified settings snapshot", async () => {
