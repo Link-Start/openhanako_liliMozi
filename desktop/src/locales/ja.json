@@ -3318,6 +3318,15 @@
     "messagePrefix": "[エージェント「{name}」からのメッセージです。ユーザー本人ではありません]",
     "fromAgent": "{name} からのメッセージ",
     "expand": "展開",
-    "collapse": "折りたたむ"
+    "collapse": "折りたたむ",
+    "confirmSend": "送信",
+    "confirmCreate": "作成して送信",
+    "ignore": "無視",
+    "expired": "下書きの期限が切れました。エージェントに再作成させてください",
+    "inFlight": "実行中です",
+    "halfCreated": "セッションは作成されました（{id}）が、最初のメッセージの送信に失敗しました。再試行するか、セッションを開いて手動で送信してください",
+    "createdSession": "セッションを作成しました {id}",
+    "sendFailed": "送信に失敗しました：{error}",
+    "messageField": "メッセージ内容"
   }
 }

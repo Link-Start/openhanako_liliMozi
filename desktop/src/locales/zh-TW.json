@@ -3318,6 +3318,15 @@
     "messagePrefix": "[來自 Agent「{name}」的訊息，非使用者本人]",
     "fromAgent": "來自 {name} 的訊息",
     "expand": "展開",
-    "collapse": "收起"
+    "collapse": "收起",
+    "confirmSend": "傳送",
+    "confirmCreate": "建立並傳送",
+    "ignore": "忽略",
+    "expired": "草稿已過期，請讓 Agent 重新發起",
+    "inFlight": "正在執行中",
+    "halfCreated": "會話已建立（{id}），首則訊息投遞失敗，可重試或打開該會話手動傳送",
+    "createdSession": "已建立會話 {id}",
+    "sendFailed": "傳送失敗：{error}",
+    "messageField": "訊息內容"
   }
 }

@@ -3324,6 +3324,15 @@
     "messagePrefix": "[Message from agent \"{name}\", not the user]",
     "fromAgent": "Message from {name}",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "confirmSend": "Send",
+    "confirmCreate": "Create & send",
+    "ignore": "Ignore",
+    "expired": "Draft expired; ask the agent to recreate it",
+    "inFlight": "Already being applied",
+    "halfCreated": "Session created ({id}) but the first message failed; retry or open the session and send manually",
+    "createdSession": "Created session {id}",
+    "sendFailed": "Delivery failed: {error}",
+    "messageField": "Message"
   }
 }

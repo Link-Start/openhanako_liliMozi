@@ -951,6 +951,55 @@
     }
 }
 
+/* ── 跨 session 协作草稿确认卡（send / create） ── */
+
+.sessionCollabDraftBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding: var(--space-12);
+}
+
+.sessionCollabDraftTitleInput {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--overlay-light, rgba(0, 0, 0, 0.08));
+    border-radius: var(--radius-sm);
+    outline: none;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-ui);
+    padding: 5px 8px;
+}
+
+.sessionCollabDraftTextarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 72px;
+    max-height: 220px;
+    resize: vertical;
+    border: 1px solid var(--overlay-light, rgba(0, 0, 0, 0.08));
+    border-radius: var(--radius-sm);
+    outline: none;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    padding: var(--space-8);
+}
+
+.sessionCollabDraftTextarea:focus,
+.sessionCollabDraftTitleInput:focus {
+    border-color: var(--accent);
+}
+
+.sessionCollabDraftError {
+    font-size: var(--fs-hint);
+    color: var(--danger, #b45a5a);
+}
+
 /* ── 设置确认卡片 ── */
 
 .settingsConfirmCard {

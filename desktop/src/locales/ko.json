@@ -3318,6 +3318,15 @@
     "messagePrefix": "[에이전트 \"{name}\"의 메시지입니다. 사용자 본인이 아닙니다]",
     "fromAgent": "{name}의 메시지",
     "expand": "펼치기",
-    "collapse": "접기"
+    "collapse": "접기",
+    "confirmSend": "보내기",
+    "confirmCreate": "만들고 보내기",
+    "ignore": "무시",
+    "expired": "초안이 만료되었어요. 에이전트에게 다시 요청해 주세요",
+    "inFlight": "이미 처리 중이에요",
+    "halfCreated": "세션이 생성되었지만({id}) 첫 메시지 전송에 실패했어요. 다시 시도하거나 세션을 열어 직접 보내 주세요",
+    "createdSession": "세션이 생성되었어요 {id}",
+    "sendFailed": "전송 실패: {error}",
+    "messageField": "메시지 내용"
   }
 }

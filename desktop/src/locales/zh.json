@@ -3324,6 +3324,15 @@
     "messagePrefix": "[来自 Agent「{name}」的消息，非用户本人]",
     "fromAgent": "来自 {name} 的消息",
     "expand": "展开",
-    "collapse": "收起"
+    "collapse": "收起",
+    "confirmSend": "发送",
+    "confirmCreate": "创建并发送",
+    "ignore": "忽略",
+    "expired": "草稿已过期，请让 Agent 重新发起",
+    "inFlight": "正在执行中",
+    "halfCreated": "会话已创建（{id}），首条消息投递失败，可重试或打开该会话手动发送",
+    "createdSession": "已创建会话 {id}",
+    "sendFailed": "发送失败：{error}",
+    "messageField": "消息内容"
   }
 }

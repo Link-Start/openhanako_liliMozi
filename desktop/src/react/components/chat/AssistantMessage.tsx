@@ -15,6 +15,7 @@ import { InterludeBlock } from './InterludeBlock';
 import { SettingsConfirmCard } from './SettingsConfirmCard';
 import { SettingsUpdateCard } from './SettingsUpdateCard';
 import { InteractiveCard } from './InteractiveCard';
+import { SessionCollabDraftCard } from './SessionCollabDraftCard';
 import { useMessageFooterActions } from './MessageActions';
 import { MessageFooterActions, formatMessageTime, type MessageFooterAction } from './MessageFooterActions';
 import { ChatResourceCard } from './ChatResourceCard';
@@ -1124,6 +1125,16 @@ const CronConfirmBlock = memo(function CronConfirmBlock({ block, sessionPath }: 
   );
 });
 
+// suggestion_card 分发：session 协作草稿（send / create）走 SessionCollabDraftCard，
+// 其余（automation_draft 等）沿用既有 CronConfirmBlock。BLOCK_RENDERERS 是「组件引用」表，
+// 保持表结构不变，只把 'suggestion_card' 注册成这个小分发器。
+const SuggestionCardDispatch = memo(function SuggestionCardDispatch({ block, sessionPath }: { block: any; sessionPath?: string }) {
+  if (block.kind === 'session_send_draft' || block.kind === 'session_create_draft') {
+    return <SessionCollabDraftCard block={block} sessionPath={sessionPath} />;
+  }
+  return <CronConfirmBlock block={block} sessionPath={sessionPath} />;
+});
+
 function AutomationDraftIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1154,7 +1165,7 @@ BLOCK_RENDERERS['artifact'] = LegacyArtifactBlock;
 BLOCK_RENDERERS['plugin_card'] = PluginCardWrapper;
 BLOCK_RENDERERS['skill'] = SkillBlock;
 BLOCK_RENDERERS['cron_confirm'] = CronConfirmBlock;
-BLOCK_RENDERERS['suggestion_card'] = CronConfirmBlock;
+BLOCK_RENDERERS['suggestion_card'] = SuggestionCardDispatch;
 BLOCK_RENDERERS['settings_confirm'] = SettingsConfirmBlock;
 BLOCK_RENDERERS['settings_update'] = SettingsUpdateBlock;
 BLOCK_RENDERERS['interactive_card'] = InteractiveCard;
