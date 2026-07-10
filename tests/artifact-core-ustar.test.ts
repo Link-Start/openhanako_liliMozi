@@ -180,10 +180,15 @@ describe("ustar packTree / extract round-trip", () => {
       Buffer.from([0, 1, 2, 255, 254]),
     );
 
-    const runShMode = fs.statSync(path.join(destDir, "bin", "run.sh")).mode & 0o777;
-    const readmeMode = fs.statSync(path.join(destDir, "README.md")).mode & 0o777;
-    expect(runShMode).toBe(0o755); // executable bit preserved, collapsed to 0o755
-    expect(readmeMode).toBe(0o644); // non-executable collapsed to 0o644
+    // Windows does not persist Unix permission bits through chmod/stat the way
+    // POSIX does (files commonly surface as 0o666). Mode collapse is a Unix
+    // contract; on win32 we still verify content + tree shape above.
+    if (process.platform !== "win32") {
+      const runShMode = fs.statSync(path.join(destDir, "bin", "run.sh")).mode & 0o777;
+      const readmeMode = fs.statSync(path.join(destDir, "README.md")).mode & 0o777;
+      expect(runShMode).toBe(0o755); // executable bit preserved, collapsed to 0o755
+      expect(readmeMode).toBe(0o644); // non-executable collapsed to 0o644
+    }
 
     expect(fs.statSync(path.join(destDir, "lib", "nested")).isDirectory()).toBe(true);
   });
