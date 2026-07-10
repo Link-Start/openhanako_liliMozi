@@ -731,6 +731,61 @@ function mockPermissionDefault(mode = 'ask') {
         .toHaveBeenCalledWith('__home__');
     });
 
+    it('consumes home draft on activation without copying text into the new session draft', async () => {
+      const homeDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '晚上好啊' }] }] };
+      Object.assign(mockState, {
+        pendingNewSession: true,
+        pendingDraftId: 'draft-home-consume',
+        currentAgentId: 'hana',
+        memoryEnabled: true,
+        selectedFolder: '/workspace-home',
+        drafts: { __home__: '晚上好啊' },
+        draftDocs: { __home__: homeDoc },
+        attachedFiles: [{
+          fileId: 'sf_home',
+          path: '/tmp/hana/session-files/home.png',
+          name: 'home.png',
+          isDirectory: false,
+        }],
+      });
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        path: '/session/home-consume.jsonl',
+        sessionId: 'sess_home_consume',
+        agentId: 'hana',
+        cwd: '/workspace-home',
+        workspaceFolders: [],
+      }));
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        sessionId: 'sess_home_consume',
+        agentId: 'hana',
+        cwd: '/workspace-home',
+        workspaceFolders: [],
+      }));
+
+      await expect(ensureSession()).resolves.toMatchObject({
+        sessionId: 'sess_home_consume',
+        sessionPath: '/session/home-consume.jsonl',
+      });
+
+      expect((mockState as unknown as { clearDraft: ReturnType<typeof vi.fn> }).clearDraft)
+        .toHaveBeenCalledWith('__home__');
+      const drafts = mockState.drafts as Record<string, string>;
+      const draftDocs = mockState.draftDocs as Record<string, unknown>;
+      expect(drafts.sess_home_consume).toBeUndefined();
+      expect(drafts['/session/home-consume.jsonl']).toBeUndefined();
+      expect(draftDocs.sess_home_consume).toBeUndefined();
+      expect(draftDocs['/session/home-consume.jsonl']).toBeUndefined();
+      expect((mockState.attachedFilesBySession as Record<string, unknown[]>).sess_home_consume)
+        .toEqual([{
+          fileId: 'sf_home',
+          path: '/tmp/hana/session-files/home.png',
+          name: 'home.png',
+          isDirectory: false,
+        }]);
+    });
+
     it('enters a pending draft without posting a new-session request', async () => {
       mockFetch.mockImplementation(async (url: string) => {
         if (url === '/api/preferences/session-permission-default') {

@@ -1029,8 +1029,6 @@ function stageDetachedSessionForActivation(data: any, ref: Readonly<SessionRef>,
     normalizeSessionId(item?.sessionId) !== ref.sessionId && item?.path !== ref.sessionPath
   ))];
   const targetKey = ref.sessionId;
-  const homeText = state.drafts?.[HOME_DRAFT_KEY];
-  const homeDoc = state.draftDocs?.[HOME_DRAFT_KEY];
   useStore.setState({
     sessions,
     sessionLocatorsById: {
@@ -1041,8 +1039,6 @@ function stageDetachedSessionForActivation(data: any, ref: Readonly<SessionRef>,
       ...(state.attachedFilesBySession || {}),
       [targetKey]: [...(state.attachedFiles || [])],
     },
-    ...(homeText !== undefined ? { drafts: { ...(state.drafts || {}), [targetKey]: homeText } } : {}),
-    ...(homeDoc !== undefined ? { draftDocs: { ...(state.draftDocs || {}), [targetKey]: homeDoc } } : {}),
   });
   useStore.getState().initSession?.(ref.sessionPath, [], false);
 }
@@ -1157,6 +1153,8 @@ export async function ensureSession(expectedPendingDraftId?: string | null): Pro
     const activated = useStore.getState() as Record<string, any>;
     if (activated.currentSessionId === ref.sessionId && activated.currentSessionPath === ref.sessionPath) {
       activated.clearDraft?.(HOME_DRAFT_KEY);
+      activated.clearDraft?.(ref.sessionId);
+      activated.clearDraft?.(ref.sessionPath);
       useStore.setState({ pendingDraftId: null });
     }
     return ref;

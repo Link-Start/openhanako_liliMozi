@@ -1197,14 +1197,19 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
   // 切换 session / 回到首页 / 草稿 hydrate 完成时恢复草稿
   const draftsHydratedAt = useStore(s => s.draftsHydratedAt);
+  const draftText = useStore(s => (
+    draftKey ? (sessionScopedValue(s, s.drafts, draftKey) || '') : ''
+  ));
+  const draftDoc = useStore(s => (
+    draftKey ? sessionScopedValue(s, s.draftDocs, draftKey) : undefined
+  ));
   useEffect(() => {
     if (!editor || !draftKey) return;
-    const state = useStore.getState();
-    const draft = sessionScopedValue(state, state.drafts, draftKey) || '';
-    const draftDoc = sessionScopedValue(state, state.draftDocs, draftKey);
+    const draft = draftText;
+    const draftDocValue = draftDoc;
     const currentDoc = editor.getJSON();
     const nextDoc = draft
-      ? (draftDoc || plainTextToEditorDocument(draft))
+      ? (draftDocValue || plainTextToEditorDocument(draft))
       : null;
     const currentSerialized = serializeEditor(currentDoc).text;
     const nextSerialized = draft;
@@ -1217,7 +1222,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         editor.commands.setContent(nextDoc, { emitUpdate: false });
       }
     }
-  }, [editor, draftKey, draftsHydratedAt]);
+  }, [editor, draftKey, draftText, draftDoc, draftsHydratedAt]);
 
   // 点击外部关闭斜杠菜单
   useEffect(() => {
