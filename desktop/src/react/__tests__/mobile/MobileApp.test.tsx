@@ -8,6 +8,11 @@ import { useStore } from '../../stores';
 import { MobileApp } from '../../mobile/MobileApp';
 import { installMobilePlatform } from '../../mobile/mobile-platform';
 import registry from '../../../shared/theme-registry';
+// 预热 LazyWorkspaceCompanionRail 的模块树：它在用例中途才被动态 import，全量并行
+// 时 transform 队列冷且拥堵，加载耗时会吃穿 findBy 的 1s 预算（desktop-input-area
+// 用例偶发超时的主因）。静态引入把加载成本移到文件收集期，React.lazy 届时从模块
+// 缓存瞬时解析。
+import '../../components/app/WorkspaceCompanionRail';
 
 vi.mock('../../components/InputArea', async () => {
   const ReactModule = await import('react');
@@ -120,6 +125,14 @@ describe('MobileApp', () => {
   });
 
   afterEach(() => {
+    // MockWebSocket 的 onopen 挂在真实 setTimeout 上；用例结束时若还未开火，
+    // 会漂进下一个用例的时间线（向已重置的 store 写 wsState、发起 fetch）。
+    // 置空全部回调，保证任何提前收尾的用例都不向后泄漏。
+    for (const ws of MockWebSocket.instances) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+    }
     cleanup();
     delete window.__hanaMobileUpdateAvailable;
     vi.restoreAllMocks();
@@ -164,6 +177,11 @@ describe('MobileApp', () => {
       expect(body).toEqual({ username: 'hana-owner', password: 'secret-password' });
       expect(body).not.toHaveProperty('credential');
     });
+
+    // 等登录后的整条 bootstrap 链在本用例内跑完：login() → bootstrap() →
+    // initializeMobileRuntime() → connectWebSocket() 无人 await，不等到 shell
+    // 就绪就结束用例，会把 setState / fetch / WS onopen 泄漏给后续用例。
+    await waitForMobileChatReady();
   });
 
   it('returns stale browser sessions without file scopes to login', async () => {
