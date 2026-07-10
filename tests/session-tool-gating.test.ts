@@ -131,4 +131,58 @@ describe("session tool gating (Task 6)", () => {
     expect(OPTIONAL_TOOL_NAMES).toContain("session");
     expect(DEFAULT_DISABLED_TOOL_NAMES).not.toContain("session");
   });
+
+  // 灰测事故回归（session-collab auto 权限分类）：auto 模式下 session 工具此前
+  // 不被 classifySessionPermission 认识，兜底走 review → LLM 审查非确定误拒
+  // send/create（无语义描述时判定为跨 session 写入）。设计意图（spec 决策 3）：
+  // send/create 的 execute 只产草稿卡，确认卡本身就是权限关卡，不该走 LLM 审查
+  // 双重把关。这里对读侧/写侧 action 在四档权限模式下逐一断言。
+  describe("session tool action classification (灰测修复 A)", () => {
+    const readActions = ["?", "list", "read"];
+    const writeActions = ["send", "create"];
+    const unknownActions = ["nuke"];
+
+    for (const action of readActions) {
+      it(`read action "${action}" is always allow regardless of mode`, () => {
+        for (const mode of ["auto", "operate", "ask", "read_only"]) {
+          expect(
+            classifySessionPermission({ mode, toolName: "session", params: { action } }),
+          ).toEqual({ action: "allow" });
+        }
+      });
+    }
+
+    for (const action of [...writeActions, ...unknownActions]) {
+      it(`write-side action "${action}": allow in auto/operate/ask, blocked in read_only`, () => {
+        expect(
+          classifySessionPermission({ mode: "auto", toolName: "session", params: { action } }),
+        ).toEqual({ action: "allow" });
+        expect(
+          classifySessionPermission({ mode: "operate", toolName: "session", params: { action } }),
+        ).toEqual({ action: "allow" });
+        expect(
+          classifySessionPermission({ mode: "ask", toolName: "session", params: { action } }),
+        ).toEqual({ action: "allow" });
+        const readOnlyResult = classifySessionPermission({
+          mode: "read_only",
+          toolName: "session",
+          params: { action },
+        }) as any;
+        expect(readOnlyResult.action).toBe("deny");
+        expect(readOnlyResult.message).toContain("read-only");
+      });
+    }
+
+    it("auto mode never returns review/prompt for the session tool (root cause of the false-deny)", () => {
+      for (const action of [...readActions, ...writeActions, ...unknownActions, undefined]) {
+        const result = classifySessionPermission({
+          mode: "auto",
+          toolName: "session",
+          params: { action },
+        }) as any;
+        expect(result.action).not.toBe("review");
+        expect(result.action).not.toBe("prompt");
+      }
+    });
+  });
 });

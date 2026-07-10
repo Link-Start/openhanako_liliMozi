@@ -177,7 +177,9 @@ async function reviewToolApproval(tool: any, toolName: any, params: any, session
     allowed: false,
     status: decision?.action === "hard_deny" ? "blocked" : "denied",
     decision,
-    reason: decision?.reason || "auto approval denied this action",
+    reason: decision?.reason
+      ? `session permission auto-review: ${decision.reason}`
+      : "session permission auto-review denied this action",
   };
 }
 

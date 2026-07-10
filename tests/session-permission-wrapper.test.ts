@@ -441,7 +441,9 @@ describe("session permission wrapper", () => {
         kind: "tool_action_approval",
         status: "denied",
         toolName: "browser",
-        reason: "use a safer local command",
+        // 拒绝文案署名（灰测修复 A3）：原因必须标明来源是审查网关，模型不会把
+        // 拒绝脑补成沙箱限制。
+        reason: "session permission auto-review: use a safer local command",
         reviewer: "small_tool_model",
       },
     });
