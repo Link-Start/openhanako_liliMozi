@@ -17,7 +17,11 @@ const mocks = vi.hoisted(() => ({
   splitListItem: vi.fn(),
   editorIsActive: vi.fn((_name?: string) => false),
   chainInserted: [] as unknown[],
-  ensureSession: vi.fn(async () => true),
+  ensureSession: vi.fn(async () => ({
+    sessionId: 'sess_input',
+    sessionPath: '/session/input.jsonl',
+    agentId: 'hana',
+  })),
   loadSessions: vi.fn(),
   upsertOptimisticSessionFirstMessage: vi.fn(),
   hanaFetch: vi.fn(),
@@ -193,6 +197,16 @@ vi.mock('../../services/stream-resume', () => ({
 function seedInputState(overrides: Partial<ReturnType<typeof useStore.getState>> = {}) {
   useStore.setState({
     currentSessionPath: '/session/input.jsonl',
+    currentSessionId: 'sess_input',
+    currentAgentId: 'hana',
+    pendingDraftId: 'draft-input',
+    sessions: [{
+      path: '/session/input.jsonl',
+      sessionId: 'sess_input',
+      agentId: 'hana',
+      agentName: 'Hana',
+    }],
+    sessionLocatorsById: { sess_input: { path: '/session/input.jsonl' } },
     connected: true,
     pendingNewSession: false,
     streamingSessions: [],
@@ -287,10 +301,15 @@ describe('InputArea paste and slash menu behavior', () => {
     mocks.ensureSession.mockImplementation(async () => {
       useStore.setState({
         currentSessionPath: '/session/input.jsonl',
+        currentSessionId: 'sess_input',
         pendingNewSession: false,
         welcomeVisible: false,
       } as never);
-      return true;
+      return {
+        sessionId: 'sess_input',
+        sessionPath: '/session/input.jsonl',
+        agentId: 'hana',
+      };
     });
     seedInputState();
     mocks.hanaFetch.mockResolvedValue(new Response('{}', { status: 200 }));
@@ -384,8 +403,8 @@ describe('InputArea paste and slash menu behavior', () => {
       mocks.updateHandler?.();
     });
 
-    expect(useStore.getState().drafts['/session/input.jsonl']).toBe('1. first');
-    expect(useStore.getState().draftDocs['/session/input.jsonl']).toEqual(mocks.editorJson);
+    expect(useStore.getState().drafts.sess_input).toBe('1. first');
+    expect(useStore.getState().draftDocs.sess_input).toEqual(mocks.editorJson);
   });
 
   it('uses Shift+Enter inside list items to create the next list item', () => {
@@ -697,7 +716,7 @@ describe('InputArea paste and slash menu behavior', () => {
     const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
     expect(payload.clientMessageId).toMatch(/^client-user-/);
 
-    const items = useStore.getState().chatSessions['/session/input.jsonl']?.items || [];
+    const items = useStore.getState().chatSessions.sess_input?.items || [];
     expect(items).toHaveLength(1);
     const first = items[0];
     expect(first?.type).toBe('message');

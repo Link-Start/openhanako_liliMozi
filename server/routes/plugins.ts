@@ -60,7 +60,7 @@ const PLUGIN_IFRAME_HOST_QUERY_PARAMS = new Set([
  * @param {import("hono").Context} c
  * @param {import("hono").Hono} pluginApp
  * @param {string} pluginId
- * @param {string} [agentId] - 当前 agent id，注入到子请求的 X-Hana-Agent-Id header
+ * @param {string} [agentId] - 当前 agent id，仅通过请求级 Hono env 传递
  * @param {object|null} [requestPrincipal] - 本次请求的来源身份描述
  */
 async function proxyToPlugin(c: any, pluginApp: any, pluginId: string, agentId?: string, requestPrincipal: any = null) {
@@ -76,7 +76,9 @@ async function proxyToPlugin(c: any, pluginApp: any, pluginId: string, agentId?:
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete(PLUGIN_SURFACE_SESSION_HEADER);
-  if (agentId) headers.set("X-Hana-Agent-Id", agentId);
+  // 请求级 env 是 agent 身份唯一信源；删除同名原始 header，避免调用方
+  // 伪造第二套上下文或让插件 handler 误读到不同身份。
+  headers.delete("X-Hana-Agent-Id");
 
   const hasBody = c.req.method !== "GET" && c.req.method !== "HEAD";
   const subReq = new Request(url.toString(), {

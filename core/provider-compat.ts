@@ -42,7 +42,10 @@ import {
   getReasoningProfile as getDeclaredReasoningProfile,
   getThinkingFormat as getDeclaredThinkingFormat,
 } from "../shared/model-capabilities.ts";
-import { normalizeRequestThinkingLevel } from "./session-thinking-level.ts";
+import {
+  normalizeRequestThinkingLevel,
+  normalizeThinkingLevelForModel,
+} from "./session-thinking-level.ts";
 
 interface ProviderModule {
   matches(model: any): boolean;
@@ -150,17 +153,21 @@ function stripDisabledReasoningEffort(payload) {
   return rest;
 }
 
-function normalizeAutoReasoningEffort(payload) {
+function normalizeAutoReasoningEffort(payload, model) {
   if (!Object.prototype.hasOwnProperty.call(payload, "reasoning_effort")) return payload;
   if (lower(payload.reasoning_effort) !== "auto") return payload;
-  return { ...payload, reasoning_effort: "medium" };
+  return { ...payload, reasoning_effort: normalizeThinkingLevelForModel("auto", model) };
 }
 
-function normalizeProviderOptions(options: Record<string, any> = {}) {
+function normalizeProviderOptions(options: Record<string, any> = {}, model = null) {
   if (!Object.prototype.hasOwnProperty.call(options, "reasoningLevel")) return options;
+  const rawLevel = options.reasoningLevel;
+  const normalizedLevel = lower(rawLevel) === "auto"
+    ? normalizeThinkingLevelForModel("auto", model)
+    : normalizeThinkingLevelForModel(normalizeRequestThinkingLevel(rawLevel, "off"), model);
   return {
     ...options,
-    reasoningLevel: normalizeRequestThinkingLevel(options.reasoningLevel, "off"),
+    reasoningLevel: normalizedLevel,
   };
 }
 
@@ -334,14 +341,14 @@ function projectToolResultResourcesForModel(messages) {
 export function normalizeProviderPayload(payload, model, options = {}) {
   if (!payload || typeof payload !== "object") return payload;
 
-  const normalizedOptions = normalizeProviderOptions(options);
+  const normalizedOptions = normalizeProviderOptions(options, model);
   let result = payload;
 
   // 1. 通用补丁（与 provider 无关）
   result = stripEmptyTools(result);
   result = stripIncompatibleThinking(result, model);
+  result = normalizeAutoReasoningEffort(result, model);
   result = stripDisabledReasoningEffort(result);
-  result = normalizeAutoReasoningEffort(result);
   // 孤儿 toolResult 配对兜底先于 provider 子模块：保证子模块（如 deepseek 的
   // reasoning_content 校验）拿到的是已配对的 messages，不会被孤儿干扰。
   result = stripOrphanToolMessages(result);
@@ -373,7 +380,7 @@ export function normalizeProviderPayload(payload, model, options = {}) {
 export function normalizeProviderContextMessages(messages, model, options = {}) {
   if (!Array.isArray(messages)) return messages;
 
-  const normalizedOptions = normalizeProviderOptions(options);
+  const normalizedOptions = normalizeProviderOptions(options, model);
   const result = projectToolResultResourcesForModel(messages);
   for (const mod of PROVIDER_MODULES) {
     if (mod.matches(model)) {

@@ -1,6 +1,73 @@
 import readline from "readline";
 import { createTerminalTheme, ansi, paint } from "./terminal-theme.ts";
 
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function createCliChatPromptMessage(identity, text) {
+  const sessionId = nonEmptyString(identity?.sessionId);
+  const sessionPath = nonEmptyString(identity?.sessionPath);
+  if (!sessionId || !sessionPath || typeof text !== "string") return null;
+  return { type: "prompt", text, sessionId, sessionPath };
+}
+
+export function createCliChatAbortMessage(identity) {
+  const sessionId = nonEmptyString(identity?.sessionId);
+  const sessionPath = nonEmptyString(identity?.sessionPath);
+  const streamId = nonEmptyString(identity?.streamId);
+  if (!sessionId || !sessionPath || !streamId) return null;
+  return { type: "abort", sessionId, sessionPath, streamId };
+}
+
+export function cliChatMessageMatchesSession(identity, msg) {
+  const sessionId = nonEmptyString(identity?.sessionId);
+  const sessionPath = nonEmptyString(identity?.sessionPath);
+  const messageSessionId = nonEmptyString(msg?.sessionId);
+  const messageSessionPath = nonEmptyString(msg?.sessionPath);
+  if (sessionId && messageSessionId && messageSessionId !== sessionId) return false;
+  if (sessionPath && messageSessionPath && messageSessionPath !== sessionPath) return false;
+  return true;
+}
+
+export function reduceCliChatStreamIdentity(current, msg) {
+  const state = {
+    sessionId: nonEmptyString(current?.sessionId),
+    sessionPath: nonEmptyString(current?.sessionPath),
+    streamId: nonEmptyString(current?.streamId),
+    isStreaming: current?.isStreaming === true,
+  };
+  if (!cliChatMessageMatchesSession(state, msg)) return state;
+
+  const messageStreamId = nonEmptyString(msg?.streamId);
+  if (msg?.type === "abort_rejected") {
+    return messageStreamId
+      ? { ...state, streamId: messageStreamId, isStreaming: true }
+      : state;
+  }
+  if (msg?.type === "status") {
+    if (msg.isStreaming === true && messageStreamId) {
+      return { ...state, streamId: messageStreamId, isStreaming: true };
+    }
+    if (msg.isStreaming === false) {
+      if (state.streamId && (!messageStreamId || messageStreamId !== state.streamId)) return state;
+      return { ...state, streamId: null, isStreaming: false };
+    }
+  }
+  if (msg?.type === "turn_end") {
+    if (state.streamId && (!messageStreamId || messageStreamId !== state.streamId)) return state;
+    return { ...state, streamId: null, isStreaming: false };
+  }
+  if (msg?.type === "error") {
+    if (state.streamId && messageStreamId && messageStreamId !== state.streamId) return state;
+    return { ...state, streamId: null, isStreaming: false };
+  }
+  if (messageStreamId) {
+    return { ...state, streamId: messageStreamId, isStreaming: true };
+  }
+  return state;
+}
+
 export async function printStatus(client, connection) {
   const [health, identity] = await Promise.all([
     client.health(),
@@ -33,10 +100,13 @@ export async function startChat(client, connection, opts: { session?: any; targe
   let theme = createTerminalTheme(ctx.agentYuan);
   let session = await resolveChatSession(client, opts.session || opts.target);
   let sessionPath = session.path;
+  let sessionId = session.sessionId || null;
   const ws = client.createWebSocket();
   const plain = opts.plain === true || !process.stdin.isTTY;
 
   let streaming = false;
+  let activeStreamId = null;
+  let abortRequestedStreamId = null;
   let currentMood = "";
   let thinkingTimer = null;
   let thinkingFrame = 0;
@@ -92,6 +162,10 @@ export async function startChat(client, connection, opts: { session?: any; targe
   async function switchTo(target) {
     session = await resolveChatSession(client, target);
     sessionPath = session.path;
+    sessionId = session.sessionId || null;
+    activeStreamId = null;
+    abortRequestedStreamId = null;
+    streaming = false;
     await refreshTheme();
     console.log(`${ansi.dim}Continued session:${ansi.reset} ${session.title || session.firstMessage || session.path}`);
     prompt();
@@ -126,11 +200,16 @@ ${paint(theme, "/quit")}              exit
     if (cmd === "new") {
       const created = await client.newSession();
       session = {
+        ...created,
         path: created.path,
         title: null,
         firstMessage: "",
       };
       sessionPath = created.path;
+      sessionId = created.sessionId || null;
+      activeStreamId = null;
+      abortRequestedStreamId = null;
+      streaming = false;
       console.log(`${paint(theme, theme.symbol)} New session`);
       prompt();
       return;
@@ -168,11 +247,20 @@ ${paint(theme, "/quit")}              exit
       await refreshTheme();
       return;
     }
+    if (!cliChatMessageMatchesSession({ sessionId, sessionPath }, msg)) return;
+    const wasStreaming = streaming;
+    const tracked = reduceCliChatStreamIdentity({
+      sessionId,
+      sessionPath,
+      streamId: activeStreamId,
+      isStreaming: streaming,
+    }, msg);
+    activeStreamId = tracked.streamId;
+    streaming = tracked.isStreaming;
     switch (msg.type) {
       case "text_delta":
         stopThinking();
-        if (!streaming) {
-          streaming = true;
+        if (!wasStreaming) {
           process.stdout.write("\n");
         }
         process.stdout.write(msg.delta || "");
@@ -203,16 +291,28 @@ ${paint(theme, "/quit")}              exit
         process.stdout.write(msg.success === false ? ` ${ansi.red}failed${ansi.reset}\n` : ` ${ansi.green}done${ansi.reset}\n`);
         break;
       case "turn_end":
+        if (streaming) return;
         stopThinking();
-        streaming = false;
+        abortRequestedStreamId = null;
         process.stdout.write("\n");
         prompt();
         break;
       case "error":
+        if (streaming) return;
         stopThinking();
-        streaming = false;
+        abortRequestedStreamId = null;
         process.stdout.write(`\n${ansi.red}${msg.message || "error"}${ansi.reset}\n`);
         prompt();
+        break;
+      case "status":
+        if (!streaming) {
+          stopThinking();
+          abortRequestedStreamId = null;
+        }
+        break;
+      case "abort_rejected":
+        abortRequestedStreamId = null;
+        process.stdout.write(`\n${ansi.yellow}Stop request ignored because the active stream changed.${ansi.reset}\n`);
         break;
       default:
         break;
@@ -242,7 +342,9 @@ ${paint(theme, "/quit")}              exit
         await handleCommand(line);
         return;
       }
-      ws.send(JSON.stringify({ type: "prompt", text: line, sessionPath }));
+      const message = createCliChatPromptMessage({ sessionId, sessionPath }, line);
+      if (!message) throw new Error("Session identity unavailable; reconnect or choose another session.");
+      ws.send(JSON.stringify(message));
     } catch (err) {
       console.log(`${ansi.red}${err.message}${ansi.reset}`);
       prompt();
@@ -252,22 +354,26 @@ ${paint(theme, "/quit")}              exit
   readline.emitKeypressEvents(process.stdin, rl);
   if (!plain && process.stdin.isTTY) {
     process.stdin.setRawMode(true);
+    const requestAbort = () => {
+      const message = createCliChatAbortMessage({ sessionId, sessionPath, streamId: activeStreamId });
+      if (!message) {
+        process.stdout.write(`\n${ansi.yellow}Stop unavailable until the active stream identity is known.${ansi.reset}\n`);
+        return false;
+      }
+      if (abortRequestedStreamId === message.streamId) return true;
+      ws.send(JSON.stringify(message));
+      abortRequestedStreamId = message.streamId;
+      process.stdout.write(`\n${ansi.dim}Stop requested…${ansi.reset}\n`);
+      return true;
+    };
     process.stdin.on("keypress", (_str, key) => {
       if (!key) return;
       if (key.name === "escape" && streaming) {
-        ws.send(JSON.stringify({ type: "abort", sessionPath }));
-        streaming = false;
-        stopThinking();
-        process.stdout.write(`\n${ansi.dim}Interrupted.${ansi.reset}\n`);
-        prompt();
+        requestAbort();
       }
       if (key.ctrl && key.name === "c") {
         if (streaming) {
-          ws.send(JSON.stringify({ type: "abort", sessionPath }));
-          streaming = false;
-          stopThinking();
-          process.stdout.write(`\n${ansi.dim}Interrupted.${ansi.reset}\n`);
-          prompt();
+          requestAbort();
         } else {
           closeAndExit(0);
         }
@@ -309,7 +415,7 @@ async function resolveChatSession(client, target) {
     return sessions[0];
   }
   const created = await client.newSession();
-  return { path: created.path, title: null, firstMessage: "" };
+  return { ...created, path: created.path, title: null, firstMessage: "" };
 }
 
 export function selectSession(sessions, target) {

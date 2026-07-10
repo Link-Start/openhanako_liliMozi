@@ -80,7 +80,7 @@ function restoredSnapshot(names, availableNames = allNames()) {
 }
 
 describe("session-coordinator tool snapshot (createSession)", () => {
-  let tmpDir, agentDir, sessionDir, coord, fakeSessionPath, activeToolsSpy, buildSystemPromptSpy, currentAgentConfig, channelsEnabled, defaultModeSaveSpy, storedDefaultMode, storedThinkingLevel, lastSessionOptions, fakeEngine;
+  let tmpDir, agentDir, sessionDir, coord, fakeSessionPath, activeToolsSpy, buildSystemPromptSpy, currentAgentConfig, channelsEnabled, defaultModeSaveSpy, storedDefaultMode, storedThinkingLevel, lastSessionOptions, fakeEngine, focusAgent, onBeforeSessionCreateSpy;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,7 +122,7 @@ describe("session-coordinator tool snapshot (createSession)", () => {
       };
     });
 
-    const agent = {
+    focusAgent = {
       id: "test",
       agentDir,
       sessionDir,
@@ -132,10 +132,11 @@ describe("session-coordinator tool snapshot (createSession)", () => {
       buildSystemPrompt: buildSystemPromptSpy,
       memoryEnabled: true,
     };
+    onBeforeSessionCreateSpy = vi.fn().mockResolvedValue(undefined);
 
     coord = new SessionCoordinator({
       agentsDir: path.join(tmpDir, "agents"),
-      getAgent: () => agent,
+      getAgent: () => focusAgent,
       getActiveAgentId: () => "test",
       getModels: () => ({
         currentModel: { id: "test-model", name: "test-model" },
@@ -167,6 +168,7 @@ describe("session-coordinator tool snapshot (createSession)", () => {
       listAgents: () => [],
       getDeferredResultStore: () => null,
       getEngine: () => fakeEngine,
+      onBeforeSessionCreate: onBeforeSessionCreateSpy,
     });
   });
 
@@ -175,6 +177,39 @@ describe("session-coordinator tool snapshot (createSession)", () => {
   });
 
   // ── Case C tests ─────────────────────────────────────────────
+
+  it("selects workspace skills with the explicit non-focus Agent identity", async () => {
+    const targetAgent = {
+      ...focusAgent,
+      id: "target",
+      config: {
+        workspace_context: {
+          discover_project_skills: false,
+          discover_compatible_project_skills: true,
+        },
+      },
+    };
+    const workspacePaths = [{
+      dirPath: path.join(tmpDir, ".codex", "skills"),
+      label: "Codex",
+      scope: "workspace",
+      category: "compatible",
+    }];
+    const getSkillsForAgent = vi.fn(() => ({ skills: [], diagnostics: [] }));
+    coord._d.getSkills = () => ({ getSkillsForAgent });
+    onBeforeSessionCreateSpy.mockResolvedValueOnce({ workspacePaths });
+
+    await coord.createSession(null, tmpDir, true, null, {
+      agent: targetAgent,
+      agentId: "target",
+    });
+
+    expect(onBeforeSessionCreateSpy).toHaveBeenCalledWith(tmpDir, {
+      agent: targetAgent,
+      agentId: "target",
+    });
+    expect(getSkillsForAgent).toHaveBeenCalledWith(targetAgent, { workspacePaths });
+  });
 
   it("Case C: new session with NO tools config applies DEFAULT_DISABLED (dm off, update_settings on)", async () => {
     currentAgentConfig = {}; // fresh agent or upgrade, tools field absent

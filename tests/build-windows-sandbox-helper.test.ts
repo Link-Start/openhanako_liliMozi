@@ -188,6 +188,25 @@ describe("Windows sandbox helper build script", () => {
     expect(source).toContain("setupInheritedHandleList");
   });
 
+  it("owns timeout termination in the private Job and emits a versioned terminal record", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("--timeout-ms");
+    expect(source).toContain("TerminateJobObject");
+    expect(source).toContain("waitForJobEmpty");
+    expect(source).toContain("JobObjectBasicAccountingInformation");
+    expect(source).toContain("terminal-v1");
+    expect(source).toContain('L"timed_out"');
+    expect(source).toContain('L"termination_failed"');
+    expect(source).toContain('L"launch_failed"');
+    expect(source).not.toContain("taskkill");
+    expect(source).not.toContain("CreateToolhelp32Snapshot");
+    expect(source).not.toContain("Process32First");
+  });
+
   it("canonicalizes existing paths through the Win32 final path API before comparing sandbox roots", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),

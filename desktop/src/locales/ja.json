@@ -1734,6 +1734,12 @@
       "injectAgentsMdDesc": "オンにすると、新規セッションは現在の作業ディレクトリから Git ルートまでの AGENTS.md を読み込みます。",
       "injectClaudeMd": "CLAUDE.md を注入",
       "injectClaudeMdDesc": "オンにすると、新規セッションは現在の作業ディレクトリから Git ルートまでの CLAUDE.md を読み込みます。",
+      "projectSkillsTitle": "プロジェクトスキルの検出",
+      "projectSkillsDesc": "この Agent が新しいセッションに読み込むプロジェクトスキルのディレクトリを選択します。",
+      "discoverProjectSkills": "プロジェクトスキルを読み込む",
+      "discoverProjectSkillsDesc": "現在のプロジェクトの .agents/skills からスキルを検出して読み込みます。",
+      "discoverCompatibleProjectSkills": "他ツールのプロジェクトスキルを読み込む",
+      "discoverCompatibleProjectSkillsDesc": "Claude Code、Codex、OpenClaw のプロジェクトスキルも検出します。",
       "agentDeskSection": "Agent デスク設定"
     },
     "toolCaps": {
@@ -2485,6 +2491,9 @@
     "cwdSkillsHint": ".agents/skills/ ディレクトリを作成して始めましょう",
     "cwdSkillsDesc": "スキルはワークスペースに連動します",
     "cwdSkillsDrop": "フォルダまたは .zip をドロップしてスキルをインストール",
+    "cwdSkillActive": "読み込み済み",
+    "cwdSkillInactive": "未読み込み",
+    "cwdSkillShadowed": "優先元により無効",
     "deleteSkill": "スキルを削除",
     "openInFinder": "フォルダを開く",
     "jianLabel": "Jian",

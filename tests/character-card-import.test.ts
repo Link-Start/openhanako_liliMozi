@@ -83,7 +83,7 @@ describe("character-card import service", () => {
     writeSkill(packageDir, "skills/code-writer", "code-writer", "imported");
     writeJson(path.join(packageDir, "card.json"), {
       kind: "CharacterCard",
-      agent: { name: "Ming", id: "明", yuan: "ming" },
+      agent: { name: "Ming", id: "Ming_AGENT", yuan: "ming" },
       skills: {
         bundles: [
           { name: "Coding Bundle", skills: [{ path: "skills/code-writer" }] },
@@ -101,7 +101,7 @@ describe("character-card import service", () => {
     });
     const result = await service.commitImportPlan(plan.token, { importMemory: false });
 
-    expect(result.agent).toEqual({ id: "明", name: "Ming" });
+    expect(result.agent).toEqual({ id: "Ming_AGENT", name: "Ming" });
     expect(fs.readFileSync(path.join(skillsDir, "code-writer", "SKILL.md"), "utf-8")).toContain("existing");
 
     const importedName = result.installedSkills[0].name;
@@ -111,7 +111,7 @@ describe("character-card import service", () => {
       .toContain(`name: ${importedName}`);
     expect(engine.createAgent).toHaveBeenCalledWith(expect.objectContaining({
       name: "Ming",
-      id: "明",
+      id: "Ming_AGENT",
       yuan: "ming",
       enabledSkills: [importedName],
     }));
@@ -122,9 +122,28 @@ describe("character-card import service", () => {
     expect(bundleStore.bundles[0]).toMatchObject({
       name: "Coding Bundle",
       source: "character-card-import",
-      agentId: "明",
+      agentId: "Ming_AGENT",
       skillNames: [importedName],
     });
+  });
+
+  it("rejects a non-ASCII packaged agent id before installing skills or creating an agent", async () => {
+    writeSkill(packageDir, "skills/code-writer", "code-writer", "imported");
+    writeJson(path.join(packageDir, "card.json"), {
+      kind: "CharacterCard",
+      agent: { name: "Ming", id: "明", yuan: "ming" },
+      skills: [{ path: "skills/code-writer" }],
+    });
+
+    const service = createCharacterCardService(engine);
+
+    await expect(service.createImportPlanFromPath(packageDir)).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("agent.id"),
+    });
+    expect(fs.readdirSync(skillsDir)).toEqual([]);
+    expect(engine.reloadSkills).not.toHaveBeenCalled();
+    expect(engine.createAgent).not.toHaveBeenCalled();
   });
 
   it("does not create skill bundle metadata for character cards without skills", async () => {

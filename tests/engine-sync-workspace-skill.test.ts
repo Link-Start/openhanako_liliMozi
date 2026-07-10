@@ -90,4 +90,16 @@ describe("HanaEngine.syncWorkspaceSkillPaths", () => {
     expect(engine._skills.setExternalPaths).toHaveBeenCalled();
     expect(engine.reloadSkills).not.toHaveBeenCalled();
   });
+
+  it("recomputes one keyed Agent policy without changing shared workspace paths", () => {
+    const engine = Object.create(HanaEngine.prototype);
+    const targetAgent = { id: "target", config: { workspace_context: { discover_project_skills: false } } };
+    engine._agentMgr = {
+      getAgent: vi.fn((id) => id === "target" ? targetAgent : null),
+    };
+    engine._skills = { syncAgentSkills: vi.fn() };
+
+    expect(engine.syncAgentWorkspaceSkills("target")).toBe(true);
+    expect(engine._skills.syncAgentSkills).toHaveBeenCalledWith(targetAgent);
+  });
 });

@@ -142,6 +142,7 @@ export interface Agent {
   yuan: string;
   isPrimary: boolean;
   hasAvatar?: boolean;
+  avatarRevision?: string | null;
   chatModel?: { id: string; provider?: string | null } | null;
   homeFolder?: string | null;
   memoryMasterEnabled?: boolean;

@@ -17,6 +17,7 @@ import {
 } from "../shared/default-workspace.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import { USER_PROFILE_FILENAME } from "../lib/user-profile-store.ts";
+import { isValidAgentId } from "../shared/agent-id.ts";
 
 const log = createModuleLogger("first-run");
 
@@ -24,7 +25,7 @@ const DEFAULT_AGENT_ID = "hanako";
 
 export interface InvalidAgentDirReport {
   id: string;
-  reason: "config_missing" | "config_unreadable";
+  reason: "invalid_id" | "config_missing" | "config_unreadable";
 }
 
 export interface FirstRunReport {
@@ -60,7 +61,7 @@ export function ensureFirstRun(hanakoHome, productDir): FirstRunReport {
 
   const invalidAgentDirs: InvalidAgentDirReport[] = [];
   const validAgentIds = new Set<string>();
-  let defaultAgentState: "valid" | "config_missing" | "config_unreadable" | null = null;
+  let defaultAgentState: "valid" | "invalid_id" | "config_missing" | "config_unreadable" | null = null;
   for (const entry of agentEntries) {
     const cls = classifyAgentDirectoryForStartup(agentsDir, entry.name);
     if (entry.name === DEFAULT_AGENT_ID) {
@@ -75,7 +76,11 @@ export function ensureFirstRun(hanakoHome, productDir): FirstRunReport {
     invalidAgentDirs.push({ id: entry.name, reason: cls.reason });
     log.warn(
       `invalid agent directory "${entry.name}": `
-      + (cls.reason === "config_missing" ? "config.yaml missing" : `config.yaml is not readable: ${cls.detail}`)
+      + (cls.reason === "invalid_id"
+        ? "ID must use ASCII letters, digits, underscores, or hyphens and include a letter or digit"
+        : cls.reason === "config_missing"
+          ? "config.yaml missing"
+          : `config.yaml is not readable: ${cls.detail}`)
       + "（已跳过，不阻断启动；目录内容保留，请手动确认后清理）",
     );
   }
@@ -129,9 +134,12 @@ export function ensureFirstRun(hanakoHome, productDir): FirstRunReport {
 
 type AgentDirClassification =
   | { status: "valid" }
-  | { status: "invalid"; reason: "config_missing" | "config_unreadable"; detail?: string };
+  | { status: "invalid"; reason: "invalid_id" | "config_missing" | "config_unreadable"; detail?: string };
 
 function classifyAgentDirectoryForStartup(agentsDir, agentId): AgentDirClassification {
+  if (!isValidAgentId(agentId)) {
+    return { status: "invalid", reason: "invalid_id" };
+  }
   const cfgPath = path.join(agentsDir, agentId, "config.yaml");
   if (!fs.existsSync(cfgPath)) {
     return { status: "invalid", reason: "config_missing" };

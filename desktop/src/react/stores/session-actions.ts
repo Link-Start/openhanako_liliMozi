@@ -14,7 +14,7 @@ import { hydrateInputDrafts } from './input-draft-persistence';
 import { HOME_DRAFT_KEY } from '../../../../shared/input-drafts.ts';
 import { buildItemsFromHistory } from '../utils/history-builder';
 import { migrateLegacyTodos } from '../utils/todo-compat';
-import { loadAvatars as loadAvatarsAction, clearChat as clearChatAction } from './agent-actions';
+import { clearChat as clearChatAction } from './agent-actions';
 import { activateWorkspaceDesk } from './desk-actions';
 import { loadModels } from '../utils/ui-helpers';
 import { browserStateForPath, setBrowserStateForPath } from './browser-slice';
@@ -29,6 +29,18 @@ import type { SessionPermissionMode } from '../types';
 
 let _switchVersion = 0;
 let _switchAbortController: AbortController | null = null;
+let _pendingDraftSequence = 0;
+
+export interface SessionRef {
+  sessionId: string;
+  sessionPath: string;
+  agentId: string;
+}
+
+function nextPendingDraftId(): string {
+  _pendingDraftSequence += 1;
+  return `pending-${Date.now().toString(36)}-${_pendingDraftSequence.toString(36)}`;
+}
 
 function invalidateSessionSwitches(): void {
   _switchVersion += 1;
@@ -60,6 +72,32 @@ function sessionIdForPathFromState(state: Record<string, any>, path: string | nu
   if (!path) return null;
   const session = (state.sessions || []).find((item: any) => item?.path === path);
   return normalizeSessionId(session?.sessionId);
+}
+
+function frozenSessionRefFromState(state: Record<string, any>): Readonly<SessionRef> | null {
+  const sessionPath = typeof state.currentSessionPath === 'string' && state.currentSessionPath.trim()
+    ? state.currentSessionPath
+    : null;
+  if (!sessionPath) return null;
+  const projection = sessionByIdentityOrPath(
+    state,
+    normalizeSessionId(state.currentSessionId),
+    sessionPath,
+  );
+  const sessionId = normalizeSessionId(state.currentSessionId)
+    || normalizeSessionId(projection?.sessionId)
+    || sessionIdForPathFromState(state, sessionPath);
+  const agentId = normalizeSessionId(projection?.agentId) || normalizeSessionId(state.currentAgentId);
+  if (!sessionId || !agentId) return null;
+  return Object.freeze({ sessionId, sessionPath, agentId });
+}
+
+function frozenSessionRefFromCreateResponse(data: any): Readonly<SessionRef> | null {
+  const sessionId = normalizeSessionId(data?.sessionId);
+  const sessionPath = typeof data?.path === 'string' && data.path.trim() ? data.path : null;
+  const agentId = normalizeSessionId(data?.agentId);
+  if (!sessionId || !sessionPath || !agentId) return null;
+  return Object.freeze({ sessionId, sessionPath, agentId });
 }
 
 function sessionByIdentityOrPath(state: Record<string, any>, sessionId: string | null, sessionPath: string | null): any | null {
@@ -726,7 +764,10 @@ export async function switchSession(path: string): Promise<void> {
       ...currentSessionIdentityPatch(prev, path, data.sessionId),
       pendingSessionSwitchPath: null,
       pendingNewSession: false,
+      pendingDraftId: null,
       pendingProjectId: null,
+      pendingNewSessionThinkingLevel: null,
+      pendingNewSessionPermissionMode: null,
       selectedFolder: null,
       selectedWorkspaceMountId: null,
       selectedWorkspaceLabel: null,
@@ -866,6 +907,7 @@ async function switchDeletedAgentSession(path: string, version: number): Promise
     currentSessionPath: path,
     pendingSessionSwitchPath: null,
     pendingNewSession: false,
+    pendingDraftId: null,
     pendingProjectId: null,
     selectedFolder: null,
     selectedWorkspaceMountId: null,
@@ -917,7 +959,10 @@ interface CreateNewSessionOptions {
 type PendingSessionCreateBody = Record<string, any>;
 
 function buildPendingSessionCreateBody(state: Record<string, any>): PendingSessionCreateBody {
-  const body: PendingSessionCreateBody = { memoryEnabled: state.memoryEnabled };
+  const body: PendingSessionCreateBody = {
+    memoryEnabled: state.memoryEnabled,
+    recordWorkspaceHistory: true,
+  };
   if (state.selectedWorkspaceMountId) {
     body.workspaceMountId = state.selectedWorkspaceMountId;
   } else if (state.selectedFolder) {
@@ -948,13 +993,13 @@ function pendingSessionCreateKey(body: PendingSessionCreateBody): string {
 
 function currentPendingSessionDraft(): { body: PendingSessionCreateBody; key: string } | null {
   const state = useStore.getState() as Record<string, any>;
-  if (state.pendingNewSession !== true) return null;
+  if (state.pendingNewSession !== true || !normalizeSessionId(state.pendingDraftId)) return null;
   const body = buildPendingSessionCreateBody(state);
-  return { body, key: pendingSessionCreateKey(body) };
+  return { body, key: `${state.pendingDraftId}:${pendingSessionCreateKey(body)}` };
 }
 
 async function postPendingSessionCreate(body: PendingSessionCreateBody): Promise<any> {
-  const res = await hanaFetch('/api/sessions/new', {
+  const res = await hanaFetch('/api/sessions/new-detached', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -963,93 +1008,43 @@ async function postPendingSessionCreate(body: PendingSessionCreateBody): Promise
   return res.json();
 }
 
-async function applyCreatedPendingSession(data: any, stateBeforeApply: Record<string, any>): Promise<boolean> {
-  if (data.error) {
-    console.error('[session] create failed:', data.error);
-    showSessionCreationError(data.error);
-    return false;
-  }
-
-  const justSelected = stateBeforeApply.selectedFolder;
-  const justSelectedMount = stateBeforeApply.selectedWorkspaceMountId;
-
-  // 基础状态更新
-  const patch: Record<string, any> = {
-    pendingNewSession: false,
-    pendingSessionSwitchPath: null,
-    selectedFolder: null,
-    selectedWorkspaceMountId: null,
-    selectedWorkspaceLabel: null,
-    pendingProjectId: null,
-    pendingNewSessionThinkingLevel: null,
-    pendingNewSessionPermissionMode: null,
-    workspaceFolders: Array.isArray(data.workspaceFolders) ? data.workspaceFolders : [],
-    selectedAgentId: null,
+function stageDetachedSessionForActivation(data: any, ref: Readonly<SessionRef>, state: Record<string, any>): void {
+  const existing = sessionByIdentityOrPath(state, ref.sessionId, ref.sessionPath);
+  const projection = {
+    ...(existing || {}),
+    path: ref.sessionPath,
+    sessionId: ref.sessionId,
+    agentId: ref.agentId,
+    agentName: data.agentName || existing?.agentName || ref.agentId,
+    cwd: data.cwd || existing?.cwd || null,
+    workspaceMountId: data.workspaceMountId || existing?.workspaceMountId || null,
+    workspaceLabel: data.workspaceLabel || existing?.workspaceLabel || null,
+    title: existing?.title ?? null,
+    firstMessage: existing?.firstMessage ?? '',
+    modified: existing?.modified || new Date().toISOString(),
+    messageCount: existing?.messageCount ?? 0,
+    _optimistic: true,
   };
-
-  if (data.agentId) {
-    const switched = data.agentId !== stateBeforeApply.currentAgentId;
-    patch.currentAgentId = data.agentId;
-    if (data.agentName) patch.agentName = data.agentName;
-    if (switched) {
-      const ag = stateBeforeApply.agents.find((a: any) => a.id === data.agentId);
-      if (ag?.yuan) patch.agentYuan = ag.yuan;
-      patch.agentAvatarUrl = null;
-      window.i18n.defaultName = data.agentName || stateBeforeApply.agentName;
-      // 异步刷新头像
-      hanaFetch('/api/health').then((r: Response) => r.json()).then((d: any) => {
-        loadAvatarsAction(d.avatars);
-      }).catch(() => {
-        loadAvatarsAction();
-      });
-    }
-  }
-
-  if (data.path) {
-    Object.assign(patch, currentSessionIdentityPatch(useStore.getState() as Record<string, any>, data.path, data.sessionId));
-    patch.sessionAuthorizedFoldersByPath = {
-      ...putSessionScopedStateValue(
-        useStore.getState() as Record<string, any>,
-        useStore.getState().sessionAuthorizedFoldersByPath || {},
-        data.path,
-        Array.isArray(data.authorizedFolders) ? data.authorizedFolders : [],
-      ),
-    };
-    // 初始化空 session，ChatArea 自动渲染
-    useStore.getState().initSession(data.path, [], false);
-  }
-
-  useStore.setState(patch);
-  // 首页草稿被创建的 session 消费掉（发送路径的 clearDraft 只覆盖发送成功场景，
-  // 这里覆盖"session 已创建"这一消费时点本身，双清幂等）
-  useStore.getState().clearDraft(HOME_DRAFT_KEY);
-  if (data.thinkingLevel) {
-    useStore.getState().setThinkingLevel(data.thinkingLevel);
-  }
-
-  await resetDeskForSessionWorkspace({
-    cwd: data.cwd || null,
-    workspaceMountId: data.workspaceMountId || justSelectedMount || null,
-    workspaceLabel: data.workspaceLabel || stateBeforeApply.selectedWorkspaceLabel || null,
+  const sessions = [projection, ...(state.sessions || []).filter((item: any) => (
+    normalizeSessionId(item?.sessionId) !== ref.sessionId && item?.path !== ref.sessionPath
+  ))];
+  const targetKey = ref.sessionId;
+  const homeText = state.drafts?.[HOME_DRAFT_KEY];
+  const homeDoc = state.draftDocs?.[HOME_DRAFT_KEY];
+  useStore.setState({
+    sessions,
+    sessionLocatorsById: {
+      ...(state.sessionLocatorsById || {}),
+      [ref.sessionId]: { path: ref.sessionPath },
+    },
+    attachedFilesBySession: {
+      ...(state.attachedFilesBySession || {}),
+      [targetKey]: [...(state.attachedFiles || [])],
+    },
+    ...(homeText !== undefined ? { drafts: { ...(state.drafts || {}), [targetKey]: homeText } } : {}),
+    ...(homeDoc !== undefined ? { draftDocs: { ...(state.draftDocs || {}), [targetKey]: homeDoc } } : {}),
   });
-
-  emitSessionPermissionMode(data.permissionMode || data.accessMode || stateBeforeApply.pendingNewSessionPermissionMode);
-
-  await loadSessions();
-
-  // 刷新模型列表：session 创建后 activeModel 已绑定，需要同步到 UI
-  loadModels();
-
-  // 更新 cwdHistory
-  if (justSelected && !justSelectedMount) {
-    const currentState = useStore.getState();
-    let cwdHistory = currentState.cwdHistory.filter((p: string) => p !== justSelected);
-    cwdHistory = [justSelected, ...cwdHistory];
-    if (cwdHistory.length > 10) cwdHistory = cwdHistory.slice(0, 10);
-    useStore.setState({ cwdHistory });
-  }
-
-  return true;
+  useStore.getState().initSession?.(ref.sessionPath, [], false);
 }
 
 export async function loadPendingNewSessionPermissionDefault(): Promise<SessionPermissionMode> {
@@ -1088,6 +1083,7 @@ export async function createNewSession(options: CreateNewSessionOptions = {}): P
   useStore.setState({
     welcomeVisible: true,
     currentSessionPath: null,
+    currentSessionId: null,
     pendingSessionSwitchPath: null,
     // 有显式 Agent home 时以 home 为准；没有绑定 workspace 的 agent
     // 以当前 session cwd 延续工作流，不从其他 agent 的 home_folder 推导。
@@ -1097,6 +1093,7 @@ export async function createNewSession(options: CreateNewSessionOptions = {}): P
     workspaceFolders: [],
     selectedAgentId: null,
     pendingNewSession: true,
+    pendingDraftId: nextPendingDraftId(),
     pendingProjectId,
     pendingNewSessionThinkingLevel: null,
     pendingNewSessionPermissionMode: null,
@@ -1135,25 +1132,38 @@ export async function createNewSession(options: CreateNewSessionOptions = {}): P
 // 确保 Session 存在（首次发消息时调用）
 // ══════════════════════════════════════════════════════
 
-export async function ensureSession(): Promise<boolean> {
+export async function ensureSession(expectedPendingDraftId?: string | null): Promise<Readonly<SessionRef> | null> {
   try {
-    while (true) {
-      const draft = currentPendingSessionDraft();
-      if (!draft) return true;
+    const initialState = useStore.getState() as Record<string, any>;
+    if (initialState.pendingNewSession !== true) return frozenSessionRefFromState(initialState);
+    const draft = currentPendingSessionDraft();
+    if (!draft) throw new Error('pending session draft identity is missing');
+    const draftId = normalizeSessionId(initialState.pendingDraftId);
+    if (expectedPendingDraftId && draftId !== expectedPendingDraftId) return null;
 
-      const data = await postPendingSessionCreate(draft.body);
-      const latestDraft = currentPendingSessionDraft();
-      if (!latestDraft) return true;
-      if (latestDraft.key !== draft.key) {
-        continue;
-      }
+    const data = await postPendingSessionCreate(draft.body);
+    if (data?.error) throw new Error(data.error);
+    const ref = frozenSessionRefFromCreateResponse(data);
+    if (!ref) throw new Error('session creation returned an incomplete session identity');
 
-      return applyCreatedPendingSession(data, useStore.getState() as Record<string, any>);
+    const latestDraft = currentPendingSessionDraft();
+    const latestState = useStore.getState() as Record<string, any>;
+    const stillOwnsPendingView = latestDraft?.key === draft.key
+      && normalizeSessionId(latestState.pendingDraftId) === draftId;
+    if (!stillOwnsPendingView) return ref;
+
+    stageDetachedSessionForActivation(data, ref, latestState);
+    await switchSession(ref.sessionPath);
+    const activated = useStore.getState() as Record<string, any>;
+    if (activated.currentSessionId === ref.sessionId && activated.currentSessionPath === ref.sessionPath) {
+      activated.clearDraft?.(HOME_DRAFT_KEY);
+      useStore.setState({ pendingDraftId: null });
     }
+    return ref;
   } catch (err) {
     console.error('[session] create failed:', err);
     showSessionCreationError(errorMessage(err));
-    return false;
+    return null;
   }
 }
 

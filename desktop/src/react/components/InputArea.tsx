@@ -22,6 +22,7 @@ import {
   ensureSession,
   loadSessions,
   upsertOptimisticSessionFirstMessage,
+  type SessionRef,
 } from '../stores/session-actions';
 import { revealDeskDirectory, toggleJianSidebar } from '../stores/desk-actions';
 import { getWebSocket } from '../services/websocket';
@@ -307,6 +308,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const pendingNewSession = useStore(s => s.pendingNewSession);
   const pendingSessionSwitchPath = useStore(s => s.pendingSessionSwitchPath);
   const currentSessionPath = useStore(s => s.currentSessionPath);
+  const pendingDraftId = useStore(s => s.pendingDraftId);
   const currentAgentId = useStore(s => s.currentAgentId);
   const selectedAgentId = useStore(s => s.selectedAgentId);
   const currentSessionProjection = useStore(s => s.currentSessionPath
@@ -466,6 +468,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const addAttachedFile = useStore(s => s.addAttachedFile);
   const removeAttachedFile = useStore(s => s.removeAttachedFile);
   const clearAttachedFiles = useStore(s => s.clearAttachedFiles);
+  const clearAttachedFilesForSession = useStore(s => s.clearAttachedFilesForSession);
   const setDocContextAttached = useStore(s => s.setDocContextAttached);
   const setDraft = useStore(s => s.setDraft);
   const clearDraft = useStore(s => s.clearDraft);
@@ -658,21 +661,30 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     if (sessionScopedListIncludes(_s, _s.streamingSessions, _s.currentSessionPath)) return false;
     if (_s.pendingSessionSwitchPath) return false;
 
+    let sessionRef: Readonly<SessionRef> | null = null;
     if (pendingNewSession) {
-      const ok = await ensureSession();
-      if (!ok) return false;
+      sessionRef = await ensureSession(pendingDraftId);
+      if (!sessionRef) return false;
       loadSessions();
+    } else {
+      const state = useStore.getState();
+      const projection = state.sessions.find(session => session.path === state.currentSessionPath);
+      const sessionId = state.currentSessionId || projection?.sessionId || null;
+      const agentId = projection?.agentId || state.currentAgentId || null;
+      if (!state.currentSessionPath || !sessionId || !agentId) return false;
+      sessionRef = Object.freeze({ sessionId, sessionPath: state.currentSessionPath, agentId });
     }
 
     ws.send(JSON.stringify({
       type: 'prompt',
       text,
-      sessionPath: useStore.getState().currentSessionPath,
-      uiContext: collectUiContext(useStore.getState()),
+      sessionId: sessionRef.sessionId,
+      sessionPath: sessionRef.sessionPath,
+      uiContext: collectUiContext(_s),
       displayMessage: { text: displayText ?? text },
     }));
     return true;
-  }, [inputLocked, pendingNewSession]);
+  }, [inputLocked, pendingDraftId, pendingNewSession]);
 
   // ── 斜杠命令 ──
 
@@ -836,17 +848,22 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     window.setTimeout(restoreEditorFocus, 0);
   }, [inputLocked, restoreEditorFocus, surface]);
 
-  const ensureVoiceSessionPath = useCallback(async (): Promise<string> => {
-    let sessionPath = useStore.getState().currentSessionPath;
-    if (sessionPath) return sessionPath;
+  const ensureVoiceSessionRef = useCallback(async (): Promise<Readonly<SessionRef>> => {
+    const state = useStore.getState();
+    const sessionPath = state.currentSessionPath;
+    if (sessionPath) {
+      const projection = state.sessions.find(session => session.path === sessionPath);
+      const sessionId = state.currentSessionId || projection?.sessionId || null;
+      const agentId = projection?.agentId || state.currentAgentId || null;
+      if (!sessionId || !agentId) throw new Error('missing session identity');
+      return Object.freeze({ sessionId, sessionPath, agentId });
+    }
     if (!pendingNewSession) throw new Error('missing session path');
-    const ok = await ensureSession();
-    if (!ok) throw new Error('failed to create session');
+    const ref = await ensureSession(pendingDraftId);
+    if (!ref) throw new Error('failed to create session');
     loadSessions();
-    sessionPath = useStore.getState().currentSessionPath;
-    if (!sessionPath) throw new Error('missing session path');
-    return sessionPath;
-  }, [pendingNewSession]);
+    return ref;
+  }, [pendingDraftId, pendingNewSession]);
 
   const sendVoiceAudioAttachment = useCallback(async (file: {
     fileId?: string;
@@ -875,7 +892,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
     setSending(true);
     try {
-      const sessionPath = await ensureVoiceSessionPath();
+      const sessionRef = await ensureVoiceSessionRef();
       const ws = getWebSocket();
       if (!ws || typeof ws.send !== 'function') {
         throw new Error('websocket unavailable');
@@ -884,7 +901,8 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       ws.send(JSON.stringify({
         type: 'prompt',
         text: '',
-        sessionPath,
+        sessionId: sessionRef.sessionId,
+        sessionPath: sessionRef.sessionPath,
         uiContext: collectUiContext(useStore.getState()),
         displayMessage: {
           text: '',
@@ -912,7 +930,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   }, [
     connected,
     currentModelInfo,
-    ensureVoiceSessionPath,
+    ensureVoiceSessionRef,
     inputLocked,
     isStreaming,
     modelSwitching,
@@ -955,7 +973,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       const index = audioRecordingSeqRef.current + 1;
       audioRecordingSeqRef.current = index;
       const name = t('input.recordedAudioName', { index });
-      const sessionPath = await ensureVoiceSessionPath();
+      const sessionRef = await ensureVoiceSessionRef();
       const res = await hanaFetch('/api/upload-blob', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -963,7 +981,8 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           name,
           base64Data,
           mimeType: 'audio/wav',
-          sessionPath,
+          sessionId: sessionRef.sessionId,
+          sessionPath: sessionRef.sessionPath,
           presentation: 'voice-input',
           ...(waveform ? { waveform } : {}),
         }),
@@ -996,7 +1015,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       setAudioRecordingElapsed(0);
       restoreEditorFocus();
     }
-  }, [addToast, ensureVoiceSessionPath, restoreEditorFocus, sendVoiceAudioAttachment, t]);
+  }, [addToast, ensureVoiceSessionRef, restoreEditorFocus, sendVoiceAudioAttachment, t]);
 
   const startAudioRecording = useCallback(async () => {
     if (inputLocked || !showAudioInput || !connected || isStreaming || sending || modelSwitching || pendingSessionSwitchPath) return;
@@ -1418,6 +1437,22 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     const editorJson = editor.getJSON();
     const { text: rawText, skills, fileRefs } = serializeEditor(editorJson);
     const text = rawText.trim();
+    const clickState = useStore.getState();
+    const clickedPendingDraftId = clickState.pendingNewSession ? clickState.pendingDraftId : null;
+    const clickedSessionPath = clickState.currentSessionPath;
+    const clickedProjection = clickedSessionPath
+      ? clickState.sessions.find(session => session.path === clickedSessionPath)
+      : null;
+    const clickedSessionId = clickState.currentSessionId || clickedProjection?.sessionId || null;
+    const clickedAgentId = clickedProjection?.agentId || clickState.currentAgentId || null;
+    const clickedSessionRef: Readonly<SessionRef> | null = clickedSessionPath && clickedSessionId && clickedAgentId
+      ? Object.freeze({ sessionId: clickedSessionId, sessionPath: clickedSessionPath, agentId: clickedAgentId })
+      : null;
+    const clickedAttachedFiles = attachedFiles.map(file => ({ ...file }));
+    const clickedQuotes = clickState.quotedSelections.map(quote => ({ ...quote }));
+    const clickedDocContextAttached = docContextAttached;
+    const clickedDoc = currentDoc ? { ...currentDoc } : null;
+    const clickedUiContext = collectUiContext(clickState);
 
     if (type === 'prompt') {
       const slashSelection = resolveSlashSubmitSelection({
@@ -1433,9 +1468,9 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       }
     }
 
-    const inputFiles = mergeEditorFileRefs(attachedFiles, fileRefs);
+    const inputFiles = mergeEditorFileRefs(clickedAttachedFiles, fileRefs);
     const hasFiles = inputFiles.length > 0;
-    if ((!text && !hasFiles && !docContextAttached && useStore.getState().quotedSelections.length === 0) || !connected) return;
+    if ((!text && !hasFiles && !clickedDocContextAttached && clickedQuotes.length === 0) || !connected) return;
     if (type === 'prompt' && isStreaming) return;
     if (type === 'interject' && !isStreaming) return;
     if (sending) return;
@@ -1455,11 +1490,13 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     setSending(true);
 
     try {
-      if (pendingNewSession) {
-        const ok = await ensureSession();
-        if (!ok) return;
+      let sessionRef = clickedSessionRef;
+      if (clickedPendingDraftId) {
+        sessionRef = await ensureSession(clickedPendingDraftId);
+        if (!sessionRef) return;
         loadSessions();
       }
+      if (!sessionRef) return;
 
       // 分离原生媒体和普通附件；后端决定图片视觉桥、视频/音频原生能力或显式报错。
       const imageFiles = hasFiles ? inputFiles.filter(f => !f.isDirectory && isImageFile(f.name)) : [];
@@ -1508,12 +1545,12 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         )
       ) : [];
 
-      const sessionPathForSend = useStore.getState().currentSessionPath;
-      if (!sessionPathForSend) return;
+      const sessionPathForSend = sessionRef.sessionPath;
       const sessionFileRefs = otherFiles
         .filter(f => f.fileId)
         .map(f => ({
           fileId: f.fileId,
+          sessionId: sessionRef.sessionId,
           sessionPath: sessionPathForSend,
           label: f.name || f.path,
           kind: f.isDirectory ? 'directory' : 'attachment',
@@ -1612,16 +1649,15 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
       // 文档上下文
       let docForRender: { path: string; name: string } | null = null;
-      if (docContextAttached && currentDoc) {
+      if (clickedDocContextAttached && clickedDoc) {
         finalText = finalText
-          ? `${finalText}\n\n${t('input.referenceDocument', { path: currentDoc.path })}`
-          : t('input.referenceDocument', { path: currentDoc.path });
-        docForRender = currentDoc;
+          ? `${finalText}\n\n${t('input.referenceDocument', { path: clickedDoc.path })}`
+          : t('input.referenceDocument', { path: clickedDoc.path });
+        docForRender = clickedDoc;
       }
-      if (docContextAttached) setDocContextAttached(false);
 
       // 引用片段
-      const quotes = useStore.getState().quotedSelections;
+      const quotes = clickedQuotes;
       if (quotes.length > 0) {
         const quoteStr = quotes.map(formatQuotedSelectionForPrompt).join('\n\n');
         finalText = finalText ? `${finalText}\n\n${quoteStr}` : quoteStr;
@@ -1630,10 +1666,25 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       const allFiles = [...(hasFiles ? inputFiles : [])];
       if (docForRender) allFiles.push({ path: docForRender.path, name: docForRender.name });
 
-      editor.commands.clearContent();
-      if (draftKey) clearDraft(draftKey);
-      clearAttachedFiles();
-      if (useStore.getState().quotedSelections.length > 0) useStore.getState().clearQuotedSelections();
+      const beforeCleanup = useStore.getState();
+      const stillOwnsPendingComposer = !!clickedPendingDraftId
+        && beforeCleanup.pendingNewSession === true
+        && beforeCleanup.pendingDraftId === clickedPendingDraftId;
+      const stillOwnsComposer = stillOwnsPendingComposer || (
+        beforeCleanup.currentSessionId === sessionRef.sessionId
+        && beforeCleanup.currentSessionPath === sessionRef.sessionPath
+      );
+      clearDraft(sessionRef.sessionPath);
+      clearAttachedFilesForSession(sessionRef.sessionPath);
+      if (clickedPendingDraftId && beforeCleanup.pendingDraftId === clickedPendingDraftId) {
+        clearDraft(HOME_DRAFT_KEY);
+      }
+      if (stillOwnsComposer) {
+        editor.commands.clearContent();
+        if (stillOwnsPendingComposer) clearAttachedFiles();
+        if (clickedDocContextAttached) setDocContextAttached(false);
+        if (clickedQuotes.length > 0) useStore.getState().clearQuotedSelections();
+      }
 
       const clientMessageId = createClientUserMessageId();
       const displayMessage = {
@@ -1674,8 +1725,9 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         type,
         clientMessageId,
         text: finalText,
+        sessionId: sessionRef.sessionId,
         sessionPath: sessionPathForSend,
-        uiContext: collectUiContext(useStore.getState()),
+        uiContext: clickedUiContext,
         displayMessage,
       };
       if (sessionFileRefs.length > 0) wsMsg.sessionFileRefs = sessionFileRefs;
@@ -1702,7 +1754,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     } finally {
       setSending(false);
     }
-  }, [editor, inputLocked, attachedFiles, docContextAttached, connected, isStreaming, sending, pendingNewSession, currentDoc, clearAttachedFiles, clearDraft, currentSessionPath, draftKey, setDocContextAttached, slashCommands, slashSelected, handleSlashSelect, supportsVision, currentModelInfo, loadVisionAuxiliaryConfig, modelSwitching, t]);
+  }, [editor, inputLocked, attachedFiles, docContextAttached, connected, isStreaming, sending, currentDoc, clearAttachedFiles, clearAttachedFilesForSession, clearDraft, setDocContextAttached, slashCommands, slashSelected, handleSlashSelect, supportsVision, currentModelInfo, loadVisionAuxiliaryConfig, modelSwitching, t]);
 
   const handleSend = useCallback(async () => {
     await submitEditorMessage('prompt');
@@ -1717,7 +1769,12 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const handleStop = useCallback(() => {
     const ws = getWebSocket();
     if (!isStreaming || !ws) return;
-    ws.send(JSON.stringify({ type: 'abort', sessionPath: useStore.getState().currentSessionPath }));
+    const state = useStore.getState();
+    const path = state.currentSessionPath;
+    const sessionId = state.currentSessionId;
+    const active = path ? sessionScopedValue(state, state.activeSessionStreams, path) : null;
+    if (!path || !sessionId || !active?.streamId) return;
+    ws.send(JSON.stringify({ type: 'abort', sessionId, sessionPath: path, streamId: active.streamId }));
   }, [isStreaming]);
 
   // ── Key handler ──

@@ -1082,7 +1082,7 @@ export class PluginManager {
       const request = c.env?.pluginRouteRequest || null;
       const agentId = (typeof request?.agentId === "string" && request.agentId)
         ? request.agentId
-        : (c.req.header("X-Hana-Agent-Id") || null);
+        : null;
       c.set("agentId", agentId);
       c.set("pluginRequestContext", createPluginRouteRequestContext({
         pluginCtx: ctx,

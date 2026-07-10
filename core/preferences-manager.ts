@@ -46,6 +46,7 @@ import {
   normalizeBrowserPreferences,
 } from "../shared/browser-preferences.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
+import { isValidAgentId } from "../shared/agent-id.ts";
 import { normalizeSessionThinkingLevel } from "./session-thinking-level.ts";
 
 const log = createModuleLogger("preferences");
@@ -836,6 +837,7 @@ export class PreferencesManager {
       const entries = fs.readdirSync(this._agentsDir, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
+        if (!isValidAgentId(entry.name)) continue;
         if (fs.existsSync(path.join(this._agentsDir, entry.name, "config.yaml"))) {
           return entry.name;
         }

@@ -65,6 +65,7 @@ function hideDisabledGlobalToolsForSettings(toolNames, engine) {
 }
 import { assertAgentConfigPatchYuan } from "../../core/yuan-registry.ts";
 import { createModuleLogger } from "../../lib/debug-log.ts";
+import { assertValidAgentId } from "../../shared/agent-id.ts";
 
 const log = createModuleLogger("agents");
 
@@ -111,6 +112,28 @@ function normalizeExperienceConfigForResponse(config) {
     ...current,
     enabled: current.enabled === true,
   };
+}
+
+const WORKSPACE_SKILL_POLICY_FIELDS = [
+  "discover_project_skills",
+  "discover_compatible_project_skills",
+];
+
+function hasWorkspaceSkillPolicyPatch(workspaceContext) {
+  return !!workspaceContext && WORKSPACE_SKILL_POLICY_FIELDS.some((field) => hasOwn(workspaceContext, field));
+}
+
+function validateWorkspaceSkillPolicyPatch(workspaceContext) {
+  if (workspaceContext === undefined) return null;
+  if (!workspaceContext || typeof workspaceContext !== "object" || Array.isArray(workspaceContext)) {
+    return "workspace_context must be an object";
+  }
+  for (const field of WORKSPACE_SKILL_POLICY_FIELDS) {
+    if (hasOwn(workspaceContext, field) && typeof workspaceContext[field] !== "boolean") {
+      return `workspace_context.${field} must be a boolean`;
+    }
+  }
+  return null;
 }
 
 function emitAgentConfigAppEvents(engine, agentId, { globalFields, agentPartial, providersChanged }) {
@@ -178,7 +201,7 @@ function emitAgentConfigAppEvents(engine, agentId, { globalFields, agentPartial,
     });
   }
 
-  if (hasOwn(agentPartial, "skills")) {
+  if (hasOwn(agentPartial, "skills") || hasWorkspaceSkillPolicyPatch(agentPartial.workspace_context)) {
     emitAppEvent(engine, "skills-changed", { agentId });
   }
 }
@@ -212,6 +235,7 @@ export function createAgentsRoute(engine) {
       if (!name?.trim()) {
         return c.json({ error: "name is required" }, 400);
       }
+      if (id !== undefined && id !== null) assertValidAgentId(id);
       const result = await engine.createAgent({ name, id, yuan });
       emitAppEvent(engine, "agent-created", { agentId: result.id, name: result.name });
       return c.json({ ok: true, ...result });
@@ -308,13 +332,14 @@ export function createAgentsRoute(engine) {
     try {
       const body = await safeJson(c);
       const { id } = body;
-      if (!id?.trim()) {
+      if (id === undefined || id === null || (typeof id === "string" && !id.trim())) {
         return c.json({ error: "id is required" }, 400);
       }
+      assertValidAgentId(id);
       engine.setPrimaryAgent(id);
       return c.json({ ok: true });
     } catch (err) {
-      return c.json({ error: err.message }, 500);
+      return c.json({ error: err.message }, err.statusCode || 500);
     }
   });
 
@@ -329,10 +354,23 @@ export function createAgentsRoute(engine) {
       if (!Array.isArray(order)) {
         return c.json({ error: "order must be an array" }, 400);
       }
-      engine.saveAgentOrder(order);
+
+      const seen = new Set();
+      for (const id of order) {
+        assertValidAgentId(id);
+        if (seen.has(id)) {
+          return c.json({ error: `duplicate agent id: ${id}` }, 400);
+        }
+        seen.add(id);
+        if (!engine.getAgent?.(id)) {
+          return c.json({ error: `agent not found: ${id}` }, 400);
+        }
+      }
+
+      engine.saveAgentOrder([...order]);
       return c.json({ ok: true });
     } catch (err) {
-      return c.json({ error: err.message }, 500);
+      return c.json({ error: err.message }, err.statusCode || 500);
     }
   });
 
@@ -521,6 +559,10 @@ export function createAgentsRoute(engine) {
       if (partial.experience?.enabled !== undefined && typeof partial.experience.enabled !== "boolean") {
         return c.json({ error: "experience.enabled must be a boolean" }, 400);
       }
+      const workspaceSkillPolicyError = validateWorkspaceSkillPolicyPatch(partial.workspace_context);
+      if (workspaceSkillPolicyError) {
+        return c.json({ error: workspaceSkillPolicyError }, 400);
+      }
 
       // ── schema-driven 全局字段分流 ──
       const { global: globalFields, agent: agentPartial } = splitByScope(partial) as { global: any[], agent: Record<string, any> };
@@ -606,6 +648,9 @@ export function createAgentsRoute(engine) {
       engine.invalidateAgentListCache();
       // 触发目标 agent 模块刷新 + prompt 重建
       await engine.updateConfig(agentPartial, { agentId: id });
+      if (hasWorkspaceSkillPolicyPatch(agentPartial.workspace_context) && id === engine.currentAgentId) {
+        engine.syncAgentWorkspaceSkills?.(id);
+      }
       // 记忆总开关：无论是否 active agent，都需要刷新运行时状态（因为 ticker 后台在跑）
       if (agentPartial.memory && "enabled" in agentPartial.memory) {
         engine.setMemoryMasterEnabled(id, agentPartial.memory.enabled !== false);

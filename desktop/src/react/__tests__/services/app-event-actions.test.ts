@@ -138,7 +138,7 @@ describe('handleAppEvent', () => {
     expect(mockState.channelHeaderMembersText).toBe('');
     expect(mockState.channelInfoName).toBe('');
     expect(mockState.channelIsDM).toBe(false);
-    expect(mockState.thinkingLevel).toBe('auto');
+    expect(mockState.thinkingLevel).toBe('high');
     expect(mockState.activities).toEqual([]);
     expect(mockState.homeFolder).toBe('/agent-home');
     expect(mockState.workspaceFolders).toEqual(['/reference']);

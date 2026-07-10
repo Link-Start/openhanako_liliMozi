@@ -32,7 +32,14 @@ function canUseNativeDeskPath() {
 async function loadCwdSkills() {
   const s = useStore.getState();
   if (!s.deskBasePath) {
-    useStore.setState({ cwdSkills: [], cwdSkillsOpen: false });
+    useStore.setState({
+      cwdSkills: [],
+      cwdSkillsOpen: false,
+      cwdSkillPolicy: {
+        discoverProjectSkills: true,
+        discoverCompatibleProjectSkills: false,
+      },
+    });
     return;
   }
   const params = new URLSearchParams();
@@ -47,7 +54,10 @@ async function loadCwdSkills() {
       `/api/desk/skills?${params}`,
     );
     const data = await res.json();
-    useStore.setState({ cwdSkills: data.skills || [] });
+    useStore.setState({
+      cwdSkills: data.skills || [],
+      ...(data.policy ? { cwdSkillPolicy: data.policy } : {}),
+    });
   } catch { /* ignore */ }
 }
 
@@ -255,6 +265,15 @@ export function DeskCwdSkillsPanel() {
                       }}
                     >
                       <span className={css.cwdSkillName}>{s.name}</span>
+                      {s.active && <span className={css.cwdSkillDesc}>{t('desk.cwdSkillActive')}</span>}
+                      {!s.active && s.shadowed && (
+                        <span className={css.cwdSkillDesc}>
+                          {t('desk.cwdSkillShadowed')} · {s.shadowedBy?.source || ''}
+                        </span>
+                      )}
+                      {!s.active && !s.shadowed && (
+                        <span className={css.cwdSkillDesc}>{t('desk.cwdSkillInactive')}</span>
+                      )}
                       {desc && <span className={css.cwdSkillDesc}>{desc}</span>}
                     </div>
                   );

@@ -544,8 +544,14 @@ describe("sessions route", () => {
       memoryEnabled: true,
       planMode: false,
       memoryModelUnavailableReason: null,
-      createDetachedSession: vi.fn(async () => ({ sessionPath: "/tmp/agents/hana/sessions/quick.jsonl", agentId: "hana" })),
+      createDetachedSession: vi.fn(async () => ({
+        sessionPath: "/tmp/agents/hana/sessions/quick.jsonl",
+        sessionId: "sess_quick",
+        agentId: "hana",
+      })),
       persistSessionMeta: vi.fn(),
+      setSessionProjectAssignment: vi.fn(async () => {}),
+      updateConfig: vi.fn(async () => {}),
       getAgent: vi.fn(() => ({ agentName: "Hana" })),
       getSessionWorkspaceFolders: vi.fn(() => [extra]),
       getSessionPermissionMode: vi.fn(() => "auto"),
@@ -561,6 +567,7 @@ describe("sessions route", () => {
         workspaceFolders: [extra],
         agentId: "hana",
         permissionMode: "auto",
+        projectId: "project-quick",
       }),
     });
     const data = await res.json();
@@ -574,12 +581,18 @@ describe("sessions route", () => {
       visibleInSessionList: true,
       permissionMode: "auto",
     });
+    expect(engine.setSessionProjectAssignment).toHaveBeenCalledWith({
+      sessionPath: "/tmp/agents/hana/sessions/quick.jsonl",
+      projectId: "project-quick",
+    });
     expect(data).toMatchObject({
       ok: true,
       path: "/tmp/agents/hana/sessions/quick.jsonl",
+      sessionId: "sess_quick",
       agentId: "hana",
       currentSessionPath: "/tmp/agents/hana/sessions/focused.jsonl",
       permissionMode: "auto",
+      projectId: "project-quick",
     });
     expect(hub.eventBus.emit).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -28,6 +28,7 @@ describe("deliverAgentMessage", () => {
     await deliverAgentMessage(makeEngine(false), { targetSessionId: "sid-1", message: "正文", from: FROM });
     expect(submitDesktopSessionInterjection).not.toHaveBeenCalled();
     const call = vi.mocked(submitDesktopSessionMessage).mock.calls[0][1];
+    expect(call.sessionId).toBe("sid-1");
     expect(call.sessionPath).toBe("/tmp/dst.jsonl");
     expect(call.text).toContain("Hana");
     expect(call.text).toContain("正文");
@@ -42,6 +43,7 @@ describe("deliverAgentMessage", () => {
     expect(submitDesktopSessionMessage).not.toHaveBeenCalled();
     expect(submitDesktopSessionInterjection).toHaveBeenCalledTimes(1);
     const call = vi.mocked(submitDesktopSessionInterjection).mock.calls[0][1];
+    expect(call.sessionId).toBe("sid-1");
     expect(call.sessionPath).toBe("/tmp/dst.jsonl");
     expect(call.text).toContain("Hana");
     expect(call.text).toContain("正文2");

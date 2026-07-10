@@ -4,12 +4,15 @@ import path from "path";
 import {
   buildWin32SandboxTokenDiagnosticArgs,
   buildWin32SandboxHelperArgs,
+  createWin32SandboxTerminalStderrFilter,
+  parseWin32SandboxTerminalRecord,
 } from "../lib/sandbox/win32-sandbox-helper.ts";
 
 describe("buildWin32SandboxHelperArgs", () => {
   it("projects the helper contract as write roots instead of read ACL grants", () => {
     const args = buildWin32SandboxHelperArgs({
       cwd: "C:\\work",
+      timeoutMs: 5000,
       executable: "C:\\Hanako\\resources\\git\\bin\\bash.exe",
       args: ["-lc", "curl https://example.com"],
       grants: {
@@ -31,6 +34,8 @@ describe("buildWin32SandboxHelperArgs", () => {
       "C:\\Users\\Hana\\.hanako\\.ephemeral",
       "--deny-write",
       "C:\\work\\.git",
+      "--timeout-ms",
+      "5000",
       "--",
       "C:\\Hanako\\resources\\git\\bin\\bash.exe",
       "-lc",
@@ -50,9 +55,77 @@ describe("buildWin32SandboxHelperArgs", () => {
     ]));
   });
 
+  it("always emits one strict native timeout argument before the executable boundary", () => {
+    expect(buildWin32SandboxHelperArgs({
+      cwd: "C:\\work",
+      timeoutMs: 0,
+      executable: "C:\\Windows\\System32\\cmd.exe",
+    })).toEqual([
+      "--cwd", "C:\\work",
+      "--timeout-ms", "0",
+      "--", "C:\\Windows\\System32\\cmd.exe",
+    ]);
+
+    for (const timeoutMs of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 0xFFFFFFFF]) {
+      expect(() => buildWin32SandboxHelperArgs({
+        cwd: "C:\\work",
+        timeoutMs,
+        executable: "C:\\Windows\\System32\\cmd.exe",
+      })).toThrow(/timeoutMs/);
+    }
+  });
+
+  it("parses the last versioned native terminal record without confusing exit 124 with timeout", () => {
+    const output = [
+      "child output",
+      'hana-win-sandbox: terminal-v1 status="timed_out" exitCode="124" timeoutMs="5000" win32Error="0"',
+      'hana-win-sandbox: terminal-v1 status="exited" exitCode="124" timeoutMs="5000" win32Error="0"',
+    ].join("\n");
+
+    expect(parseWin32SandboxTerminalRecord(output)).toEqual({
+      version: 1,
+      status: "exited",
+      exitCode: 124,
+      timeoutMs: 5000,
+      win32Error: 0,
+    });
+  });
+
+  it("filters only exact terminal records across stderr chunk boundaries and flushes other bytes unchanged", () => {
+    const forwarded: Buffer[] = [];
+    const filter = createWin32SandboxTerminalStderrFilter({
+      onData: (data: Buffer) => forwarded.push(Buffer.from(data)),
+    });
+
+    filter.push(Buffer.from([
+      "warning one\r\n",
+      "prefix hana-win-sandbox: terminal-v1 is ordinary stderr\n",
+      'hana-win-sandbox: terminal-v1 status="tim',
+    ].join("")));
+    filter.push(Buffer.from([
+      'ed_out" exitCode="124" timeoutMs="5000" win32Error="0"\r\n',
+      "warning tail",
+    ].join("")));
+    filter.flush();
+
+    expect(Buffer.concat(forwarded).toString("utf8")).toBe([
+      "warning one\r\n",
+      "prefix hana-win-sandbox: terminal-v1 is ordinary stderr\n",
+      "warning tail",
+    ].join(""));
+    expect(filter.terminalRecord).toEqual({
+      version: 1,
+      status: "timed_out",
+      exitCode: 124,
+      timeoutMs: 5000,
+      win32Error: 0,
+    });
+  });
+
   it("builds token diagnostic args without changing the executable contract", () => {
     expect(buildWin32SandboxTokenDiagnosticArgs({
       cwd: "C:\\work",
+      timeoutMs: 0,
       executable: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       args: ["-NoLogo", "-Command", "Write-Output ok"],
       grants: {
@@ -70,6 +143,8 @@ describe("buildWin32SandboxHelperArgs", () => {
       "C:\\Users\\Hana\\.hanako\\.ephemeral",
       "--deny-write",
       "C:\\work\\protected-cache",
+      "--timeout-ms",
+      "0",
       "--",
       "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "-NoLogo",

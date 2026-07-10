@@ -54,4 +54,37 @@ describe("spawnAndStream", () => {
     expect(caught.message).toContain(missingCwd);
     expect(caught.message.toLowerCase()).toContain("working directory");
   });
+
+  it("can watchdog only the helper process while preserving the native timeout label", async () => {
+    await expect(spawnAndStream(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], {
+      cwd: process.cwd(),
+      env: process.env,
+      onData: () => {},
+      timeout: 0.05,
+      timeoutErrorValue: 7,
+      killMode: "process",
+    } as any)).rejects.toThrow("timeout:7");
+  });
+
+  it("can route stdout and stderr to distinct callbacks without duplicating them through onData", async () => {
+    const combined: string[] = [];
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const result = await spawnAndStream(process.execPath, [
+      "-e",
+      'process.stdout.write("out\\n"); process.stderr.write("err\\n")',
+    ], {
+      cwd: process.cwd(),
+      env: process.env,
+      onData: (data: Buffer) => combined.push(data.toString("utf8")),
+      onStdout: (data: Buffer) => stdout.push(data.toString("utf8")),
+      onStderr: (data: Buffer) => stderr.push(data.toString("utf8")),
+      timeout: 5,
+    } as any) as { exitCode: number | null };
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.join("")).toBe("out\n");
+    expect(stderr.join("")).toBe("err\n");
+    expect(combined).toEqual([]);
+  });
 });

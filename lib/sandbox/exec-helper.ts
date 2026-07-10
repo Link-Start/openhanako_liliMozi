@@ -20,11 +20,27 @@ const EXIT_STDIO_GRACE_MS = 100;
  * @param {string} opts.cwd
  * @param {object} [opts.env]
  * @param {(data: Buffer) => void} opts.onData
+ * @param {(data: Buffer) => void} [opts.onStdout] stdout 专用回调；提供后不再复制到 onData
+ * @param {(data: Buffer) => void} [opts.onStderr] stderr 专用回调；提供后不再复制到 onData
  * @param {AbortSignal} [opts.signal]
- * @param {number} [opts.timeout]  秒
+ * @param {number} [opts.timeout]  watchdog 秒
+ * @param {number} [opts.timeoutErrorValue] timeout 错误里报告的业务秒数
+ * @param {'tree'|'process'} [opts.killMode] process 只终止直接子进程；用于持有私有 Job 的 helper
+ * @param {number} [opts.exitStdioGraceMs] 直接子进程退出后等待 stdio 收尾的上限
  * @returns {Promise<{exitCode: number|null}>}
  */
-export function spawnAndStream(cmd, args, { cwd, env, onData, signal, timeout }) {
+export function spawnAndStream(cmd, args, {
+  cwd,
+  env,
+  onData,
+  onStdout = onData,
+  onStderr = onData,
+  signal,
+  timeout,
+  timeoutErrorValue = timeout,
+  killMode = "tree",
+  exitStdioGraceMs = EXIT_STDIO_GRACE_MS,
+}) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd,
@@ -37,8 +53,8 @@ export function spawnAndStream(cmd, args, { cwd, env, onData, signal, timeout })
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    child.stdout.on("data", onData);
-    child.stderr.on("data", onData);
+    child.stdout.on("data", onStdout);
+    child.stderr.on("data", onStderr);
 
     let timedOut = false;
     let settled = false;
@@ -53,12 +69,12 @@ export function spawnAndStream(cmd, args, { cwd, env, onData, signal, timeout })
     if (timeout != null && timeout > 0) {
       timer = setTimeout(() => {
         timedOut = true;
-        killTree(child.pid);
+        killSpawnedProcess(child, killMode);
       }, timeout * 1000);
     }
 
     // abort signal：杀进程，close 里再 reject
-    const onAbort = () => killTree(child.pid);
+    const onAbort = () => killSpawnedProcess(child, killMode);
     if (signal) {
       if (signal.aborted) {
         onAbort();
@@ -74,6 +90,8 @@ export function spawnAndStream(cmd, args, { cwd, env, onData, signal, timeout })
       child.removeListener("close", onClose);
       child.removeListener("error", onError);
       child.removeListener("exit", onExit);
+      child.stdout?.removeListener("data", onStdout);
+      child.stderr?.removeListener("data", onStderr);
       child.stdout?.removeListener("end", onStdoutEnd);
       child.stderr?.removeListener("end", onStderrEnd);
     };
@@ -91,7 +109,7 @@ export function spawnAndStream(cmd, args, { cwd, env, onData, signal, timeout })
         return;
       }
       if (timedOut) {
-        reject(new Error(`timeout:${timeout}`));
+        reject(new Error(`timeout:${timeoutErrorValue}`));
         return;
       }
       resolve({ exitCode: code });
@@ -121,7 +139,7 @@ export function spawnAndStream(cmd, args, { cwd, env, onData, signal, timeout })
       if (!settled) {
         // 后台孙进程可能继承 stdout/stderr pipe。直接子进程退出后只给
         // stdio 一个短暂收尾窗口，避免常驻后台进程把工具调用永久拖住。
-        postExitTimer = setTimeout(() => finalize(code), EXIT_STDIO_GRACE_MS);
+        postExitTimer = setTimeout(() => finalize(code), exitStdioGraceMs);
       }
     };
 
@@ -142,6 +160,15 @@ export function spawnAndStream(cmd, args, { cwd, env, onData, signal, timeout })
     child.once("close", onClose);
     child.once("error", onError);
   });
+}
+
+function killSpawnedProcess(child, killMode) {
+  if (!child?.pid) return;
+  if (killMode === "process") {
+    try { child.kill("SIGKILL"); } catch {}
+    return;
+  }
+  killTree(child.pid);
 }
 
 function killTree(pid) {

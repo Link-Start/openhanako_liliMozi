@@ -1781,6 +1781,13 @@ export function createSessionsRoute(engine, hub = null) {
         ? body.workspaceFolders.filter(p => typeof p === "string" && p.trim())
         : [];
       const memFlag = memoryEnabled !== false;
+      const projectId = Object.prototype.hasOwnProperty.call(body, "projectId")
+        ? (
+            typeof engine.normalizeSessionProjectAssignmentId === "function"
+              ? engine.normalizeSessionProjectAssignmentId(body.projectId)
+              : (typeof body.projectId === "string" && body.projectId.trim() ? body.projectId.trim() : null)
+          )
+        : null;
 
       const detachedOptions: {
         cwd: any;
@@ -1811,7 +1818,15 @@ export function createSessionsRoute(engine, hub = null) {
       const result = await engine.createDetachedSession(detachedOptions);
       const newSessionPath = result.sessionPath;
       const newAgentId = result.agentId;
+      const newSessionId = result.sessionId || engine.getSessionIdForPath?.(newSessionPath) || null;
       engine.persistSessionMeta?.();
+      if (projectId && typeof engine.setSessionProjectAssignment === "function") {
+        await engine.setSessionProjectAssignment({ sessionPath: newSessionPath, projectId });
+      }
+      if (cwd && body.recordWorkspaceHistory === true) {
+        const history = mergeWorkspaceHistory(engine.config?.cwd_history, [cwd]);
+        await engine.updateConfig?.({ last_cwd: cwd, cwd_history: history });
+      }
 
       const resolvedPermissionMode = engine.getSessionPermissionMode?.(newSessionPath)
         || permissionMode
@@ -1820,11 +1835,13 @@ export function createSessionsRoute(engine, hub = null) {
       const response = {
         ok: true,
         path: newSessionPath,
+        sessionId: newSessionId,
         cwd: result.session?.sessionManager?.getCwd?.() || cwd || engine.cwd || null,
         workspaceFolders: engine.getSessionWorkspaceFolders?.(newSessionPath) || workspaceFolders,
         authorizedFolders: engine.getSessionAuthorizedFolders?.(newSessionPath) || [],
         agentId: newAgentId,
         agentName: engine.getAgent?.(newAgentId)?.agentName || newAgentId || engine.agentName,
+        projectId,
         currentSessionPath: engine.currentSessionPath || null,
         planMode: resolvedPermissionMode === "read_only",
         permissionMode: resolvedPermissionMode,

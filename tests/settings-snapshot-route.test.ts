@@ -183,6 +183,22 @@ describe("settings snapshot route", () => {
     expect(body.userProfile).toBe("user profile");
   });
 
+  it("accepts a safe legacy uppercase and underscore agent id", async () => {
+    const engine = await makeEngine();
+    const legacyId = "Legacy_AGENT-1";
+    await fs.rename(
+      path.join(engine.agentsDir, "agent-a"),
+      path.join(engine.agentsDir, legacyId),
+    );
+    const app = new Hono();
+    app.route("/api", createSettingsSnapshotRoute(engine));
+
+    const res = await app.request(`/api/settings/snapshot?agentId=${legacyId}`);
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).agentId).toBe(legacyId);
+  });
+
   it("includes first-frame access and bridge truth in the unified settings snapshot", async () => {
     const engine = await makeEngine();
     const bridgeManager = {

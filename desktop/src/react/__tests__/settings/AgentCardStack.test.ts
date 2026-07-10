@@ -6,7 +6,13 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AgentCardStack, calculateAgentCardGeometry } from '../../settings/tabs/agent/AgentCardStack';
+import {
+  AgentCardStack,
+  calculateAgentCardGeometry,
+  calculateNearestRevealScrollLeft,
+} from '../../settings/tabs/agent/AgentCardStack';
+import { useSettingsStore } from '../../settings/store';
+import { hanaFetch } from '../../settings/api';
 
 vi.mock('../../settings/store', () => ({
   useSettingsStore: Object.assign(vi.fn(), { setState: vi.fn() }),
@@ -67,9 +73,157 @@ describe('AgentCardStack geometry', () => {
     expect(geometry.spreadWidth).toBe(314);
     expect(geometry.positions).toEqual([18, 90, 162, 234]);
   });
+
+  it('reveals an offscreen card by the nearest edge instead of centering it', () => {
+    expect(calculateNearestRevealScrollLeft({
+      scrollLeft: 100,
+      viewportWidth: 260,
+      itemLeft: 390,
+      itemRight: 452,
+      edgePadding: 18,
+      maxScrollLeft: 500,
+    })).toBe(210);
+
+    expect(calculateNearestRevealScrollLeft({
+      scrollLeft: 210,
+      viewportWidth: 260,
+      itemLeft: 120,
+      itemRight: 182,
+      edgePadding: 18,
+      maxScrollLeft: 500,
+    })).toBe(102);
+  });
 });
 
 describe('AgentCardStack actions', () => {
+  it('keeps avatar URLs stable across hover renders and changes them only with avatarRevision', () => {
+    const avatarAgents = [
+      { ...agents[0], hasAvatar: true, avatarRevision: '1000-42' },
+    ];
+    const props = {
+      agents: avatarAgents,
+      selectedId: 'hana',
+      currentAgentId: 'hana',
+      onSelect: vi.fn(),
+      onAvatarClick: vi.fn(),
+      onSetPrimary: vi.fn(),
+      onDelete: vi.fn(),
+      onExport: vi.fn(),
+      onAdd: vi.fn(),
+    };
+    const { rerender } = render(React.createElement(AgentCardStack, props));
+    const stack = screen.getByText('小花').closest('[class*="agent-cards"]') as HTMLElement;
+    const avatar = stack.querySelector('img') as HTMLImageElement;
+
+    expect(avatar.getAttribute('src')).toContain('?v=1000-42');
+    const initialSrc = avatar.getAttribute('src');
+    fireEvent.pointerEnter(stack);
+    fireEvent.pointerLeave(stack);
+    expect(avatar.getAttribute('src')).toBe(initialSrc);
+
+    rerender(React.createElement(AgentCardStack, {
+      ...props,
+      agents: [{ ...avatarAgents[0], avatarRevision: '2000-43' }],
+    }));
+    expect(avatar.getAttribute('src')).toContain('?v=2000-43');
+  });
+
+  it('saves expanded scroll on collapse and restores it on the next expansion', () => {
+    render(React.createElement(AgentCardStack, {
+      agents,
+      selectedId: null,
+      currentAgentId: 'hana',
+      onSelect: vi.fn(),
+      onAvatarClick: vi.fn(),
+      onSetPrimary: vi.fn(),
+      onDelete: vi.fn(),
+      onExport: vi.fn(),
+      onAdd: vi.fn(),
+    }));
+    const stack = screen.getByText('DeepSeek').closest('[class*="agent-cards"]') as HTMLElement;
+    Object.defineProperty(stack, 'scrollWidth', { configurable: true, value: 900 });
+    Object.defineProperty(stack, 'clientWidth', { configurable: true, value: 260 });
+
+    fireEvent.pointerEnter(stack);
+    stack.scrollLeft = 184;
+    fireEvent.pointerLeave(stack);
+    expect(stack.scrollLeft).toBe(0);
+
+    fireEvent.pointerEnter(stack);
+    expect(stack.scrollLeft).toBe(184);
+  });
+
+  it('keeps hover, focus, and drag expansion ownership independent and cleans up pointer cancellation', () => {
+    render(React.createElement(AgentCardStack, {
+      agents,
+      selectedId: 'hana',
+      currentAgentId: 'hana',
+      onSelect: vi.fn(),
+      onAvatarClick: vi.fn(),
+      onSetPrimary: vi.fn(),
+      onDelete: vi.fn(),
+      onExport: vi.fn(),
+      onAdd: vi.fn(),
+    }));
+    const stack = screen.getByText('DeepSeek').closest('[class*="agent-cards"]') as HTMLElement;
+    const card = screen.getByText('DeepSeek').closest('[data-agent-id="deepseek"]') as HTMLElement;
+    vi.spyOn(stack, 'matches').mockReturnValue(true);
+    Object.defineProperty(card, 'setPointerCapture', { configurable: true, value: vi.fn() });
+
+    fireEvent.pointerEnter(stack);
+    fireEvent.focus(stack);
+    fireEvent.pointerLeave(stack);
+    expect(stack.className).toContain('expanded');
+
+    fireEvent.pointerDown(card, { button: 0, pointerId: 7, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(card, { pointerId: 7, clientX: 20, clientY: 0 });
+    fireEvent.blur(stack, { relatedTarget: null });
+    expect(stack.className).toContain('expanded');
+
+    fireEvent.pointerCancel(card, { pointerId: 7 });
+    expect(stack.className).not.toContain('expanded');
+
+    fireEvent.pointerDown(card, { button: 0, pointerId: 8, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(card, { pointerId: 8, clientX: 20, clientY: 0 });
+    expect(stack.className).toContain('expanded');
+    fireEvent.lostPointerCapture(card, { pointerId: 8 });
+    expect(stack.className).not.toContain('expanded');
+    expect(useSettingsStore.setState).not.toHaveBeenCalled();
+    expect(hanaFetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the existing drag reorder commit semantics on pointerup', () => {
+    vi.mocked(hanaFetch).mockResolvedValue(new Response('{}'));
+    render(React.createElement(AgentCardStack, {
+      agents,
+      selectedId: 'hana',
+      currentAgentId: 'hana',
+      onSelect: vi.fn(),
+      onAvatarClick: vi.fn(),
+      onSetPrimary: vi.fn(),
+      onDelete: vi.fn(),
+      onExport: vi.fn(),
+      onAdd: vi.fn(),
+    }));
+    const stack = screen.getByText('DeepSeek').closest('[class*="agent-cards"]') as HTMLElement;
+    const card = screen.getByText('小花').closest('[data-agent-id="hana"]') as HTMLElement;
+    vi.spyOn(stack, 'matches').mockReturnValue(true);
+    Object.defineProperty(card, 'setPointerCapture', { configurable: true, value: vi.fn() });
+
+    fireEvent.pointerEnter(stack);
+    fireEvent.pointerDown(card, { button: 0, pointerId: 9, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(card, { pointerId: 9, clientX: 100, clientY: 0 });
+    fireEvent.pointerUp(card, { pointerId: 9, clientX: 100, clientY: 0 });
+
+    expect(useSettingsStore.setState).toHaveBeenCalledWith({
+      agents: [agents[1], agents[0], agents[2]],
+    });
+    expect(hanaFetch).toHaveBeenCalledWith('/api/agents/order', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ order: ['deepseek', 'hana', 'maomao'] }),
+    }));
+  });
+
   it('lets the page own wheel scrolling while the stack is collapsed and captures horizontal stack scrolling only after expansion', () => {
     render(React.createElement(AgentCardStack, {
       agents,

@@ -41,11 +41,10 @@ describe("resolveAgentParam", () => {
   });
 
   it("prefers id over a colliding name", () => {
-    // 有个 agent.id == "明"（极少见但合法），另一个 agent.name == "明"
     const tricky = [
-      { id: "明", name: "Alpha" },
-      { id: "ming", name: "明" },
+      { id: "alpha", name: "Ming" },
+      { id: "ming", name: "Alpha" },
     ];
-    expect(resolveAgentParam(tricky, "明")).toEqual({ ok: true, agentId: "明" });
+    expect(resolveAgentParam(tricky, "ming")).toEqual({ ok: true, agentId: "ming" });
   });
 });

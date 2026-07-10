@@ -70,6 +70,7 @@ describe("AgentManager.createAgent default skills.enabled", () => {
   let productDir;
   let mgr;
   let skillsMock;
+  let prefsMock;
 
   function seedTemplate(enabledLiteral = '["skill-creator"]') {
     fs.mkdirSync(path.join(productDir, "yuan"), { recursive: true });
@@ -99,11 +100,7 @@ describe("AgentManager.createAgent default skills.enabled", () => {
       productDir,
       userDir: tempDir,
       channelsDir: tempDir,
-      getPrefs: () => ({
-        getPrimaryAgent: () => null,
-        getPreferences: () => ({}),
-        savePrimaryAgent: vi.fn(),
-      }),
+      getPrefs: () => prefsMock,
       getModels: () => ({
         resolveModelWithCredentials: vi.fn(),
         defaultModel: { id: "test-model", provider: "test-provider" },
@@ -144,6 +141,11 @@ describe("AgentManager.createAgent default skills.enabled", () => {
       },
       syncAgentSkills: vi.fn(),
     };
+    prefsMock = {
+      getPrimaryAgent: vi.fn(() => null),
+      getPreferences: vi.fn(() => ({})),
+      savePrimaryAgent: vi.fn(),
+    };
 
     mgr = makeMgr();
   });
@@ -165,6 +167,31 @@ describe("AgentManager.createAgent default skills.enabled", () => {
     const cfgPath = path.join(agentsDir, newId, "config.yaml");
     const cfg = YAML.load(fs.readFileSync(cfgPath, "utf-8"));
     expect(cfg.skills.enabled).toEqual(["pdf", "docx"]);
+  });
+
+  it.each([
+    "明",
+    "agent😀",
+    "agent name",
+    "agent.name",
+    "agent/name",
+    "agent\\name",
+    "",
+    "___",
+    "---",
+    "CON",
+  ])("rejects invalid explicit agent id %j before creating any files", async (id) => {
+    await expect(mgr.createAgent({
+      name: "Ming",
+      id,
+      yuan: "ming",
+    })).rejects.toMatchObject({
+      code: "INVALID_AGENT_ID",
+      statusCode: 400,
+    });
+
+    expect(fs.readdirSync(agentsDir)).toEqual([]);
+    expect(skillsMock.syncAgentSkills).not.toHaveBeenCalled();
   });
 
   it("falls back to seeded template default when snapshot is empty", async () => {
@@ -310,5 +337,81 @@ describe("AgentManager.createAgent default skills.enabled", () => {
 
     expect(agents.find(a => a.id === "memory-off").memoryMasterEnabled).toBe(false);
     expect(agents.find(a => a.id === "memory-on").memoryMasterEnabled).toBe(true);
+    expect(agents.find(a => a.id === "memory-on").avatarRevision).toBeNull();
+  });
+
+  it("returns a stable avatar revision and changes it only when avatar metadata changes", () => {
+    const agentId = "avatar-agent";
+    const agentDir = path.join(agentsDir, agentId);
+    const avatarDir = path.join(agentDir, "avatars");
+    const avatarPath = path.join(avatarDir, "agent.png");
+    fs.mkdirSync(avatarDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Avatar Agent\n", "utf-8");
+    fs.writeFileSync(avatarPath, Buffer.from("first-avatar"));
+    fs.utimesSync(avatarPath, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
+
+    const first = mgr.listAgents().find(agent => agent.id === agentId);
+    const firstStat = fs.statSync(avatarPath);
+    expect(first.hasAvatar).toBe(true);
+    expect(first.avatarRevision).toBe(`${firstStat.mtimeMs}-${firstStat.size}`);
+
+    mgr.invalidateAgentListCache();
+    const unchanged = mgr.listAgents().find(agent => agent.id === agentId);
+    expect(unchanged.avatarRevision).toBe(first.avatarRevision);
+
+    fs.writeFileSync(avatarPath, Buffer.from("second-avatar-is-larger"));
+    fs.utimesSync(avatarPath, new Date(1_700_000_001_000), new Date(1_700_000_001_000));
+    mgr.invalidateAgentListCache();
+    const changed = mgr.listAgents().find(agent => agent.id === agentId);
+    expect(changed.avatarRevision).not.toBe(first.avatarRevision);
+  });
+
+  it("filters legacy non-ASCII agent directories from runtime discovery without deleting them", async () => {
+    const legacyDir = path.join(agentsDir, "明");
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, "config.yaml"), "agent:\n  name: Legacy Ming\n", "utf-8");
+
+    expect(mgr.listAgents()).toEqual([]);
+    await expect(mgr.ensureAgentRuntime("明")).rejects.toMatchObject({ code: "INVALID_AGENT_ID" });
+    expect(fs.existsSync(path.join(legacyDir, "config.yaml"))).toBe(true);
+  });
+
+  it("keeps safe legacy uppercase and underscore agent ids discoverable", () => {
+    const legacyId = "Legacy_AGENT-1";
+    const legacyDir = path.join(agentsDir, legacyId);
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, "config.yaml"), "agent:\n  name: Legacy Agent\n", "utf-8");
+
+    expect(mgr.listAgents().map(agent => agent.id)).toEqual([legacyId]);
+  });
+
+  it("rejects an invalid primary agent id before writing preferences", () => {
+    const invalidId = "中文助手";
+    const invalidDir = path.join(agentsDir, invalidId);
+    fs.mkdirSync(invalidDir, { recursive: true });
+    fs.writeFileSync(path.join(invalidDir, "config.yaml"), "agent:\n  name: Invalid\n", "utf-8");
+
+    let caught;
+    try {
+      mgr.setPrimaryAgent(invalidId);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toMatchObject({
+      code: "INVALID_AGENT_ID",
+      statusCode: 400,
+    });
+    expect(prefsMock.savePrimaryAgent).not.toHaveBeenCalled();
+  });
+
+  it("persists an existing safe ASCII primary agent id", () => {
+    const agentId = "Legacy_AGENT-1";
+    const agentDir = path.join(agentsDir, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Legacy\n", "utf-8");
+
+    mgr.setPrimaryAgent(agentId);
+
+    expect(prefsMock.savePrimaryAgent).toHaveBeenCalledWith(agentId);
   });
 });

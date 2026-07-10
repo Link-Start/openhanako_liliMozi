@@ -8,6 +8,7 @@ import { useStore } from '../../stores';
 
 const mocks = vi.hoisted(() => ({
   clearContent: vi.fn(),
+  ensureSession: vi.fn(),
   hanaFetch: vi.fn(),
   upsertOptimisticSessionFirstMessage: vi.fn(),
   wsSend: vi.fn(),
@@ -71,7 +72,7 @@ vi.mock('../../hooks/use-hana-fetch', () => ({
 }));
 
 vi.mock('../../stores/session-actions', () => ({
-  ensureSession: vi.fn(async () => true),
+  ensureSession: mocks.ensureSession,
   loadSessions: vi.fn(),
   upsertOptimisticSessionFirstMessage: mocks.upsertOptimisticSessionFirstMessage,
 }));
@@ -113,6 +114,7 @@ vi.mock('../../components/input/InputControlBar', () => ({
     isStreaming,
     hasInput,
     onSteer,
+    onStop,
     showAudioInput,
     onAudioToggle,
     audioRecordingActive,
@@ -122,6 +124,7 @@ vi.mock('../../components/input/InputControlBar', () => ({
     isStreaming?: boolean;
     hasInput?: boolean;
     onSteer?: () => void;
+    onStop?: () => void;
     showAudioInput?: boolean;
     onAudioToggle?: () => void;
     audioRecordingActive?: boolean;
@@ -145,6 +148,9 @@ vi.mock('../../components/input/InputControlBar', () => ({
         audioRecordingActive ? 'stop' : 'record',
       )
       : null,
+    isStreaming
+      ? React.createElement('button', { type: 'button', 'data-testid': 'stop', onClick: onStop }, 'stop')
+      : null,
   ),
 }));
 
@@ -167,6 +173,15 @@ vi.mock('../../services/stream-resume', () => ({
 function seedSession() {
   useStore.setState({
     currentSessionPath: '/session/media.jsonl',
+    currentSessionId: 'sess_media',
+    currentAgentId: 'hana',
+    sessions: [{
+      path: '/session/media.jsonl',
+      sessionId: 'sess_media',
+      agentId: 'hana',
+      agentName: 'Hana',
+    }],
+    sessionLocatorsById: { sess_media: { path: '/session/media.jsonl' } },
     connected: true,
     pendingNewSession: false,
     streamingSessions: [],
@@ -256,6 +271,11 @@ describe('InputArea media send', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.ensureSession.mockResolvedValue({
+      sessionId: 'sess_media',
+      sessionPath: '/session/media.jsonl',
+      agentId: 'hana',
+    });
     seedSession();
     mocks.hanaFetch.mockResolvedValue(new Response(JSON.stringify({
       models: {
@@ -292,6 +312,63 @@ describe('InputArea media send', () => {
       visionAuxiliary: true,
     });
     expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/preferences/models', undefined);
+  });
+
+  it('keeps an async pending-session submission bound to its original session and leaves the new composer intact (#2078)', async () => {
+    let releaseCreate!: () => void;
+    const createGate = new Promise<void>((resolve) => { releaseCreate = resolve; });
+    mocks.ensureSession.mockImplementationOnce(async (draftId: string) => {
+      expect(draftId).toBe('draft-a');
+      await createGate;
+      return { sessionId: 'sess_a', sessionPath: '/session/a.jsonl', agentId: 'hana' };
+    });
+    useStore.setState({
+      currentSessionPath: null,
+      currentSessionId: null,
+      pendingNewSession: true,
+      pendingDraftId: 'draft-a',
+      attachedFiles: [{
+        fileId: 'sf_a',
+        path: '/tmp/hana/session-files/a.png',
+        name: 'a.png',
+        isDirectory: false,
+      }],
+      attachedFilesBySession: {},
+      sessions: [],
+    } as never);
+
+    render(React.createElement(InputArea));
+    fireEvent.click(screen.getByTestId('send'));
+    await waitFor(() => expect(mocks.ensureSession).toHaveBeenCalledTimes(1));
+
+    useStore.setState({
+      currentSessionPath: '/session/b.jsonl',
+      currentSessionId: 'sess_b',
+      currentAgentId: 'hana',
+      pendingNewSession: false,
+      pendingDraftId: null,
+      sessions: [{ path: '/session/b.jsonl', sessionId: 'sess_b', agentId: 'hana', agentName: 'Hana' }],
+      sessionLocatorsById: { sess_b: { path: '/session/b.jsonl' } },
+      attachedFiles: [{ fileId: 'sf_b', path: '/tmp/b.txt', name: 'b.txt', isDirectory: false }],
+      attachedFilesBySession: {
+        sess_b: [{ fileId: 'sf_b', path: '/tmp/b.txt', name: 'b.txt', isDirectory: false }],
+      },
+    } as never);
+    releaseCreate();
+
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload).toMatchObject({
+      type: 'prompt',
+      sessionId: 'sess_a',
+      sessionPath: '/session/a.jsonl',
+    });
+    expect(payload.displayMessage.attachments).toEqual([
+      expect.objectContaining({ fileId: 'sf_a', path: '/tmp/hana/session-files/a.png' }),
+    ]);
+    expect(useStore.getState().attachedFiles).toEqual([
+      expect.objectContaining({ fileId: 'sf_b', path: '/tmp/b.txt' }),
+    ]);
   });
 
   it('keeps the send alive as file-only when the text model has no auxiliary vision (#1647)', async () => {
@@ -674,6 +751,7 @@ describe('InputArea media send', () => {
     expect(payload.text).toBe('[附件] voice.wav');
     expect(payload.sessionFileRefs).toEqual([{
       fileId: 'sf_voice',
+      sessionId: 'sess_media',
       sessionPath: '/session/media.jsonl',
       label: 'voice.wav',
       kind: 'attachment',
@@ -713,6 +791,7 @@ describe('InputArea media send', () => {
     expect(payload.text).toBe('[附件] clip.mp4');
     expect(payload.sessionFileRefs).toEqual([{
       fileId: 'sf_clip',
+      sessionId: 'sess_media',
       sessionPath: '/session/media.jsonl',
       label: 'clip.mp4',
       kind: 'attachment',
@@ -756,6 +835,7 @@ describe('InputArea media send', () => {
     expect(payload.text).not.toContain('/Users/testuser/Desktop/测试123');
     expect(payload.sessionFileRefs).toEqual([{
       fileId: 'sf_cjk_digits',
+      sessionId: 'sess_media',
       sessionPath: '/session/media.jsonl',
       label: '报告2026.txt',
       kind: 'attachment',
@@ -800,6 +880,7 @@ describe('InputArea media send', () => {
     expect(payload.text).toBe('[附件] note.txt');
     expect(payload.sessionFileRefs).toEqual([{
       fileId: 'sf_note',
+      sessionId: 'sess_media',
       sessionPath: '/session/media.jsonl',
       label: 'note.txt',
       kind: 'attachment',
@@ -825,6 +906,26 @@ describe('InputArea media send', () => {
 
     await waitFor(() => {
       expect(mocks.wsSend).not.toHaveBeenCalled();
+    });
+  });
+
+  it('binds Stop to the focused session current stream identity (#2078)', async () => {
+    useStore.setState({
+      streamingSessions: ['sess_media'],
+      activeSessionStreams: {
+        sess_media: { streamId: 'stream-current', turnId: 'turn-current' },
+      },
+    } as never);
+
+    render(React.createElement(InputArea));
+    fireEvent.click(screen.getByTestId('stop'));
+
+    expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(mocks.wsSend.mock.calls[0][0]))).toEqual({
+      type: 'abort',
+      sessionId: 'sess_media',
+      sessionPath: '/session/media.jsonl',
+      streamId: 'stream-current',
     });
   });
 });

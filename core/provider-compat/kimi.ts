@@ -42,10 +42,18 @@ function usesFixedKimiCodingUtilityTemperature(model, options) {
     && lower(model?.id) === "kimi-for-coding";
 }
 
-function reasoningEffortForLevel(level) {
-  if (level === "low") return "low";
-  if (level === "medium") return "medium";
-  if (level === "high" || level === "xhigh" || level === "max") return "high";
+function reasoningEffortForLevel(level, model = null) {
+  const normalized = lower(level);
+  const mapKey = normalized === "max" ? "xhigh" : normalized;
+  const levelMap = model?.thinkingLevelMap;
+  if (levelMap && typeof levelMap === "object" && hasOwn(levelMap, mapKey)) {
+    const mapped = levelMap[mapKey];
+    if (mapped === null) return null;
+    if (typeof mapped === "string" && mapped.trim()) return mapped.trim();
+  }
+  if (normalized === "low") return "low";
+  if (normalized === "medium" || normalized === "high") return "high";
+  if (normalized === "xhigh" || normalized === "max") return "max";
   return null;
 }
 
@@ -86,7 +94,7 @@ function shouldEnableThinking(payload, model, options) {
     model?.reasoning === true
     || payload.reasoning_effort
     || payload.thinking
-    || reasoningEffortForLevel(options?.reasoningLevel)
+    || reasoningEffortForLevel(options?.reasoningLevel, model)
   );
 }
 
@@ -273,7 +281,7 @@ export function apply(payload, model, options: Record<string, unknown> = {}) {
   const p = editable();
   p.thinking = normalizeThinking(p.thinking);
 
-  const effort = reasoningEffortForLevel(options?.reasoningLevel);
+  const effort = reasoningEffortForLevel(options?.reasoningLevel, model);
   if (effort) {
     p.reasoning_effort = effort;
   }

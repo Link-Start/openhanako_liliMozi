@@ -9,6 +9,17 @@ export interface CwdSkillInfo {
   filePath: string;
   baseDir: string;
   workspaceMountId?: string | null;
+  sourceCategory?: 'standard' | 'compatible' | null;
+  sourceIdentity?: Record<string, unknown> | null;
+  active?: boolean;
+  shadowed?: boolean;
+  shadowedBy?: { source?: string; sourceIdentity?: Record<string, unknown> } | null;
+  inactiveReason?: 'policy-disabled' | 'shadowed' | string | null;
+}
+
+export interface CwdSkillPolicy {
+  discoverProjectSkills: boolean;
+  discoverCompatibleProjectSkills: boolean;
 }
 
 export interface WorkspaceDeskState {
@@ -19,6 +30,7 @@ export interface WorkspaceDeskState {
   deskSelectedPath: string;
   deskJianContent: string | null;
   cwdSkills: CwdSkillInfo[];
+  cwdSkillPolicy?: CwdSkillPolicy;
   cwdSkillsOpen: boolean;
   jianDrawerOpen: boolean;
   rightWorkspaceTab: RightWorkspaceTab;
@@ -39,6 +51,7 @@ export interface DeskSlice {
   deskSelectedPath: string;
   deskJianContent: string | null;
   cwdSkills: CwdSkillInfo[];
+  cwdSkillPolicy: CwdSkillPolicy;
   cwdSkillsOpen: boolean;
   homeFolder: string | null;
   selectedFolder: string | null;
@@ -91,6 +104,10 @@ export const createDeskSlice = (
   deskSelectedPath: '',
   deskJianContent: null,
   cwdSkills: [],
+  cwdSkillPolicy: {
+    discoverProjectSkills: true,
+    discoverCompatibleProjectSkills: false,
+  },
   cwdSkillsOpen: false,
   homeFolder: null,
   selectedFolder: null,

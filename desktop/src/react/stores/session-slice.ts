@@ -139,6 +139,8 @@ export interface SessionSlice {
   pendingSessionSwitchPath: string | null;
   sessionStreams: Record<string, SessionStream>;
   pendingNewSession: boolean;
+  /** 当前首页新会话草稿的实例身份；每次重新进入新会话页都会更换，防止迟到创建响应 ABA。 */
+  pendingDraftId: string | null;
   pendingProjectId: string | null;
   pendingNewSessionThinkingLevel: ThinkingLevel | null;
   pendingNewSessionPermissionMode: SessionPermissionMode | null;
@@ -192,6 +194,7 @@ export const createSessionSlice = (
   pendingSessionSwitchPath: null,
   sessionStreams: {},
   pendingNewSession: false,
+  pendingDraftId: null,
   pendingProjectId: null,
   pendingNewSessionThinkingLevel: null,
   pendingNewSessionPermissionMode: null,

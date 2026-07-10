@@ -94,6 +94,7 @@ export function recordMessageOriginEntry(session: any, sessionPath: string, disp
 }
 
 export async function submitDesktopSessionMessage(engine: any, opts: {
+  sessionId?: string;
   sessionPath?: string;
   text?: string;
   images?: Array<{ type: string; data: string; mimeType: string }>;
@@ -111,7 +112,8 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
   context?: any;
 } = {}) {
   const {
-    sessionPath,
+    sessionId: requestedSessionId,
+    sessionPath: requestedSessionPath,
     text,
     images,
     imageAttachmentPaths,
@@ -131,9 +133,8 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
   if (!engine || typeof engine.ensureSessionLoaded !== "function" || typeof engine.promptSession !== "function") {
     throw new Error("desktop-session-submit: engine session API unavailable");
   }
-  if (!sessionPath) throw new Error("desktop-session-submit: sessionPath is required");
+  const { sessionId, sessionPath } = resolveDesktopSessionTarget(engine, requestedSessionId, requestedSessionPath);
   if (!text && !images?.length && !videos?.length && !audios?.length) throw new Error("desktop-session-submit: text, images, videos, or audios required");
-  const sessionId = resolveSessionIdForPath(engine, sessionPath);
   const submissionKey = sessionId || sessionPath;
   if (pendingDesktopSessionSubmissions.has(submissionKey)) {
     throw new Error("session_busy");
@@ -292,6 +293,7 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
 }
 
 export async function submitDesktopSessionInterjection(engine: any, opts: {
+  sessionId?: string;
   sessionPath?: string;
   text?: string;
   images?: Array<{ type: string; data: string; mimeType: string }>;
@@ -308,7 +310,8 @@ export async function submitDesktopSessionInterjection(engine: any, opts: {
   context?: any;
 } = {}) {
   const {
-    sessionPath,
+    sessionId: requestedSessionId,
+    sessionPath: requestedSessionPath,
     text,
     images,
     imageAttachmentPaths,
@@ -327,7 +330,7 @@ export async function submitDesktopSessionInterjection(engine: any, opts: {
   if (!engine || typeof engine.ensureSessionLoaded !== "function" || typeof engine.steerSession !== "function") {
     throw new Error("desktop-session-submit: engine interjection API unavailable");
   }
-  if (!sessionPath) throw new Error("desktop-session-submit: sessionPath is required");
+  const { sessionId, sessionPath } = resolveDesktopSessionTarget(engine, requestedSessionId, requestedSessionPath);
   if (!text && !images?.length && !videos?.length && !audios?.length) throw new Error("desktop-session-submit: text, images, videos, or audios required");
 
   if (typeof engine.isSessionStreaming === "function" && !engine.isSessionStreaming(sessionPath)) {
@@ -338,8 +341,6 @@ export async function submitDesktopSessionInterjection(engine: any, opts: {
   if (!session) {
     throw new Error(`desktop-session-submit: failed to load session ${sessionPath}`);
   }
-  const sessionId = resolveSessionIdForPath(engine, sessionPath);
-
   if (uiContext !== undefined) {
     engine.setUiContext?.(sessionPath, uiContext ?? null);
   }
@@ -601,6 +602,30 @@ function resolveSessionIdForPath(engine, sessionPath) {
   } catch {
     return null;
   }
+}
+
+function resolveDesktopSessionTarget(engine, requestedSessionId, requestedSessionPath) {
+  const sessionId = typeof requestedSessionId === "string" && requestedSessionId.trim()
+    ? requestedSessionId.trim()
+    : null;
+  const sessionPath = typeof requestedSessionPath === "string" && requestedSessionPath.trim()
+    ? requestedSessionPath
+    : null;
+
+  if (sessionId) {
+    const manifest = engine?.getSessionManifest?.(sessionId) || null;
+    const canonicalPath = manifest?.currentLocator?.path || null;
+    if (!canonicalPath) {
+      throw new Error(`desktop-session-submit: session not found for ${sessionId}`);
+    }
+    if (sessionPath && canonicalPath !== sessionPath) {
+      throw new Error("desktop-session-submit: session identity mismatch");
+    }
+    return { sessionId, sessionPath: canonicalPath };
+  }
+
+  if (!sessionPath) throw new Error("desktop-session-submit: sessionPath is required");
+  return { sessionId: resolveSessionIdForPath(engine, sessionPath), sessionPath };
 }
 
 function normalizeSessionFileRefs(refs, fallbackSessionPath, fallbackSessionId = null) {

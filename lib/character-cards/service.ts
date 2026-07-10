@@ -19,6 +19,7 @@ import { safeCopyDir } from "../../shared/safe-fs.ts";
 import { relativePathInsideBase } from "../../core/message-utils.ts";
 import { fromRoot } from "../../shared/hana-root.ts";
 import { loadSkillBundleStore, recordSkillBundle } from "../skill-bundles/store.ts";
+import { isValidAgentId } from "../../shared/agent-id.ts";
 
 const VALID_YUAN = new Set(["hanako", "butter", "ming", "kong"]);
 const CARD_FILE_NAMES = [
@@ -223,8 +224,11 @@ function normalizeAgent(card) {
   const name = trimString(agent.name || card?.name);
   if (!name) throw new CharacterCardError("agent.name is required");
   const id = trimString(agent.id || card?.id) || null;
-  if (id && (/[\/\\]|\.\./.test(id))) {
-    throw new CharacterCardError("agent.id is invalid");
+  if (id && !isValidAgentId(id)) {
+    throw new CharacterCardError(
+      "agent.id is invalid: use ASCII letters, digits, underscores, or hyphens and include a letter or digit",
+      400,
+    );
   }
   const yuan = VALID_YUAN.has(agent.yuan || card?.yuan) ? (agent.yuan || card?.yuan) : "hanako";
   const description = trimString(agent.description || card?.agentDescription || card?.description);

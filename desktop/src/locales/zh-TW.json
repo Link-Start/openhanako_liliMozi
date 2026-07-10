@@ -1734,6 +1734,12 @@
       "injectAgentsMdDesc": "開啟後，新會話會讀取目前工作目錄到 Git 根目錄之間的 AGENTS.md。",
       "injectClaudeMd": "注入 CLAUDE.md",
       "injectClaudeMdDesc": "開啟後，新會話會讀取目前工作目錄到 Git 根目錄之間的 CLAUDE.md。",
+      "projectSkillsTitle": "專案技能探索",
+      "projectSkillsDesc": "選擇這個 Agent 在新會話中載入哪些專案技能目錄。",
+      "discoverProjectSkills": "載入專案技能",
+      "discoverProjectSkillsDesc": "探索並載入目前專案 .agents/skills 中的技能。",
+      "discoverCompatibleProjectSkills": "載入其他工具的專案技能",
+      "discoverCompatibleProjectSkillsDesc": "同時探索專案內 Claude Code、Codex 與 OpenClaw 的技能目錄。",
       "agentDeskSection": "Agent 工作台設定"
     },
     "toolCaps": {
@@ -2485,6 +2491,9 @@
     "cwdSkillsHint": "在資料夾下建立 .agents/skills/ 目錄即可",
     "cwdSkillsDesc": "技能跟隨工作台",
     "cwdSkillsDrop": "拖入資料夾或 .zip 安裝技能",
+    "cwdSkillActive": "已載入",
+    "cwdSkillInactive": "未載入",
+    "cwdSkillShadowed": "已被覆蓋",
     "deleteSkill": "刪除技能",
     "openInFinder": "打開資料夾",
     "jianLabel": "箋",

@@ -115,6 +115,15 @@ const KNOWN_MODELS = {
       maxOutput: 32768,
       image: true,
       reasoning: true,
+      thinkingLevels: ["off", "low", "high", "max"],
+      thinkingLevelMap: {
+        off: null,
+        low: "low",
+        medium: "high",
+        high: "high",
+        xhigh: "max",
+      },
+      defaultThinkingLevel: "high",
       visionCapabilities: { grounding: true, boxes: true, points: true, coordinateSpace: "norm-1000", boxOrder: "xyxy", outputFormat: "anchor", groundingMode: "prompted" },
     },
     "kimi-k2.6": {
@@ -649,6 +658,14 @@ describe("syncModels", () => {
       id: "kimi-for-coding",
       name: "Kimi for Coding",
       reasoning: true,
+      defaultThinkingLevel: "high",
+      thinkingLevelMap: {
+        off: null,
+        low: "low",
+        medium: "high",
+        high: "high",
+        xhigh: "max",
+      },
       headers: { "User-Agent": "KimiCLI/1.5" },
       compat: {
         supportsDeveloperRole: false,

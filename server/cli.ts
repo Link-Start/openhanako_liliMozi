@@ -23,16 +23,69 @@ const c = {
   red: "\x1b[31m",
 };
 
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function createCliAbortMessage(identity) {
+  const sessionId = nonEmptyString(identity?.sessionId);
+  const sessionPath = nonEmptyString(identity?.sessionPath);
+  const streamId = nonEmptyString(identity?.streamId);
+  if (!sessionId || !sessionPath || !streamId) return null;
+  return { type: "abort", sessionId, sessionPath, streamId };
+}
+
+export function cliMessageMatchesSession(identity, msg) {
+  const sessionId = nonEmptyString(identity?.sessionId);
+  const sessionPath = nonEmptyString(identity?.sessionPath);
+  const messageSessionId = nonEmptyString(msg?.sessionId);
+  const messageSessionPath = nonEmptyString(msg?.sessionPath);
+  if (messageSessionId && messageSessionId !== sessionId) return false;
+  if (messageSessionPath && messageSessionPath !== sessionPath) return false;
+  return true;
+}
+
+export function reduceCliStreamIdentity(current, msg) {
+  const state = {
+    sessionId: nonEmptyString(current?.sessionId),
+    sessionPath: nonEmptyString(current?.sessionPath),
+    streamId: nonEmptyString(current?.streamId),
+    isStreaming: current?.isStreaming === true,
+  };
+  if (!cliMessageMatchesSession(state, msg)) return state;
+  const messageStreamId = nonEmptyString(msg?.streamId);
+  if (msg?.type === "status") {
+    if (msg.isStreaming === true && messageStreamId) {
+      return { ...state, streamId: messageStreamId, isStreaming: true };
+    }
+    if (msg.isStreaming === false) {
+      if (state.streamId && (!messageStreamId || state.streamId !== messageStreamId)) return state;
+      return { ...state, streamId: null, isStreaming: false };
+    }
+  }
+  if (msg?.type === "turn_end") {
+    if (state.streamId && (!messageStreamId || state.streamId !== messageStreamId)) return state;
+    return { ...state, streamId: null, isStreaming: false };
+  }
+  if (messageStreamId) {
+    return { ...state, streamId: messageStreamId, isStreaming: true };
+  }
+  return state;
+}
+
 export function startCLI({ port, token, agentName, userName }) {
   const wsUrl = `ws://127.0.0.1:${port}/ws?token=${token}`;
   const apiBase = `http://127.0.0.1:${port}`;
 
   let ws = null;
   let isStreaming = false;
+  let hasPrintedTurnOutput = false;
   let currentMood = "";
   let inMood = false;
   let inThinking = false;
+  let sessionId = null;
   let sessionPath = null;
+  let activeStreamId = null;
 
   // ── HTTP 工具 ──
   async function api(path, opts: any = {}) {
@@ -54,9 +107,11 @@ export function startCLI({ port, token, agentName, userName }) {
       try {
         const sessions = await api("/api/sessions");
         if (sessions.length > 0) {
+          sessionId = sessions[0].sessionId || null;
           sessionPath = sessions[0].path;
         } else {
           const data = await api("/api/sessions/new", { method: "POST" });
+          sessionId = data.sessionId || null;
           sessionPath = data.path || null;
         }
       } catch (err) {
@@ -84,12 +139,25 @@ ${c.dim}${t("cli.disconnected")}${c.reset}`);
 
   // ── 消息处理 ──
   function handleMessage(msg) {
+    if (!cliMessageMatchesSession({ sessionId, sessionPath }, msg)) return;
+    const tracked = reduceCliStreamIdentity({
+      sessionId,
+      sessionPath,
+      streamId: activeStreamId,
+      isStreaming,
+    }, msg);
+    activeStreamId = tracked.streamId;
+    if (msg.type === "status" || msg.type === "turn_end" || msg.streamId) {
+      isStreaming = tracked.isStreaming;
+    }
+    if (msg.type === "turn_end" && tracked.isStreaming) return;
     switch (msg.type) {
       case "text_delta":
-        if (!isStreaming) {
-          isStreaming = true;
+        if (!hasPrintedTurnOutput) {
           process.stdout.write("\n");
+          hasPrintedTurnOutput = true;
         }
+        isStreaming = true;
         process.stdout.write(msg.delta);
         break;
 
@@ -143,6 +211,8 @@ ${c.dim}${t("cli.disconnected")}${c.reset}`);
 
       case "turn_end":
         isStreaming = false;
+        activeStreamId = null;
+        hasPrintedTurnOutput = false;
         process.stdout.write("\n");
         showPrompt();
         break;
@@ -152,6 +222,8 @@ ${c.dim}${t("cli.disconnected")}${c.reset}`);
 ${c.red}${t("cli.error", { msg: msg.message })}${c.reset}
 `);
         isStreaming = false;
+        activeStreamId = null;
+        hasPrintedTurnOutput = false;
         showPrompt();
         break;
 
@@ -176,6 +248,13 @@ ${c.red}${t("cli.error", { msg: msg.message })}${c.reset}
     process.stdout.write(`${c.cyan}${userName}${c.reset} ${c.dim}›${c.reset} `);
   }
 
+  function abortActiveStream() {
+    const message = createCliAbortMessage({ sessionId, sessionPath, streamId: activeStreamId });
+    if (!message || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(message));
+    return true;
+  }
+
   // 监听 ESC 键中断生成
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
@@ -187,12 +266,13 @@ ${c.red}${t("cli.error", { msg: msg.message })}${c.reset}
 
       // ESC
       if (keyStr === "\x1b" && isStreaming) {
-        ws.send(JSON.stringify({ type: "abort", sessionPath }));
+        if (!abortActiveStream()) return;
         process.stdout.write(`
 ${c.dim}${t("cli.interrupted")}${c.reset}
 `);
         isStreaming = false;
         inThinking = false;
+        hasPrintedTurnOutput = false;
         showPrompt();
         return;
       }
@@ -200,9 +280,10 @@ ${c.dim}${t("cli.interrupted")}${c.reset}
       // Ctrl+C
       if (keyStr === "\x03") {
         if (isStreaming) {
-          ws.send(JSON.stringify({ type: "abort", sessionPath }));
+          if (!abortActiveStream()) return;
           isStreaming = false;
           inThinking = false;
+          hasPrintedTurnOutput = false;
           process.stdout.write(`
 ${c.dim}${t("cli.interrupted")}${c.reset}
 `);
@@ -244,7 +325,8 @@ ${c.dim}${t("cli.goodbye")}${c.reset}`);
     }
 
     // 发送消息
-    ws.send(JSON.stringify({ type: "prompt", text: line, sessionPath }));
+    if (!sessionId || !sessionPath) return;
+    ws.send(JSON.stringify({ type: "prompt", text: line, sessionId, sessionPath }));
   });
 
   // ── 斜杠命令 ──
@@ -328,7 +410,13 @@ ${c.bold}${t("cli.helpTitle")}${c.reset}
       case "session": {
         if (args[0] === "new") {
           const newData = await api("/api/sessions/new", { method: "POST" });
-          if (newData.path) sessionPath = newData.path;
+          if (newData.path && newData.sessionId) {
+            sessionPath = newData.path;
+            sessionId = newData.sessionId;
+            activeStreamId = null;
+            isStreaming = false;
+            hasPrintedTurnOutput = false;
+          }
           console.log(`${c.green}${t("cli.sessionCreated")}${c.reset}`);
           showPrompt();
         } else if (args[0] === "list") {

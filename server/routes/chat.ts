@@ -242,6 +242,39 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     return null;
   }
 
+  function requireBoundSessionTarget(msg, ws) {
+    const sessionPath = requireSessionPath(msg, ws);
+    if (!sessionPath) return null;
+    const requestedSessionId = typeof msg.sessionId === "string" && msg.sessionId.trim()
+      ? msg.sessionId.trim()
+      : null;
+    const pathSessionId = sessionIdForPath(sessionPath);
+    if (requestedSessionId && pathSessionId && requestedSessionId !== pathSessionId) {
+      wsSend(ws, {
+        type: "error",
+        code: "session_identity_mismatch",
+        message: "sessionId and sessionPath refer to different sessions",
+        sessionId: requestedSessionId,
+        sessionPath,
+      });
+      return null;
+    }
+    if (requestedSessionId && typeof engine.getSessionManifest === "function") {
+      const manifestPath = engine.getSessionManifest(requestedSessionId)?.currentLocator?.path || null;
+      if (!manifestPath || manifestPath !== sessionPath) {
+        wsSend(ws, {
+          type: "error",
+          code: "session_identity_mismatch",
+          message: "sessionId and sessionPath refer to different sessions",
+          sessionId: requestedSessionId,
+          sessionPath,
+        });
+        return null;
+      }
+    }
+    return { sessionPath, sessionId: requestedSessionId || pathSessionId || null };
+  }
+
   function isDeletedAgentSessionPath(sessionPath) {
     if (!sessionPath) return false;
     return engine.isDeletedAgentSession?.(sessionPath) === true;
@@ -1473,8 +1506,25 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
           // Wrap the async handler with error handling (replaces wrapWsHandler)
           (async () => {
             if (msg.type === "abort") {
-              const abortPath = requireSessionPath(msg, ws); if (!abortPath) return;
+              const abortTarget = requireBoundSessionTarget(msg, ws); if (!abortTarget) return;
+              const abortPath = abortTarget.sessionPath;
               const abortSs = getState(abortPath);
+              const requestedStreamId = typeof msg.streamId === "string" && msg.streamId.trim()
+                ? msg.streamId.trim()
+                : null;
+              const activeStreamId = typeof abortSs?.streamId === "string" && abortSs.streamId.trim()
+                ? abortSs.streamId.trim()
+                : null;
+              if (!requestedStreamId || !activeStreamId || requestedStreamId !== activeStreamId) {
+                wsSend(ws, {
+                  type: "abort_rejected",
+                  reason: "stale_stream",
+                  sessionId: abortTarget.sessionId,
+                  sessionPath: abortPath,
+                  streamId: activeStreamId,
+                });
+                return;
+              }
               const abortReason = typeof msg.reason === "string" && msg.reason.trim()
                 ? msg.reason.trim()
                 : "user_abort";
@@ -1498,7 +1548,8 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
 
             if (msg.type === "steer" && msg.text) {
               debugLog()?.log("ws", `steer (${msg.text.length} chars)`);
-              const steerPath = requireSessionPath(msg, ws); if (!steerPath) return;
+              const steerTarget = requireBoundSessionTarget(msg, ws); if (!steerTarget) return;
+              const steerPath = steerTarget.sessionPath;
               if (isDeletedAgentSessionPath(steerPath)) {
                 rejectDeletedAgentSession(ws, steerPath);
                 return;
@@ -1514,10 +1565,9 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
 
             // session 切回时，前端请求补发离屏期间的流式内容
             if (msg.type === "resume_stream") {
-              const currentPath = requireSessionPath(msg, ws); if (!currentPath) return;
-              const currentSessionId = typeof msg.sessionId === "string" && msg.sessionId.trim()
-                ? msg.sessionId.trim()
-                : engine.getSessionIdForPath?.(currentPath) || null;
+              const resumeTarget = requireBoundSessionTarget(msg, ws); if (!resumeTarget) return;
+              const currentPath = resumeTarget.sessionPath;
+              const currentSessionId = resumeTarget.sessionId;
               const ss = getExistingState(currentPath);
               const runtimeIsStreaming = typeof engine.isSessionStreaming === "function"
                 ? !!engine.isSessionStreaming(currentPath)
@@ -1703,7 +1753,8 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
               }
               debugLog()?.log("ws", `user message (${promptText.length} chars, ${msg.images?.length || 0} images, ${msg.videos?.length || 0} videos, ${msg.audios?.length || 0} audios)`);
               // Phase 2: 客户端可指定 sessionPath，否则用焦点 session
-              const promptSessionPath = requireSessionPath(msg, ws); if (!promptSessionPath) return;
+              const promptTarget = requireBoundSessionTarget(msg, ws); if (!promptTarget) return;
+              const promptSessionPath = promptTarget.sessionPath;
               if (isDeletedAgentSessionPath(promptSessionPath)) {
                 rejectDeletedAgentSession(ws, promptSessionPath);
                 return;
@@ -1720,6 +1771,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
               if (interject && engine.isSessionStreaming(promptSessionPath)) {
                 try {
                   await submitDesktopSessionInterjection(engine, {
+                    sessionId: promptTarget.sessionId,
                     sessionPath: promptSessionPath,
                     text: promptText,
                     clientMessageId: msg.clientMessageId,
@@ -1741,6 +1793,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
               }
               try {
                 await hub.send(promptText, {
+                  sessionId: promptTarget.sessionId,
                   sessionPath: promptSessionPath,
                   clientMessageId: msg.clientMessageId,
                   images: msg.images,

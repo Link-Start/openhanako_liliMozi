@@ -43,6 +43,7 @@ describe("Hub media routing", () => {
     const hub = new Hub({ engine });
 
     await hub.send("hello", {
+      sessionId: "sess_chat",
       sessionPath: "/agents/hanako/sessions/chat.jsonl",
       clientMessageId: "client-user-1",
       displayMessage: { text: "hello" },
@@ -52,6 +53,7 @@ describe("Hub media routing", () => {
       engine,
       expect.objectContaining({
         sessionPath: "/agents/hanako/sessions/chat.jsonl",
+        sessionId: "sess_chat",
         clientMessageId: "client-user-1",
       }),
     );

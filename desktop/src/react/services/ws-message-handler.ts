@@ -61,9 +61,28 @@ function sessionIdentityFromMessage(msg: any): { sessionId: string | null; sessi
   };
 }
 
-function rememberSessionLocatorFromMessage(msg: any): void {
+function rememberSessionLocatorFromMessage(msg: any): boolean {
   const { sessionId, sessionPath } = sessionIdentityFromMessage(msg);
-  if (!sessionId || !sessionPath) return;
+  if (!sessionId || !sessionPath) return true;
+  const snapshot = useStore.getState();
+  const knownLocatorPath = snapshot.sessionLocatorsById?.[sessionId]?.path || null;
+  const authoritativeLocatorUpdate = msg?.type === 'session_created';
+  if (knownLocatorPath && knownLocatorPath !== sessionPath && !authoritativeLocatorUpdate) {
+    console.warn('[ws] session locator mismatch; dropping non-authoritative event', {
+      sessionId,
+      sessionPath,
+      knownLocatorPath,
+    });
+    return false;
+  }
+  const knownPathSessionId = snapshot.sessions.find((session: any) => session?.path === sessionPath)?.sessionId
+    || (snapshot.currentSessionPath === sessionPath ? snapshot.currentSessionId : null)
+    || Object.entries(snapshot.sessionLocatorsById || {}).find(([, locator]: any) => locator?.path === sessionPath)?.[0]
+    || null;
+  if (knownPathSessionId && knownPathSessionId !== sessionId) {
+    console.warn('[ws] session identity mismatch; dropping event', { sessionId, sessionPath, knownPathSessionId });
+    return false;
+  }
   useStore.setState((state: any) => {
     const currentLocator = state.sessionLocatorsById?.[sessionId] || null;
     const patch: Record<string, any> = {};
@@ -78,12 +97,16 @@ function rememberSessionLocatorFromMessage(msg: any): void {
     }
     return Object.keys(patch).length ? patch : {};
   });
+  return true;
 }
 
 function isFocusedSessionMessage(msg: any): boolean {
   const { sessionId, sessionPath } = sessionIdentityFromMessage(msg);
   if (!sessionId && !sessionPath) return true;
   const state = useStore.getState();
+  if (sessionId && sessionPath) {
+    return state.currentSessionPath === sessionPath && state.currentSessionId === sessionId;
+  }
   return (!!sessionPath && state.currentSessionPath === sessionPath)
     || (!!sessionId && state.currentSessionId === sessionId);
 }
@@ -414,7 +437,7 @@ function applyInputSessionConfirmationBlock(msg: any): void {
 // ── 消息分发（大 switch） ──
 
 export function handleServerMessage(msg: any): void {
-  rememberSessionLocatorFromMessage(msg);
+  if (!rememberSessionLocatorFromMessage(msg)) return;
   const state = useStore.getState();
 
   const rebuildingFor = isStreamResumeRebuilding();

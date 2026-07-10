@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const spawnAndStream = vi.fn<(...args: any[]) => Promise<{ exitCode: number }>>(async () => ({ exitCode: 0 }));
+const spawnAndStream = vi.fn<(...args: any[]) => Promise<{ exitCode: number }>>(async (cmd, _args, opts) => {
+  if (/hana-win-sandbox\.exe$/i.test(String(cmd))) {
+    opts?.onStderr?.(Buffer.from(
+      'hana-win-sandbox: terminal-v1 status="exited" exitCode="0" timeoutMs="5000" win32Error="0"\n'
+    ));
+  }
+  return { exitCode: 0 };
+});
 const classifyWin32Command = vi.fn();
 const prepareSandboxRuntime = vi.fn<(...args: any[]) => any>((runtimeInfo) => runtimeInfo);
 const existsSync = vi.fn<(...args: any[]) => boolean>(() => false);
@@ -150,6 +157,8 @@ describe("createWin32Exec", () => {
 
     const helperArgs = spawnAndStream.mock.calls[0][1];
     expect(helperArgs).toEqual(expect.arrayContaining([
+      "--timeout-ms",
+      "5000",
       "--",
       systemCmdExe,
       "/d",
@@ -162,12 +171,116 @@ describe("createWin32Exec", () => {
       helperArgs,
       expect.objectContaining({
         cwd: "C:\\work",
+        timeout: 12,
+        timeoutErrorValue: 5,
+        killMode: "process",
+        exitStdioGraceMs: 2000,
         env: expect.objectContaining({
           PYTHONUTF8: "1",
           PYTHONIOENCODING: "utf-8",
         }),
       })
     );
+  });
+
+  it("uses the native terminal status to distinguish timeout from a real command exit 124", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    existsSync.mockImplementation((p) => p === helper);
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({ sandbox: { helperPath: helper, grants: { writePaths: ["C:\\work"] } } });
+    const chunks: string[] = [];
+
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStderr(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="124" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 124 };
+    });
+    await expect(exec("echo ok", "C:\\work", {
+      onData: (data) => chunks.push(Buffer.from(data).toString("utf8")),
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32" },
+    })).resolves.toEqual({ exitCode: 124 });
+    expect(chunks).toEqual([]);
+
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStderr(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="timed_out" exitCode="124" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 124 };
+    });
+    await expect(exec("echo ok", "C:\\work", {
+      onData: (data) => chunks.push(Buffer.from(data).toString("utf8")),
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32" },
+    })).rejects.toThrow("timeout:5");
+    expect(chunks).toEqual([]);
+  });
+
+  it("surfaces native Job termination failures without retrying", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    existsSync.mockImplementation((p) => p === helper);
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStderr(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="termination_failed" exitCode="" timeoutMs="5000" win32Error="5"\n'
+      ));
+      return { exitCode: 125 };
+    });
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({ sandbox: { helperPath: helper, grants: { writePaths: ["C:\\work"] } } });
+    const chunks: string[] = [];
+
+    await expect(exec("echo ok", "C:\\work", {
+      onData: (data) => chunks.push(Buffer.from(data).toString("utf8")),
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32" },
+    })).rejects.toMatchObject({ code: "HANA_WIN32_SANDBOX_TERMINATION_FAILED", win32Error: 5 });
+    expect(chunks).toEqual([]);
+    expect(spawnAndStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when a sandbox helper exits without its terminal protocol record", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    existsSync.mockImplementation((p) => p === helper);
+    spawnAndStream.mockResolvedValueOnce({ exitCode: 0 });
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({ sandbox: { helperPath: helper, grants: { writePaths: ["C:\\work"] } } });
+
+    await expect(exec("echo ok", "C:\\work", {
+      onData: () => {}, signal: undefined, timeout: 5, env: { PATH: "C:\\Windows\\System32" },
+    })).rejects.toMatchObject({ code: "HANA_WIN32_SANDBOX_TERMINAL_PROTOCOL" });
+    expect(spawnAndStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose native terminal records to command output while preserving stdout and ordinary stderr", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    existsSync.mockImplementation((p) => p === helper);
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStdout(Buffer.from("stdout line\n"));
+      opts.onStderr(Buffer.from("warning line\r\nhana-win-sandbox: terminal-v1 status=\"ex"));
+      opts.onStderr(Buffer.from("ited\" exitCode=\"0\" timeoutMs=\"5000\" win32Error=\"0\"\r\ntrailing stderr"));
+      return { exitCode: 0 };
+    });
+    const chunks: string[] = [];
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({ sandbox: { helperPath: helper, grants: { writePaths: ["C:\\work"] } } });
+
+    await expect(exec("echo ok", "C:\\work", {
+      onData: (data) => chunks.push(Buffer.from(data).toString("utf8")),
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32" },
+    })).resolves.toEqual({ exitCode: 0 });
+
+    expect(chunks.join("")).toBe("stdout line\nwarning line\r\ntrailing stderr");
+    expect(chunks.join("")).not.toContain("terminal-v1");
   });
 
   it("routes explicit PowerShell commands directly without cmd wrapping", async () => {
@@ -1173,7 +1286,12 @@ describe("createWin32Exec", () => {
       }
       return { status: 1, stdout: "", stderr: "" };
     });
-    spawnAndStream.mockResolvedValueOnce({ exitCode: 3221225794 });
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStderr(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="3221225794" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 3221225794 };
+    });
     prepareSandboxRuntime.mockImplementation((runtimeInfo) => ({
       ...runtimeInfo,
       bundledRoot: cachedRoot,
@@ -1265,7 +1383,12 @@ describe("createWin32Exec", () => {
     classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     existsSync.mockImplementation((p) => p === helper);
-    spawnAndStream.mockResolvedValueOnce({ exitCode: 3221225794 });
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStderr(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="3221225794" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 3221225794 };
+    });
     const chunks = [];
     const createWin32Exec = await loadExecFactory();
     const exec = createWin32Exec({
@@ -1305,10 +1428,11 @@ describe("createWin32Exec", () => {
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     existsSync.mockImplementation((p) => p === helper);
     spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
-      opts.onData(Buffer.from([
+      opts.onStderr(Buffer.from([
         "hana-win-sandbox: CreateProcessAsUserW failed: Access is denied.",
         "hana-win-sandbox: launch-failure error=\"5\" errorHex=\"0x00000005\"",
         "hana-win-sandbox: launch-failure-context executable=\"C:\\Windows\\System32\\cmd.exe\" cwd=\"C:\\work\\project\" commandLine=\"cmd.exe /c dir\"",
+        "hana-win-sandbox: terminal-v1 status=\"launch_failed\" exitCode=\"\" timeoutMs=\"5000\" win32Error=\"5\"",
       ].join("\n")));
       return { exitCode: 1 };
     });
@@ -1345,6 +1469,7 @@ describe("createWin32Exec", () => {
     expect(diagnostic).toContain("Route: runner=cmd reason=cmd-builtin mode=sandbox-helper sandbox=true");
     expect(diagnostic).toContain("Native helper reported CreateProcessAsUserW failure");
     expect(diagnostic).toContain("Helper: C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe");
+    expect(diagnostic).not.toContain("terminal-v1");
     expect(diagnostic).not.toContain("C:\\Users\\Hana");
     expect(spawnAndStream).toHaveBeenCalledTimes(1);
   });
@@ -1353,7 +1478,12 @@ describe("createWin32Exec", () => {
     classifyWin32Command.mockReturnValue({ runner: "powershell-command", reason: "default-powershell" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     existsSync.mockImplementation((p) => p === helper);
-    spawnAndStream.mockResolvedValueOnce({ exitCode: 3221225794 });
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStderr(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="3221225794" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 3221225794 };
+    });
     const chunks = [];
     const createWin32Exec = await loadExecFactory();
     const exec = createWin32Exec({

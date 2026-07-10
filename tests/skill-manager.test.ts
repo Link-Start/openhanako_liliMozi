@@ -2,8 +2,8 @@ import { describe, expect, it, beforeEach } from "vitest";
 import path from "path";
 import { SkillManager, __test } from "../core/skill-manager.ts";
 
-function makeAgent(id, enabled = []) {
-  return { id, config: { skills: { enabled } } };
+function makeAgent(id, enabled = [], workspaceContext = undefined) {
+  return { id, config: { skills: { enabled }, workspace_context: workspaceContext } };
 }
 
 function makeSkill(name, overrides = {}) {
@@ -108,6 +108,67 @@ describe("SkillManager.getRuntimeSkillInfos", () => {
   it("includes workspace skills", () => {
     const result = sm.getRuntimeSkillInfos(makeAgent("agent-a"));
     expect(result.map(s => s.name)).toContain("ws-skill");
+  });
+
+  it("applies the two workspace source switches independently", () => {
+    sm._allSkills = [
+      makeSkill("standard", { _workspaceSkill: true, _workspaceSkillCategory: "standard", _externalLabel: "Agents" }),
+      makeSkill("compatible", { _workspaceSkill: true, _workspaceSkillCategory: "compatible", _externalLabel: "Codex" }),
+    ];
+
+    const defaultInfos = sm.getRuntimeSkillInfos(makeAgent("default"));
+    expect(defaultInfos.find(s => s.name === "standard")).toMatchObject({ active: true, enabled: true });
+    expect(defaultInfos.find(s => s.name === "compatible")).toMatchObject({ active: false, enabled: false, inactiveReason: "policy-disabled" });
+
+    const compatibleOnly = sm.getRuntimeSkillInfos(makeAgent("compatible", [], {
+      discover_project_skills: false,
+      discover_compatible_project_skills: true,
+    }));
+    expect(compatibleOnly.find(s => s.name === "standard")).toMatchObject({ active: false, inactiveReason: "policy-disabled" });
+    expect(compatibleOnly.find(s => s.name === "compatible")).toMatchObject({ active: true, enabled: true });
+  });
+
+  it("keeps .agents authoritative while reporting compatible same-name candidates as shadowed", () => {
+    sm._allSkills = [
+      makeSkill("shared", {
+        _workspaceSkill: true,
+        _workspaceSkillCategory: "standard",
+        _externalLabel: "Agents",
+        sourceIdentity: { owner: "workspace", filePath: "/repo/.agents/skills/shared/SKILL.md" },
+      }),
+      makeSkill("shared", {
+        _workspaceSkill: true,
+        _workspaceSkillCategory: "compatible",
+        _externalLabel: "Codex",
+        sourceIdentity: { owner: "workspace", filePath: "/repo/.codex/skills/shared/SKILL.md" },
+      }),
+    ];
+    const agent = makeAgent("agent-a", [], {
+      discover_project_skills: true,
+      discover_compatible_project_skills: true,
+    });
+
+    const infos = sm.getRuntimeSkillInfos(agent).filter(s => s.name === "shared");
+    expect(infos).toHaveLength(2);
+    expect(infos[0]).toMatchObject({ externalLabel: "Agents", active: true, shadowed: false });
+    expect(infos[1]).toMatchObject({ externalLabel: "Codex", active: false, shadowed: true });
+    expect(infos[1].shadowedBy).toMatchObject({ filePath: "/repo/.agents/skills/shared/SKILL.md" });
+    expect(sm.getSkillsForAgent(agent).skills.map(s => s.filePath)).toEqual(["/skills/shared/SKILL.md"]);
+  });
+
+  it("allows a compatible same-name source when standard project skills are disabled", () => {
+    sm._allSkills = [
+      makeSkill("shared", { filePath: "/repo/.agents/skills/shared/SKILL.md", _workspaceSkill: true, _workspaceSkillCategory: "standard", _externalLabel: "Agents" }),
+      makeSkill("shared", { filePath: "/repo/.codex/skills/shared/SKILL.md", _workspaceSkill: true, _workspaceSkillCategory: "compatible", _externalLabel: "Codex" }),
+    ];
+    const agent = makeAgent("agent-a", [], {
+      discover_project_skills: false,
+      discover_compatible_project_skills: true,
+    });
+
+    expect(sm.getSkillsForAgent(agent).skills.map(s => s.filePath)).toEqual([
+      "/repo/.codex/skills/shared/SKILL.md",
+    ]);
   });
 });
 

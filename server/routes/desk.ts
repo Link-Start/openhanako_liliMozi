@@ -15,7 +15,12 @@ import { Hono } from "hono";
 import { safeJson } from "../hono-helpers.ts";
 import { parseSkillMetadata } from "../../lib/skills/skill-metadata.ts";
 import { installSkillPackageFromPath } from "../../lib/skills/skill-package-installer.ts";
-import { WORKSPACE_SKILL_DIRS } from "../../shared/workspace-skill-paths.ts";
+import { createSkillSourceIdentity } from "../../lib/skills/skill-file-identity.ts";
+import {
+  resolveWorkspaceSkillCatalogPaths,
+  resolveWorkspaceSkillCandidateStates,
+  workspaceSkillPolicyFromConfig,
+} from "../../shared/workspace-skill-paths.ts";
 import { DEFAULT_DISABLED_TOOL_NAMES } from "../../shared/tool-categories.ts";
 import { applyMarkdownCoverFromGeneratedFile } from "../../plugins/beautify/lib/markdown-cover-service.ts";
 import { resolveCoverGalleryPresetImagePath } from "../../plugins/beautify/lib/cover-gallery-assets.ts";
@@ -1021,15 +1026,18 @@ export function createDeskRoute(engine, hub) {
   route.get("/desk/skills", async (c) => {
     try {
       const agentId = c.req.query("agentId") || null;
+      const targetAgent = agentId ? engine.getAgent?.(agentId) : engine.agent;
+      const policy = workspaceSkillPolicyFromConfig(targetAgent?.config?.workspace_context);
       const workspace = resolveWorkspaceRootFromRequest(c);
       const dir = workspace.dir;
-      if (!dir) return c.json({ skills: [] });
-      if (!workspace.mountId && c.req.query("dir") && !isApprovedDir(dir, engine, { agentId })) return c.json({ skills: [] });
+      if (!dir) return c.json({ skills: [], policy });
+      if (!workspace.mountId && c.req.query("dir") && !isApprovedDir(dir, engine, { agentId })) {
+        return c.json({ skills: [], policy });
+      }
 
       const results = [];
-      for (const { sub, label } of WORKSPACE_SKILL_DIRS) {
-        const skillsDir = path.join(dir, sub);
-        if (!fs.existsSync(skillsDir)) continue;
+      for (const root of resolveWorkspaceSkillCatalogPaths(dir)) {
+        const { dirPath: skillsDir, label, category } = root;
         try {
           for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
             if (!entry.isDirectory()) continue;
@@ -1038,20 +1046,32 @@ export function createDeskRoute(engine, hub) {
             try {
               const content = fs.readFileSync(skillFile, "utf-8");
               const meta = parseSkillMetadata(content, entry.name);
+              const baseDir = path.join(skillsDir, entry.name);
+              const sourceIdentity = createSkillSourceIdentity({
+                owner: "workspace",
+                skillName: meta.name,
+                filePath: skillFile,
+                baseDir,
+              });
               results.push({
                 name: meta.name,
                 description: meta.description,
                 source: label,
+                sourceCategory: category,
                 dirPath: skillsDir,
                 filePath: skillFile,
-                baseDir: path.join(skillsDir, entry.name),
+                baseDir,
                 workspaceMountId: workspace.mountId,
+                sourceIdentity,
+                resolutionIdentity: { source: label, sourceIdentity },
               });
             } catch { /* ignore malformed workspace skill entries */ }
           }
         } catch { /* ignore unreadable workspace skill roots */ }
       }
-      return c.json({ skills: results });
+      const resolved = resolveWorkspaceSkillCandidateStates(results, policy)
+        .map(({ resolutionIdentity: _resolutionIdentity, ...skill }) => skill);
+      return c.json({ skills: resolved, policy });
     } catch (err) {
       if (err instanceof MountAwareFileError) return c.json({ error: err.message, code: err.code }, err.status as any);
       return c.json({ error: err?.message || String(err) }, err?.status || 500);
@@ -1125,9 +1145,9 @@ export function createDeskRoute(engine, hub) {
       if (!cwd) {
         return c.json({ error: "No active workspace" }, 400);
       }
-      const ALLOWED_SKILL_SUBS = WORKSPACE_SKILL_DIRS.map(({ sub }) => sub);
-      const allowed = ALLOWED_SKILL_SUBS.some(sub =>
-        isInsidePath(skillDir, path.join(cwd, sub))
+      const allowedRoots = resolveWorkspaceSkillCatalogPaths(cwd, { existingOnly: false });
+      const allowed = allowedRoots.some(({ dirPath }) =>
+        isInsidePath(skillDir, dirPath)
       );
       if (!allowed) {
         return c.json({ error: "Only skills in current workspace skill directories can be deleted" }, 403);

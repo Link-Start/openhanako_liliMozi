@@ -104,6 +104,13 @@ export function getModelThinkingLevels(model) {
 }
 
 export function normalizeThinkingLevelForModel(level, model) {
+  if (lower(level) === "auto") {
+    return resolveModelDefaultThinkingLevel(model);
+  }
+  return normalizeCanonicalThinkingLevelForModel(level, model);
+}
+
+function normalizeCanonicalThinkingLevelForModel(level, model) {
   const normalized = normalizeSessionThinkingLevel(level);
   const explicitLevels = normalizeThinkingLevelChoices(model?.thinkingLevels);
   if (explicitLevels) {
@@ -121,10 +128,11 @@ export function normalizeThinkingLevelForModel(level, model) {
 }
 
 export function resolveModelDefaultThinkingLevel(model, fallback = DEFAULT_SESSION_THINKING_LEVEL) {
-  const modelLevel = typeof model?.defaultThinkingLevel === "string"
+  const declaredLevel = typeof model?.defaultThinkingLevel === "string"
+    && lower(model.defaultThinkingLevel) !== "auto"
     ? model.defaultThinkingLevel
     : fallback;
-  return normalizeThinkingLevelForModel(modelLevel, model);
+  return normalizeCanonicalThinkingLevelForModel(declaredLevel, model);
 }
 
 export function resolveThinkingLevelForModel(level, model, resolveThinkingLevel = (value) => value) {

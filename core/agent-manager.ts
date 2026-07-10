@@ -26,9 +26,28 @@ import { DEFAULT_HEARTBEAT_INTERVAL_MINUTES } from "../shared/default-workspace.
 import { relativePathInsideBase } from "./message-utils.ts";
 import { detachAgentFromBundles } from "../lib/skill-bundles/store.ts";
 import { assertKnownYuan, getAgentConfigRepairState } from "./yuan-registry.ts";
+import { assertValidAgentId, isValidAgentId } from "../shared/agent-id.ts";
 
 const log = createModuleLogger("agent-mgr");
 const DELETED_AGENT_TOMBSTONE = ".deleted-agent.json";
+const AGENT_AVATAR_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif"];
+
+function readAgentAvatarState(avatarDir) {
+  for (const ext of AGENT_AVATAR_EXTENSIONS) {
+    const avatarPath = path.join(avatarDir, `agent.${ext}`);
+    try {
+      const stat = fs.statSync(avatarPath);
+      if (!stat.isFile()) continue;
+      return {
+        hasAvatar: true,
+        avatarRevision: `${stat.mtimeMs}-${stat.size}`,
+      };
+    } catch {
+      continue;
+    }
+  }
+  return { hasAvatar: false, avatarRevision: null };
+}
 
 function writeStartupLog(startupLog, message) {
   if (typeof startupLog === "function") {
@@ -107,6 +126,7 @@ export class AgentManager {
   declare _memoryMaintenanceQueue: any;
   declare _memoryMaintenanceQueued: any;
   declare _memoryMaintenanceRunning: any;
+  declare _invalidAgentIdsWarned: any;
   declare _runtimeInitConcurrency: any;
   declare _runtimeInitPromises: any;
   declare _runtimeInitQueue: any;
@@ -145,6 +165,7 @@ export class AgentManager {
     this._memoryMaintenanceQueued = new Set();
     this._memoryMaintenanceRunning = 0;
     this._memoryMaintenanceConcurrency = 1;
+    this._invalidAgentIdsWarned = new Set();
   }
 
   /** 清除 listAgents 缓存（agent 增删改时调用） */
@@ -263,6 +284,7 @@ export class AgentManager {
   }
 
   async _loadAgentConfigOnly(agentId, { required = false } = {}) {
+    assertValidAgentId(agentId);
     if (this._agents.has(agentId)) return this._agents.get(agentId);
     if (this.isAgentDeleted(agentId)) {
       if (required) throw new Error(`agent "${agentId}" has been deleted`);
@@ -458,6 +480,7 @@ export class AgentManager {
     const entries = readDirectoryLikeDirentsSync(this._d.agentsDir);
     const agents = [];
     for (const entry of entries) {
+      if (!this._acceptDiscoveredAgentId(entry.name)) continue;
       if (this.isAgentDeleted(entry.name)) continue;
       const configPath = path.join(this._d.agentsDir, entry.name, "config.yaml");
       if (!fs.existsSync(configPath)) continue;
@@ -470,12 +493,9 @@ export class AgentManager {
           const lines = renderedIdMd.split("\n").filter(l => l.trim() && !l.startsWith("#"));
           identity = lines[0]?.trim() || "";
         } catch {}
-        const avatarDir = path.join(this._d.agentsDir, entry.name, "avatars");
-        let hasAvatar = false;
-        try {
-          const avatarFiles = fs.readdirSync(avatarDir);
-          hasAvatar = avatarFiles.some(f => /\.(png|jpe?g|gif|webp)$/i.test(f));
-        } catch {}
+        const avatarState = readAgentAvatarState(
+          path.join(this._d.agentsDir, entry.name, "avatars"),
+        );
         const chatRef = cfg.models?.chat;
         const chatModel = typeof chatRef === "object"
           ? { id: chatRef.id, provider: chatRef.provider }
@@ -489,7 +509,8 @@ export class AgentManager {
           needsRepair: !!repairState,
           repairState,
           identity,
-          hasAvatar,
+          hasAvatar: avatarState.hasAvatar,
+          avatarRevision: avatarState.avatarRevision,
           chatModel,
           homeFolder: cfg.desk?.home_folder || null,
           memoryMasterEnabled: cfg.memory?.enabled !== false,
@@ -560,8 +581,12 @@ export class AgentManager {
   async createAgent({ name, id, yuan, enabledSkills, initialFiles, avatarPath, initialMemory }) {
     if (!name?.trim()) throw new Error(t("error.agentNameEmpty"));
 
-    const agentId = id?.trim() || await this._generateAgentId(name);
-    if (/[\/\\]|\.\./.test(agentId)) throw new Error(t("error.agentIdInvalid"));
+    const hasExplicitId = id !== undefined && id !== null;
+    if (hasExplicitId) assertValidAgentId(id);
+    const agentId = hasExplicitId ? id : await this._generateAgentId(name);
+    // Generated IDs are trusted only after the same central contract check.
+    // This catches a future generator regression before any filesystem write.
+    assertValidAgentId(agentId);
     const agentDir = path.join(this._d.agentsDir, agentId);
 
     if (fs.existsSync(agentDir)) {
@@ -964,6 +989,8 @@ export class AgentManager {
   // ── Utility ──
 
   setPrimaryAgent(agentId) {
+    // Identity validation must precede path construction and preference I/O.
+    assertValidAgentId(agentId);
     const agentDir = path.join(this._d.agentsDir, agentId);
     if (this.isAgentDeleted(agentId) || !fs.existsSync(path.join(agentDir, "config.yaml"))) {
       throw new Error(t("error.agentNotExists", { id: agentId }));
@@ -1003,7 +1030,8 @@ export class AgentManager {
   _scanAgentDirs() {
     try {
       return readDirectoryLikeDirentsSync(this._d.agentsDir)
-        .filter(e => fs.existsSync(path.join(this._d.agentsDir, e.name, "config.yaml"))
+        .filter(e => this._acceptDiscoveredAgentId(e.name)
+          && fs.existsSync(path.join(this._d.agentsDir, e.name, "config.yaml"))
           && !this.isAgentDeleted(e.name));
     } catch { return []; }
   }
@@ -1011,9 +1039,22 @@ export class AgentManager {
   _scanDeletedAgentDirs() {
     try {
       return readDirectoryLikeDirentsSync(this._d.agentsDir)
-        .filter(e => fs.existsSync(path.join(this._d.agentsDir, e.name, "config.yaml"))
+        .filter(e => this._acceptDiscoveredAgentId(e.name)
+          && fs.existsSync(path.join(this._d.agentsDir, e.name, "config.yaml"))
           && fs.existsSync(this._deletedAgentTombstonePath(e.name)));
     } catch { return []; }
+  }
+
+  _acceptDiscoveredAgentId(agentId) {
+    if (isValidAgentId(agentId)) return true;
+    if (!this._invalidAgentIdsWarned.has(agentId)) {
+      this._invalidAgentIdsWarned.add(agentId);
+      log.warn(
+        `ignoring legacy agent directory with invalid ID ${JSON.stringify(agentId)}; `
+        + "the directory was preserved and must be renamed manually",
+      );
+    }
+    return false;
   }
 
   _readAgentNameFromConfig(agentDir) {

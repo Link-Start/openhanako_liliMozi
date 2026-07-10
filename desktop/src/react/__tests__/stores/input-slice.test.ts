@@ -118,6 +118,32 @@ describe('input-slice attachedFiles session ownership', () => {
     expect(slice.attachedFiles).toEqual([{ path: '/tmp/a.txt', name: 'a.txt' }]);
     expect(slice.attachedFilesBySession).toEqual({});
   });
+
+  it('迟到清理指定后台 session 时不清空当前 session 的附件 (#2078)', () => {
+    const slice = makeSlice({
+      currentSessionId: 'sess_b',
+      currentSessionPath: '/session/b',
+      sessions: [
+        { sessionId: 'sess_a', path: '/session/a' },
+        { sessionId: 'sess_b', path: '/session/b' },
+      ],
+      sessionLocatorsById: {
+        sess_a: { path: '/session/a' },
+        sess_b: { path: '/session/b' },
+      },
+      attachedFiles: [{ path: '/tmp/b.txt', name: 'b.txt' }],
+      attachedFilesBySession: {
+        sess_a: [{ path: '/tmp/a.txt', name: 'a.txt' }],
+        sess_b: [{ path: '/tmp/b.txt', name: 'b.txt' }],
+      },
+    });
+
+    slice.clearAttachedFilesForSession('/session/a');
+
+    expect(slice.attachedFilesBySession.sess_a).toBeUndefined();
+    expect(slice.attachedFilesBySession.sess_b).toEqual([{ path: '/tmp/b.txt', name: 'b.txt' }]);
+    expect(slice.attachedFiles).toEqual([{ path: '/tmp/b.txt', name: 'b.txt' }]);
+  });
 });
 
 describe('draft sync notifications', () => {

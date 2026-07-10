@@ -10,6 +10,10 @@ import chokidar from "chokidar";
 import { parseSkillMetadata } from "../lib/skills/skill-metadata.ts";
 import { sourceIdentityForSkill } from "../lib/skills/skill-file-identity.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
+import {
+  resolveWorkspaceSkillCandidateStates,
+  workspaceSkillPolicyFromConfig,
+} from "../shared/workspace-skill-paths.ts";
 
 const log = createModuleLogger("skill-manager");
 
@@ -130,10 +134,7 @@ export class SkillManager {
   /** 将 agent 启用的 skill 同步到 agent 的 system prompt */
   syncAgentSkills(agent) {
     if (!agent || agent.runtimeInitialized === false || agent.needsRepair === true) return;
-    const enabled = new Set(agent?.config?.skills?.enabled || []);
-    const skills = this._skillsVisibleToAgent(agent, { includePlugin: true, includeWorkspace: true })
-      .filter(s => this._isRuntimeEnabledForAgent(s, enabled));
-    agent.setEnabledSkills(skills);
+    agent.setEnabledSkills(this._resolveRuntimeSkillSelection(agent).skills);
   }
 
   /** 返回全量 skill 列表（供 API 使用），附带指定 agent 的 enabled 状态。Plugin skill 不返回（UI 不显示） */
@@ -157,30 +158,96 @@ export class SkillManager {
   /** 返回运行时 skill 列表（含 workspace skill），供 desk / slash 等 session 视图使用 */
   getRuntimeSkillInfos(agent) {
     const enabled = new Set(agent?.config?.skills?.enabled || []);
-    return this._skillsVisibleToAgent(agent, { includeWorkspace: true }).map(s => ({
+    const selection = this._resolveRuntimeSkillSelection(agent);
+    return selection.entries
+      .filter(({ skill }) => !skill._pluginSkill)
+      .map(({ skill: s, active, shadowed, shadowedBy, inactiveReason }) => ({
       name: s.name,
       description: s.description,
       filePath: s.filePath,
       baseDir: s.baseDir,
       source: s._workspaceSkill ? "workspace" : s.source,
       hidden: !!s._hidden,
-      enabled: this._isRuntimeEnabledForAgent(s, enabled),
+      enabled: s._workspaceSkill ? active : this._isRuntimeEnabledForAgent(s, enabled),
+      active,
+      shadowed,
+      shadowedBy,
+      inactiveReason,
       externalLabel: s._externalLabel || null,
       externalPath: s._externalPath || null,
       readonly: !!s._readonly,
       managedBy: s._managedBy || null,
       sourceIdentity: s.sourceIdentity || null,
+      sourceCategory: s._workspaceSkillCategory || null,
     }));
   }
 
   /** 按 agent 过滤可用 skills，供 Pi SDK resourceLoader.getSkills() 使用 */
-  getSkillsForAgent(targetAgent) {
-    const enabled = new Set(targetAgent?.config?.skills?.enabled || []);
+  getSkillsForAgent(targetAgent, { workspacePaths = null } = {}) {
+    const candidates = Array.isArray(workspacePaths)
+      ? [
+          ...this._allSkills.filter((skill) => !skill._workspaceSkill),
+          ...this.scanExternalSkills(workspacePaths).filter((skill) => skill._workspaceSkill),
+        ]
+      : this._allSkills;
     return {
-      skills: this._skillsVisibleToAgent(targetAgent, { includePlugin: true, includeWorkspace: true })
-        .filter(s => this._isRuntimeEnabledForAgent(s, enabled)),
+      skills: this._resolveRuntimeSkillSelection(targetAgent, candidates).skills,
       diagnostics: [],
     };
+  }
+
+  _resolveRuntimeSkillSelection(agent, candidates = this._allSkills) {
+    const enabled = new Set(agent?.config?.skills?.enabled || []);
+    const policy = workspaceSkillPolicyFromConfig(agent?.config?.workspace_context);
+    const claimedByName = new Map();
+    const skills = [];
+    const entries = [];
+    const workspaceCandidates = [];
+
+    for (const skill of candidates) {
+      if (!skill) continue;
+      if (skill._workspaceSkill) {
+        workspaceCandidates.push({
+          skill,
+          name: skill.name,
+          filePath: skill.filePath,
+          sourceCategory: skill._workspaceSkillCategory || "standard",
+          sourceIdentity: skill.sourceIdentity,
+        });
+        continue;
+      }
+
+      const runtimeEnabled = this._isRuntimeEnabledForAgent(skill, enabled);
+      if (!claimedByName.has(skill.name)) {
+        claimedByName.set(skill.name, skill.sourceIdentity || { skillName: skill.name, filePath: skill.filePath });
+      }
+      if (runtimeEnabled) skills.push(skill);
+      entries.push({
+        skill,
+        active: runtimeEnabled,
+        shadowed: false,
+        shadowedBy: null,
+        inactiveReason: runtimeEnabled ? null : "disabled",
+      });
+    }
+
+    const resolvedWorkspace = resolveWorkspaceSkillCandidateStates(
+      workspaceCandidates,
+      policy,
+      { claimedByName },
+    );
+    for (const resolved of resolvedWorkspace) {
+      if (resolved.active) skills.push(resolved.skill);
+      entries.push({
+        skill: resolved.skill,
+        active: resolved.active,
+        shadowed: resolved.shadowed,
+        shadowedBy: resolved.shadowedBy,
+        inactiveReason: resolved.inactiveReason,
+      });
+    }
+
+    return { skills, entries };
   }
 
   /**
@@ -279,9 +346,9 @@ export class SkillManager {
    * 扫描所有外部路径下的技能
    * @returns {Array} 外部技能列表
    */
-  scanExternalSkills() {
+  scanExternalSkills(paths = this._externalPaths) {
     const results = [];
-    for (const { dirPath, label, scope } of this._externalPaths) {
+    for (const { dirPath, label, scope, category } of paths) {
       if (!fs.existsSync(dirPath)) continue;
       try {
         for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
@@ -311,6 +378,7 @@ export class SkillManager {
               _readonly: readonly,
               _pluginSkill: label.startsWith("plugin:"),
               _workspaceSkill: scope === "workspace",
+              _workspaceSkillCategory: scope === "workspace" ? (category || "standard") : null,
               _managedBy: scope === "workspace" ? "workspace" : null,
               sourceIdentity: sourceIdentityForSkill({
                 name: meta.name,
@@ -334,9 +402,9 @@ export class SkillManager {
     this._allSkills = this._allSkills.filter(s => s.source !== "external");
     const existingNames = new Set(this._allSkills.map(s => s.name));
     for (const ext of this.scanExternalSkills()) {
-      if (!existingNames.has(ext.name)) {
+      if (ext._workspaceSkill || !existingNames.has(ext.name)) {
         this._allSkills.push(ext);
-        existingNames.add(ext.name);
+        if (!ext._workspaceSkill) existingNames.add(ext.name);
       }
     }
   }

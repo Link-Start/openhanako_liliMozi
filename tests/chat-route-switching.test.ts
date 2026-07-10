@@ -61,6 +61,82 @@ describe("chat route model switch guard", () => {
     });
   });
 
+  it("rejects prompt routing when sessionId and sessionPath disagree (#2078)", async () => {
+    let createHandlers;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = { subscribe: vi.fn(), send: vi.fn(async () => {}) };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionIdForPath: vi.fn(() => "sess_path"),
+      getSessionManifest: vi.fn(() => ({ currentLocator: { path: "/tmp/canonical.jsonl" } })),
+      getSessionByPath: vi.fn(() => null),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onMessage({
+      data: JSON.stringify({
+        type: "prompt",
+        text: "hello",
+        sessionId: "sess_other",
+        sessionPath: "/tmp/path.jsonl",
+      }),
+    }, ws);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(hub.send).not.toHaveBeenCalled();
+    expect(ws.send.mock.calls.map(([raw]) => JSON.parse(raw))).toContainEqual(expect.objectContaining({
+      type: "error",
+      code: "session_identity_mismatch",
+    }));
+  });
+
+  it("rejects mismatched steer and resume targets before touching runtime state (#2078)", async () => {
+    let createHandlers;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = { subscribe: vi.fn(), send: vi.fn(async () => {}) };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionIdForPath: vi.fn(() => "sess_path"),
+      getSessionManifest: vi.fn(() => ({ currentLocator: { path: "/tmp/canonical.jsonl" } })),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      isSessionStreaming: vi.fn(() => true),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => true),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    for (const message of [
+      { type: "steer", text: "wrong", sessionId: "sess_other", sessionPath: "/tmp/path.jsonl" },
+      { type: "resume_stream", sessionId: "sess_other", sessionPath: "/tmp/path.jsonl", sinceSeq: 0 },
+    ]) {
+      handlers.onMessage({ data: JSON.stringify(message) }, ws);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(engine.steerSession).not.toHaveBeenCalled();
+    expect(engine.isSessionStreaming).not.toHaveBeenCalled();
+    const payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    expect(payloads.filter((payload) => payload.code === "session_identity_mismatch")).toHaveLength(2);
+    expect(payloads.some((payload) => payload.type === "stream_resume")).toBe(false);
+  });
+
   it("routes streaming interject messages through the desktop interjection contract", async () => {
     let createHandlers;
     const upgradeWebSocket = vi.fn((factory) => {
@@ -1499,12 +1575,15 @@ describe("chat route model switch guard", () => {
     handlers.onOpen({}, ws);
 
     subscriber?.({ type: "session_status", isStreaming: true }, "/tmp/aborted-session.jsonl");
+    const abortStreamId = ws.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .find((payload) => payload.type === "status" && payload.isStreaming === true)?.streamId;
     subscriber?.({
       type: "message_update",
       assistantMessageEvent: { type: "text_delta", delta: "一半" },
     }, "/tmp/aborted-session.jsonl");
     handlers.onMessage({
-      data: JSON.stringify({ type: "abort", sessionPath: "/tmp/aborted-session.jsonl" }),
+      data: JSON.stringify({ type: "abort", sessionPath: "/tmp/aborted-session.jsonl", streamId: abortStreamId }),
     }, ws);
     await new Promise((resolve) => setTimeout(resolve, 0));
     subscriber?.({ type: "turn_end" }, "/tmp/aborted-session.jsonl");
@@ -1604,8 +1683,11 @@ describe("chat route model switch guard", () => {
     handlers.onOpen({}, ws);
 
     subscriber?.({ type: "session_status", isStreaming: true }, "/tmp/user-abort.jsonl");
+    const activeStreamId = ws.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .find((payload) => payload.type === "status" && payload.isStreaming === true)?.streamId;
     handlers.onMessage({
-      data: JSON.stringify({ type: "abort", sessionPath: "/tmp/user-abort.jsonl" }),
+      data: JSON.stringify({ type: "abort", sessionPath: "/tmp/user-abort.jsonl", streamId: activeStreamId }),
     }, ws);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -1620,6 +1702,64 @@ describe("chat route model switch guard", () => {
       reason: "user_abort",
     });
 
+    handlers.onClose({}, ws);
+  });
+
+  it("rejects a delayed Stop request that names an older stream (#2078)", async () => {
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => { subscriber = fn; }),
+      send: vi.fn(async () => {}),
+      abort: vi.fn(async () => true),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      isSessionStreaming: vi.fn(() => true),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+    subscriber?.({ type: "session_status", isStreaming: true }, "/tmp/stream-guard.jsonl");
+    const activeStreamId = ws.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .find((payload) => payload.type === "status" && payload.isStreaming === true)?.streamId;
+
+    handlers.onMessage({
+      data: JSON.stringify({
+        type: "abort",
+        sessionPath: "/tmp/stream-guard.jsonl",
+        streamId: "stream-older",
+      }),
+    }, ws);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(hub.abort).not.toHaveBeenCalled();
+    expect(ws.send.mock.calls.map(([raw]) => JSON.parse(raw))).toContainEqual(expect.objectContaining({
+      type: "abort_rejected",
+      reason: "stale_stream",
+      streamId: activeStreamId,
+    }));
+
+    handlers.onMessage({
+      data: JSON.stringify({
+        type: "abort",
+        sessionPath: "/tmp/stream-guard.jsonl",
+        streamId: activeStreamId,
+      }),
+    }, ws);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(hub.abort).toHaveBeenCalledTimes(1);
     handlers.onClose({}, ws);
   });
 

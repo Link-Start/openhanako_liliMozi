@@ -60,6 +60,21 @@ function sessionFileMarker({ fileId, sessionPath, sessionId = undefined, label, 
 }
 
 describe("submitDesktopSessionMessage", () => {
+  it("rejects a sessionId/sessionPath mismatch before loading or emitting (#2078)", async () => {
+    const engine = {
+      getSessionManifest: vi.fn(() => ({ currentLocator: { path: "/tmp/canonical.jsonl" } })),
+      ensureSessionLoaded: vi.fn(),
+      promptSession: vi.fn(),
+    };
+
+    await expect(submitDesktopSessionMessage(engine, {
+      sessionId: "sess_target",
+      sessionPath: "/tmp/other.jsonl",
+      text: "hello",
+    })).rejects.toThrow("session identity mismatch");
+    expect(engine.ensureSessionLoaded).not.toHaveBeenCalled();
+    expect(engine.promptSession).not.toHaveBeenCalled();
+  });
   it("rejects concurrent submissions for the same session before streaming status is emitted", async () => {
     const session = makeFakeSession();
     const ready = (Promise as any).withResolvers();

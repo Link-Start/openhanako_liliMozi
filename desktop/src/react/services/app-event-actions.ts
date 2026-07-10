@@ -131,9 +131,9 @@ export function handleAppEvent(type: string, data: any = {}, options: AppEventOp
       });
       loadChannels();
 
-      // Reload models and reset thinking level
+      // Reload models. Keep the current non-legacy UI value until the session
+      // switch/model-default response installs the target Agent's level.
       loadModels();
-      useStore.setState({ thinkingLevel: 'auto' });
 
       // Reload automation count and clear activities
       hanaFetch('/api/desk/cron').then(r => r.json()).then((d: any) => {

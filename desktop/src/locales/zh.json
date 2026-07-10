@@ -1800,6 +1800,12 @@
       "injectAgentsMdDesc": "开启后，新会话会读取当前工作目录到 Git 根目录之间的 AGENTS.md。",
       "injectClaudeMd": "注入 CLAUDE.md",
       "injectClaudeMdDesc": "开启后，新会话会读取当前工作目录到 Git 根目录之间的 CLAUDE.md。",
+      "projectSkillsTitle": "项目技能发现",
+      "projectSkillsDesc": "选择这个 Agent 在新会话中加载哪些项目技能目录。",
+      "discoverProjectSkills": "加载项目技能",
+      "discoverProjectSkillsDesc": "发现并加载当前项目 .agents/skills 中的技能。",
+      "discoverCompatibleProjectSkills": "加载其他工具的项目技能",
+      "discoverCompatibleProjectSkillsDesc": "同时发现项目内 Claude Code、Codex 与 OpenClaw 的技能目录。",
       "agentDeskSection": "Agent 工作台设置"
     },
     "toolCaps": {
@@ -2485,6 +2491,9 @@
     "cwdSkillsHint": "在文件夹下创建 .agents/skills/ 目录即可",
     "cwdSkillsDesc": "技能跟随工作台",
     "cwdSkillsDrop": "拖入文件夹或 .zip 安装技能",
+    "cwdSkillActive": "已加载",
+    "cwdSkillInactive": "未加载",
+    "cwdSkillShadowed": "已被覆盖",
     "deleteSkill": "删除技能",
     "openInFinder": "打开文件夹",
     "jianLabel": "笺",

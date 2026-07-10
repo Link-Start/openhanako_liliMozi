@@ -12,6 +12,7 @@ export interface Agent {
   yuan: string;
   isPrimary: boolean;
   hasAvatar?: boolean;
+  avatarRevision?: string | null;
   memoryMasterEnabled?: boolean;
 }
 

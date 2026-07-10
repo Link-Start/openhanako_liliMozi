@@ -67,6 +67,8 @@ export interface InputSlice {
   removeAttachedFile: (index: number) => void;
   setAttachedFiles: (files: AttachedFile[]) => void;
   clearAttachedFiles: () => void;
+  /** 清理指定 session 的附件；只有目标仍是当前 session 时才同步清空可见附件。 */
+  clearAttachedFilesForSession: (sessionPath: string) => void;
   setDraft: (sessionPath: string, text: string, doc?: JSONContent | null) => void;
   clearDraft: (sessionPath: string) => void;
   setDeskContextAttached: (attached: boolean) => void;
@@ -128,6 +130,18 @@ export const createInputSlice = (
     set((s) => syncCurrentSessionAttachments(s as InputSlice & { currentSessionPath?: string | null }, files)),
   clearAttachedFiles: () =>
     set((s) => syncCurrentSessionAttachments(s as InputSlice & { currentSessionPath?: string | null }, [])),
+  clearAttachedFilesForSession: (sessionPath) =>
+    set((s) => {
+      const state = s as InputSlice & { currentSessionPath?: string | null };
+      const key = sessionScopedKey(state as any, sessionPath) || sessionPath;
+      const attachedFilesBySession = { ...s.attachedFilesBySession };
+      delete attachedFilesBySession[key];
+      delete attachedFilesBySession[sessionPath];
+      return {
+        attachedFilesBySession,
+        ...(state.currentSessionPath === sessionPath ? { attachedFiles: [] } : {}),
+      };
+    }),
   setDraft: (sessionPath, text, doc) =>
     set((s) => {
       const key = sessionScopedKey(s as any, sessionPath) || sessionPath;

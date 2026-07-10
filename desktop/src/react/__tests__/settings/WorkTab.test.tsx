@@ -62,6 +62,8 @@ describe('WorkTab workspace persistence', () => {
           workspace_context: {
             inject_agents_md: false,
             inject_claude_md: true,
+            discover_project_skills: true,
+            discover_compatible_project_skills: false,
           },
         }));
       }
@@ -91,6 +93,8 @@ describe('WorkTab workspace persistence', () => {
       workspace_context: {
         inject_agents_md: true,
         inject_claude_md: false,
+        discover_project_skills: true,
+        discover_compatible_project_skills: false,
       },
     };
     mockState.settingsSnapshot = { data: { agentId: 'agent-a' } };
@@ -102,6 +106,8 @@ describe('WorkTab workspace persistence', () => {
     expect(screen.getByDisplayValue('23')).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'settings.work.injectAgentsMd' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('switch', { name: 'settings.work.injectClaudeMd' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('switch', { name: 'settings.work.discoverProjectSkills' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('switch', { name: 'settings.work.discoverCompatibleProjectSkills' }).getAttribute('aria-checked')).toBe('false');
   });
 
   it('saves the selected agent workspace without sending frontend business IPC', async () => {
@@ -254,5 +260,56 @@ describe('WorkTab workspace persistence', () => {
       }));
     });
     expect(window.platform.settingsChanged).not.toHaveBeenCalled();
+  });
+
+  it('saves the two project skill discovery switches independently', async () => {
+    const { WorkTab } = await import('../../settings/tabs/WorkTab');
+
+    render(<WorkTab />);
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'settings.work.discoverProjectSkills' }));
+    await waitFor(() => {
+      expect(mockHanaFetch).toHaveBeenCalledWith('/api/agents/agent-a/config', expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ workspace_context: { discover_project_skills: false } }),
+      }));
+    });
+
+    fireEvent.click(screen.getByRole('switch', { name: 'settings.work.discoverCompatibleProjectSkills' }));
+    await waitFor(() => {
+      expect(mockHanaFetch).toHaveBeenCalledWith('/api/agents/agent-a/config', expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ workspace_context: { discover_compatible_project_skills: true } }),
+      }));
+    });
+  });
+
+  it('rolls a project skill switch back when the Agent config save fails', async () => {
+    mockHanaFetch.mockImplementation((url: string, options?: RequestInit) => {
+      if (url === '/api/agents/agent-a/config' && !options?.method) {
+        return Promise.resolve(jsonResponse({
+          desk: { home_folder: '/old-home', heartbeat_enabled: true, heartbeat_interval: 17 },
+          workspace_context: {
+            inject_agents_md: false,
+            inject_claude_md: true,
+            discover_project_skills: true,
+            discover_compatible_project_skills: false,
+          },
+        }));
+      }
+      if (url === '/api/agents/agent-a/config' && options?.method === 'PUT') {
+        return Promise.resolve(jsonResponse({ error: 'save denied' }));
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { WorkTab } = await import('../../settings/tabs/WorkTab');
+    render(<WorkTab />);
+
+    const toggle = await screen.findByRole('switch', { name: 'settings.work.discoverProjectSkills' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'));
+    expect(mockState.showToast).toHaveBeenCalledWith(expect.stringContaining('save denied'), 'error');
   });
 });

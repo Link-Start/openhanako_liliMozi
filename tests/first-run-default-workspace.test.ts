@@ -123,6 +123,43 @@ describe("first run default workspace", () => {
     expect(fs.existsSync(path.join(hanakoHome, "agents", "hanako", "config.yaml"))).toBe(true);
   });
 
+  it("keeps legacy non-ASCII agent directories untouched, reports them, and seeds a safe default", async () => {
+    const legacyDir = path.join(hanakoHome, "agents", "明");
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, "config.yaml"), "agent:\n  name: Legacy Ming\n", "utf-8");
+    const original = fs.readFileSync(path.join(legacyDir, "config.yaml"), "utf-8");
+    const { ensureFirstRun } = await import("../core/first-run.ts");
+
+    const report = ensureFirstRun(hanakoHome, productDir);
+
+    expect(report.invalidAgentDirs).toContainEqual({ id: "明", reason: "invalid_id" });
+    expect(fs.readFileSync(path.join(legacyDir, "config.yaml"), "utf-8")).toBe(original);
+    expect(fs.existsSync(path.join(legacyDir, "pinned.md"))).toBe(false);
+    expect(fs.existsSync(path.join(hanakoHome, "agents", "hanako", "config.yaml"))).toBe(true);
+
+    const { PreferencesManager } = await import("../core/preferences-manager.ts");
+    const preferences = new PreferencesManager({
+      userDir: path.join(hanakoHome, "user"),
+      agentsDir: path.join(hanakoHome, "agents"),
+    });
+    expect(preferences.findFirstAgent()).toBe("hanako");
+  });
+
+  it("keeps a safe legacy uppercase and underscore id active without reseeding or reporting it", async () => {
+    const legacyId = "Legacy_AGENT-1";
+    const legacyDir = path.join(hanakoHome, "agents", legacyId);
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, "config.yaml"), "agent:\n  name: Legacy Agent\n", "utf-8");
+    const { ensureFirstRun } = await import("../core/first-run.ts");
+
+    const report = ensureFirstRun(hanakoHome, productDir);
+
+    expect(report.invalidAgentDirs).toEqual([]);
+    expect(report.repairedDefaultAgent).toBe(false);
+    expect(fs.existsSync(path.join(hanakoHome, "agents", "hanako"))).toBe(false);
+    expect(fs.existsSync(path.join(legacyDir, "pinned.md"))).toBe(true);
+  });
+
   it("backs up an unreadable default hanako config before reseeding", async () => {
     const hanakoDir = path.join(hanakoHome, "agents", "hanako");
     fs.mkdirSync(hanakoDir, { recursive: true });

@@ -72,6 +72,11 @@ desk:
   heartbeat_enabled: false           # 巡检默认关闭，用户明确开启后才会自动巡检
   heartbeat_interval: 31             # 巡检间隔（分钟）
 
+# 工作区上下文（per-agent）
+workspace_context:
+  discover_project_skills: true             # 加载当前项目 .agents/skills
+  discover_compatible_project_skills: false # 加载项目内其他工具的技能目录
+
 # 频道系统（agent 间协作通信）
 channels:
   enabled: false                     # 是否参与频道轮转

@@ -34,4 +34,23 @@ describe("session thinking level state", () => {
     });
     expect(engine.getSessionThinkingLevel).toHaveBeenCalledWith(sessionPath);
   });
+
+  it("exposes the Kimi four-level capability and High model default for a new session", () => {
+    const engine = {
+      currentModel: {
+        id: "kimi-for-coding",
+        provider: "kimi-coding",
+        thinkingLevels: ["off", "low", "high", "max"],
+        defaultThinkingLevel: "high",
+        thinkingLevelMap: { xhigh: "max" },
+      },
+      getDefaultThinkingLevel: vi.fn(() => "high"),
+      getThinkingLevel: vi.fn(() => "medium"),
+    };
+
+    expect(resolveSessionThinkingLevelState(engine, { pendingNewSession: true })).toEqual({
+      thinkingLevel: "high",
+      thinkingLevels: ["off", "low", "high", "max"],
+    });
+  });
 });

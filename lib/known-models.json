@@ -2644,6 +2644,15 @@
       "maxOutput": 32768,
       "image": true,
       "reasoning": true,
+      "thinkingLevels": ["off", "low", "high", "max"],
+      "thinkingLevelMap": {
+        "off": null,
+        "low": "low",
+        "medium": "high",
+        "high": "high",
+        "xhigh": "max"
+      },
+      "defaultThinkingLevel": "high",
       "compat": {
         "thinkingFormat": "kimi",
         "reasoningProfile": "kimi-openai"

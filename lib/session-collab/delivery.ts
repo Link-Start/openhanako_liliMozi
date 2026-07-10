@@ -46,7 +46,7 @@ export async function deliverAgentMessage(engine: any, opts: {
     source: AGENT_MESSAGE_SOURCE,
     origin: { kind: "agent", agentId: opts.from.agentId, agentName: opts.from.agentName },
   };
-  const payload = { sessionPath, text, displayMessage };
+  const payload = { sessionId: targetSessionId, sessionPath, text, displayMessage };
 
   const streaming = engine.isSessionStreaming?.(sessionPath) === true;
   const primary = streaming

@@ -7,7 +7,7 @@
  * - DropText 子组件
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
 import { toSlash, baseName } from './utils/format';
@@ -251,6 +251,24 @@ export function MainContent({ children }: { children: React.ReactNode }) {
   const currentTab = useStore(s => s.currentTab);
   const welcomeMode = welcomeVisible && currentTab === 'chat';
 
+  const finishDragSession = useCallback(() => {
+    dragCounter.current = 0;
+    setDragActive(false);
+  }, []);
+
+  useEffect(() => {
+    // 外部文件在窗口外松手、Escape 取消或窗口失焦时，React 根节点不一定
+    // 收到成对的 drop/dragleave。这里只结束生命周期，不消费 DataTransfer。
+    window.addEventListener('drop', finishDragSession, true);
+    window.addEventListener('dragend', finishDragSession, true);
+    window.addEventListener('blur', finishDragSession);
+    return () => {
+      window.removeEventListener('drop', finishDragSession, true);
+      window.removeEventListener('dragend', finishDragSession, true);
+      window.removeEventListener('blur', finishDragSession);
+    };
+  }, [finishDragSession]);
+
   const onDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCounter.current++;
@@ -258,16 +276,15 @@ export function MainContent({ children }: { children: React.ReactNode }) {
   }, []);
   const onDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    dragCounter.current--;
-    if (dragCounter.current === 0) setDragActive(false);
-  }, []);
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) finishDragSession();
+  }, [finishDragSession]);
   const onDragOver = useCallback((e: React.DragEvent) => e.preventDefault(), []);
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    dragCounter.current = 0;
-    setDragActive(false);
-    handleDrop(e);
-  }, []);
+    finishDragSession();
+    void handleDrop(e);
+  }, [finishDragSession]);
 
   return (
     <div
@@ -275,7 +292,9 @@ export function MainContent({ children }: { children: React.ReactNode }) {
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}
+      onDropCapture={finishDragSession}
       onDrop={onDrop}
+      onDragEndCapture={finishDragSession}
     >
       <BrowserCard />
       <ComputerUseOverlay />

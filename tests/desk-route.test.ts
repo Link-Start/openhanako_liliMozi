@@ -22,6 +22,98 @@ describe("desk route", () => {
     vi.clearAllMocks();
   });
 
+  it("lists all known project skill sources while marking policy-active and shadowed candidates", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desk-route-skills-"));
+    try {
+      const cwd = path.join(tempRoot, "workspace");
+      for (const [sub, name] of [
+        [".agents/skills", "shared-skill"],
+        [".codex/skills", "shared-skill"],
+        [".claude/skills", "claude-only"],
+      ]) {
+        const skillDir = path.join(cwd, sub, name);
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, "SKILL.md"), `---\nname: ${name}\n---\n`, "utf-8");
+      }
+      const engine = {
+        deskCwd: cwd,
+        homeCwd: cwd,
+        getAgent: vi.fn(() => ({
+          config: {
+            workspace_context: {
+              discover_project_skills: true,
+              discover_compatible_project_skills: true,
+            },
+          },
+        })),
+      };
+
+      const { createDeskRoute } = await import("../server/routes/desk.ts");
+      const app = new Hono();
+      app.route("/api", createDeskRoute(engine, null));
+
+      const res = await app.request(`/api/desk/skills?dir=${encodeURIComponent(cwd)}&agentId=agent-a`);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.policy).toEqual({
+        discoverProjectSkills: true,
+        discoverCompatibleProjectSkills: true,
+      });
+      expect(data.skills.find((skill) => skill.source === "Agents" && skill.name === "shared-skill"))
+        .toMatchObject({ active: true, shadowed: false, sourceCategory: "standard" });
+      expect(data.skills.find((skill) => skill.source === "Codex" && skill.name === "shared-skill"))
+        .toMatchObject({ active: false, shadowed: true, shadowedBy: expect.objectContaining({ source: "Agents" }) });
+      expect(data.skills.find((skill) => skill.source === "Claude Code" && skill.name === "claude-only"))
+        .toMatchObject({ active: true, shadowed: false, sourceCategory: "compatible" });
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps policy-disabled project skills manageable on disk", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desk-route-skills-"));
+    try {
+      const cwd = path.join(tempRoot, "workspace");
+      const skillDir = path.join(cwd, ".agents", "skills", "disabled-skill");
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: disabled-skill\n---\n", "utf-8");
+      const engine = {
+        deskCwd: cwd,
+        homeCwd: cwd,
+        getAgent: vi.fn(() => ({
+          config: {
+            workspace_context: {
+              discover_project_skills: false,
+              discover_compatible_project_skills: false,
+            },
+          },
+        })),
+        syncWorkspaceSkillPaths: vi.fn(async () => {}),
+      };
+      const { createDeskRoute } = await import("../server/routes/desk.ts");
+      const app = new Hono();
+      app.route("/api", createDeskRoute(engine, null));
+
+      const listed = await app.request(`/api/desk/skills?dir=${encodeURIComponent(cwd)}&agentId=agent-a`);
+      expect((await listed.json()).skills[0]).toMatchObject({
+        name: "disabled-skill",
+        active: false,
+        shadowed: false,
+        inactiveReason: "policy-disabled",
+      });
+
+      const deleted = await app.request("/api/desk/delete-skill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dir: cwd, agentId: "agent-a", skillDir }),
+      });
+      expect(deleted.status).toBe(200);
+      expect(fs.existsSync(skillDir)).toBe(false);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("desk/install-skill 对 zip/.skill 走 extractZip 抽象，并把解压结果安装到工作区技能目录", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desk-route-"));
     try {

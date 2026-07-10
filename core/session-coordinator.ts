@@ -790,7 +790,7 @@ export class SessionCoordinator {
    * @param {(agentId) => object} deps.getActivityStore
    * @param {(agentId) => object|null} deps.getAgentById
    * @param {() => object} deps.listAgents - 列出所有 agent
-   * @param {(cwd: string) => Promise<void>} [deps.onBeforeSessionCreate]
+   * @param {(cwd: string, context: {agent: object, agentId: string}) => Promise<{workspacePaths?: object[]}|void>} [deps.onBeforeSessionCreate]
    * @param {(sessionPath: string, reason: string) => void|Promise<void>} [deps.onSessionRuntimeDiscarded]
    */
   constructor(deps: any) {
@@ -1332,7 +1332,10 @@ export class SessionCoordinator {
     this._pendingModel = null;
     log.log(`createSession cwd=${effectiveCwd} restore=${restore} (传入: ${cwd || "未指定"})`);
 
-    await this._d.onBeforeSessionCreate?.(effectiveCwd);
+    const workspaceSkillContext = await this._d.onBeforeSessionCreate?.(effectiveCwd, {
+      agent,
+      agentId: ownerAgentId,
+    });
 
     if (!restore && !effectiveModel) {
       throw new Error(t("error.noAvailableModel"));
@@ -1386,11 +1389,12 @@ export class SessionCoordinator {
       ? findModel(models.availableModels, restoredSessionModelRef.modelId, restoredSessionModelRef.provider)
       : null;
     const promptPatchModel = restoredPromptSnapshot ? null : (effectiveModel || restoredPromptModel);
-    const requestedThinkingLevel = normalizeSessionThinkingLevel(
-      restore
-        ? (restoredThinkingLevel || this._getDefaultThinkingLevelForModel(promptPatchModel))
-        : (thinkingLevel ?? this._getDefaultThinkingLevelForModel(effectiveModel)),
-    );
+    // Preserve legacy `auto` until the target model is known. Collapsing it to
+    // the model-agnostic Medium default here would ignore a model-level default
+    // such as Kimi for Coding's High setting.
+    const requestedThinkingLevel = restore
+      ? (restoredThinkingLevel || this._getDefaultThinkingLevelForModel(promptPatchModel))
+      : (thinkingLevel ?? this._getDefaultThinkingLevelForModel(effectiveModel));
     let initialThinkingLevel = normalizeThinkingLevelForModel(requestedThinkingLevel, promptPatchModel);
     let resolvedThinkingLevel = models.resolveThinkingLevel(initialThinkingLevel);
     const providerPromptPatches = promptPatchModel
@@ -1535,7 +1539,9 @@ export class SessionCoordinator {
     const rawSkillsResultSnapshot = restoredPromptSnapshot?.skillsResult
       ?? (
         skills?.getSkillsForAgent
-          ? freezeSkillsResult(skills.getSkillsForAgent(agent))
+          ? freezeSkillsResult(skills.getSkillsForAgent(agent, {
+              workspacePaths: workspaceSkillContext?.workspacePaths || null,
+            }))
           : freezeSkillsResult(baseResourceLoader.getSkills?.())
       );
     const skillsResultSnapshot = restoredPromptSnapshot?.skillsResult

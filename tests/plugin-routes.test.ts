@@ -553,6 +553,24 @@ describe("plugin management API", () => {
       }
     });
 
+    it("carries agent identity only through the host request context and strips spoofed raw headers", async () => {
+      const engine = mockEngine({ getAgent: (id) => ({ id }) });
+      const pluginApp = new Hono();
+      pluginApp.get("/identity", (c) => c.json({
+        agentId: (c.env as { pluginRouteRequest?: { agentId?: string | null } })?.pluginRouteRequest?.agentId || null,
+        rawHeader: c.req.header("X-Hana-Agent-Id") || null,
+      }));
+      engine.pluginManager.routeRegistry.set("demo", pluginApp);
+      const app = createApp(engine);
+
+      const res = await app.request("/api/plugins/demo/identity?agentId=butter", {
+        headers: { "X-Hana-Agent-Id": "attacker" },
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ agentId: "butter", rawHeader: null });
+    });
+
     it("issues a path-scoped asset session from iframe pages and serves static plugin assets", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-assets-"));
       try {
@@ -2211,6 +2229,39 @@ export default function register(app) {
 `;
 
 describe("plugin route request-level principal and capability context", () => {
+  it("does not derive pluginRequestContext.agentId from a raw header fallback", async () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-agent-context-"));
+    try {
+      const { pm } = await loadRealPluginWithRoutes({
+        tmpHome,
+        pluginId: "media-board",
+        routeSource: `
+          export default function register(app) {
+            app.get("/identity", (c) => c.json({
+              agentId: c.get("pluginRequestContext").agentId,
+            }));
+          }
+        `,
+      });
+      const app = pm.getRouteApp("media-board");
+
+      const spoofed = await app.fetch(new Request("http://hana.local/identity", {
+        headers: { "X-Hana-Agent-Id": "attacker" },
+      }));
+      expect(await spoofed.json()).toEqual({ agentId: null });
+
+      const explicit = await app.fetch(
+        new Request("http://hana.local/identity", {
+          headers: { "X-Hana-Agent-Id": "attacker" },
+        }),
+        { pluginRouteRequest: { pluginId: "media-board", agentId: "hana", principal: null } },
+      );
+      expect(await explicit.json()).toEqual({ agentId: "hana" });
+    } finally {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
   it("issues a plugin surface session alongside the iframe ticket", async () => {
     const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-surface-issue-"));
     try {

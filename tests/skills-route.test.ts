@@ -34,7 +34,7 @@ describe("skills route", () => {
   });
 
   it("runtime=1 时返回包含 workspace skills 的运行时视图，默认仍是 agent 全局技能列表", async () => {
-    const agentId = "hana";
+    const agentId = "Legacy_AGENT-1";
     const agentDir = path.join(tempRoot, agentId);
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");

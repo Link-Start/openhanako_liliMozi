@@ -36,7 +36,6 @@ const THEME_I18N = Object.fromEntries(
 THEME_I18N[themeRegistry.AUTO_OPTION.id] = themeRegistry.AUTO_OPTION.i18nName;
 
 const THINKING_I18N = {
-  "auto": "settings.agent.thinkingLevels.auto",
   "off": "settings.agent.thinkingLevels.off",
   "low": "settings.agent.thinkingLevels.low",
   "medium": "settings.agent.thinkingLevels.medium",
@@ -198,7 +197,7 @@ const SETTINGS_REGISTRY = {
   thinking_level: {
     type: "list",
     get label() { return t("toolDef.updateSettings.thinkingBudget"); },
-    options: ["auto", "off", "low", "medium", "high", "max"],
+    options: ["off", "low", "medium", "high", "max"],
     get optionLabels() { return i18nLabels(THINKING_I18N); },
     searchTerms: ["reasoning", "推理", "思考", "推論"],
     get: (engine, _agent) => {

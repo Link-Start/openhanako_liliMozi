@@ -336,6 +336,15 @@ describe("known-models dictionary", () => {
       maxOutput: 32768,
       image: true,
       reasoning: true,
+      thinkingLevels: ["off", "low", "high", "max"],
+      defaultThinkingLevel: "high",
+      thinkingLevelMap: {
+        off: null,
+        low: "low",
+        medium: "high",
+        high: "high",
+        xhigh: "max",
+      },
       compat: {
         thinkingFormat: "kimi",
         reasoningProfile: "kimi-openai",

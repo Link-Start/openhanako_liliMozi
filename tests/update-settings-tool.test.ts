@@ -301,6 +301,17 @@ describe("update-settings-tool", () => {
   });
 
   describe("thinking_level session boundary", () => {
+    it("does not expose or accept legacy auto as a new setting value", async () => {
+      const { tool, engine } = buildTool({ defaultThinkingLevel: "high" });
+
+      const search = await tool.execute("c-thinking-search", { action: "search", query: "thinking" });
+      expect(search.content[0].text).not.toMatch(/\bauto\b/i);
+
+      const apply = await tool.execute("c-thinking-auto", { action: "apply", key: "thinking_level", value: "auto" });
+      expect(apply.content[0].text).toContain("off");
+      expect(engine.setDefaultThinkingLevel).not.toHaveBeenCalled();
+    });
+
     it("reads the current session thinking level before the model default", async () => {
       const { tool } = buildTool({
         defaultThinkingLevel: "high",

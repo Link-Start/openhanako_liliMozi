@@ -35,6 +35,8 @@ struct WritableRoot {
 
 struct Options {
     std::wstring cwd;
+    DWORD timeoutMs = 0;
+    bool timeoutSpecified = false;
     std::vector<WritableRoot> writableRoots;
     std::vector<std::wstring> denyWritePaths;
     std::vector<std::wstring> hanaWriteAclCleanupPaths;
@@ -84,6 +86,11 @@ static const DWORD WRITE_DENY_MASK =
     FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES | DELETE | FILE_DELETE_CHILD;
 static const wchar_t* EVERYONE_SID = L"S-1-1-0";
 static const wchar_t* WRITE_RESTRICTED_CODE_SID = L"S-1-5-33";
+static const DWORD MAX_TIMEOUT_MS = INFINITE - 1;
+static const DWORD TERMINATION_GRACE_MS = 5000;
+static const UINT TIMEOUT_PROCESS_EXIT_CODE = 124;
+static const int HELPER_TERMINATION_FAILED_EXIT_CODE = 125;
+static const int HELPER_LAUNCH_FAILED_EXIT_CODE = 126;
 
 static void fail(const std::wstring& message) {
     std::wcerr << L"hana-win-sandbox: " << message << std::endl;
@@ -125,6 +132,36 @@ static std::wstring win32Diagnostic(DWORD code) {
 
 static std::wstring boolDiagnosticValue(bool value) {
     return value ? L"true" : L"false";
+}
+
+static void emitTerminalRecord(
+    const std::wstring& status,
+    bool hasExitCode,
+    DWORD exitCode,
+    DWORD timeoutMs,
+    DWORD win32Error = ERROR_SUCCESS
+) {
+    std::wcerr
+        << L"hana-win-sandbox: terminal-v1"
+        << L" status=\"" << status << L"\""
+        << L" exitCode=\"" << (hasExitCode ? std::to_wstring(exitCode) : L"") << L"\""
+        << L" timeoutMs=\"" << timeoutMs << L"\""
+        << L" win32Error=\"" << win32Error << L"\""
+        << std::endl;
+}
+
+static DWORD parseTimeoutMs(const std::wstring& value) {
+    if (value.empty()) throw std::runtime_error("empty --timeout-ms");
+    unsigned long long parsed = 0;
+    for (wchar_t ch : value) {
+        if (ch < L'0' || ch > L'9') throw std::runtime_error("invalid --timeout-ms");
+        const unsigned long long digit = static_cast<unsigned long long>(ch - L'0');
+        if (parsed > (static_cast<unsigned long long>(MAX_TIMEOUT_MS) - digit) / 10) {
+            throw std::runtime_error("--timeout-ms is out of range");
+        }
+        parsed = parsed * 10 + digit;
+    }
+    return static_cast<DWORD>(parsed);
 }
 
 static std::wstring escapeDiagnosticValue(const std::wstring& value) {
@@ -267,6 +304,12 @@ static Options parseArgs(int argc, wchar_t** argv) {
             opts.cwd = argv[++i];
             continue;
         }
+        if (arg == L"--timeout-ms" && i + 1 < argc) {
+            if (opts.timeoutSpecified) throw std::runtime_error("duplicate --timeout-ms");
+            opts.timeoutMs = parseTimeoutMs(argv[++i]);
+            opts.timeoutSpecified = true;
+            continue;
+        }
         if ((arg == L"--writable-root" || arg == L"--writable-root-optional") && i + 1 < argc) {
             std::wstring target = argv[++i];
             opts.writableRoots.push_back({ target, arg == L"--writable-root" });
@@ -313,12 +356,13 @@ static Options parseArgs(int argc, wchar_t** argv) {
         !opts.legacyProfileCleanupNames.empty() ||
         opts.cleanupLegacyAcl;
     if (maintenanceMode) {
-        if (!opts.cwd.empty() || !opts.executable.empty() || !opts.writableRoots.empty() || !opts.denyWritePaths.empty() || opts.diagnoseToken) {
+        if (!opts.cwd.empty() || !opts.executable.empty() || !opts.writableRoots.empty() || !opts.denyWritePaths.empty() || opts.diagnoseToken || opts.timeoutSpecified) {
             throw std::runtime_error("maintenance arguments cannot be combined with sandbox execution arguments");
         }
         return opts;
     }
     if (opts.cwd.empty()) throw std::runtime_error("missing --cwd");
+    if (!opts.timeoutSpecified) throw std::runtime_error("missing --timeout-ms");
     if (opts.executable.empty()) throw std::runtime_error("missing executable after --");
     if (opts.writableRoots.empty()) opts.writableRoots.push_back({ opts.cwd, true });
     return opts;
@@ -745,6 +789,34 @@ static HANDLE createKillOnCloseJob() {
     return job;
 }
 
+static bool waitForJobEmpty(HANDLE job, DWORD timeoutMs, DWORD* errorOut) {
+    const ULONGLONG deadline = GetTickCount64() + timeoutMs;
+    while (true) {
+        JOBOBJECT_BASIC_ACCOUNTING_INFORMATION info = {};
+        if (!QueryInformationJobObject(
+            job,
+            JobObjectBasicAccountingInformation,
+            &info,
+            sizeof(info),
+            nullptr
+        )) {
+            if (errorOut) *errorOut = GetLastError();
+            return false;
+        }
+        if (info.ActiveProcesses == 0) {
+            if (errorOut) *errorOut = ERROR_SUCCESS;
+            return true;
+        }
+        const ULONGLONG now = GetTickCount64();
+        if (now >= deadline) {
+            if (errorOut) *errorOut = ERROR_TIMEOUT;
+            return false;
+        }
+        const DWORD remaining = static_cast<DWORD>(std::min<ULONGLONG>(deadline - now, 10));
+        Sleep(remaining);
+    }
+}
+
 static bool createSandboxDesktop(const std::vector<WritableRoot>& roots, SandboxDesktop& desktop) {
     HANDLE processToken = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &processToken)) {
@@ -936,7 +1008,9 @@ static void freeStartupAttributeList(StartupAttributeList& attributes) {
 static int runSandboxed(const Options& opts, HANDLE restrictedToken) {
     SandboxDesktop desktop;
     if (!createSandboxDesktop(opts.writableRoots, desktop)) {
-        return 1;
+        DWORD errorCode = GetLastError();
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, errorCode);
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
     }
 
     STARTUPINFOEXW startup = {};
@@ -955,7 +1029,9 @@ static int runSandboxed(const Options& opts, HANDLE restrictedToken) {
     if (!setupInheritedHandleList(inheritedHandles, inheritedAttributes)) {
         freeStartupAttributeList(inheritedAttributes);
         closeSandboxDesktop(desktop);
-        return 1;
+        DWORD errorCode = GetLastError();
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, errorCode);
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
     }
     startup.lpAttributeList = inheritedAttributes.list;
 
@@ -996,38 +1072,109 @@ static int runSandboxed(const Options& opts, HANDLE restrictedToken) {
             inheritedHandles.size()
         );
         closeSandboxDesktop(desktop);
-        return 1;
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, errorCode);
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
     }
 
     HANDLE job = createKillOnCloseJob();
     if (!job) {
-        fail(L"CreateJobObject failed: " + win32Message(GetLastError()));
+        DWORD errorCode = GetLastError();
+        fail(L"CreateJobObject failed: " + win32Message(errorCode));
         TerminateProcess(process.hProcess, 1);
         CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
         closeSandboxDesktop(desktop);
-        return 1;
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, errorCode);
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
     }
     if (!AssignProcessToJobObject(job, process.hProcess)) {
-        fail(L"AssignProcessToJobObject failed: " + win32Message(GetLastError()));
+        DWORD errorCode = GetLastError();
+        fail(L"AssignProcessToJobObject failed: " + win32Message(errorCode));
         TerminateProcess(process.hProcess, 1);
         CloseHandle(job);
         CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
         closeSandboxDesktop(desktop);
-        return 1;
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, errorCode);
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
     }
 
-    ResumeThread(process.hThread);
-    WaitForSingleObject(process.hProcess, INFINITE);
-    DWORD exitCode = 1;
-    GetExitCodeProcess(process.hProcess, &exitCode);
+    if (ResumeThread(process.hThread) == static_cast<DWORD>(-1)) {
+        DWORD errorCode = GetLastError();
+        fail(L"ResumeThread failed: " + win32Message(errorCode));
+        TerminateJobObject(job, 1);
+        DWORD ignored = ERROR_SUCCESS;
+        waitForJobEmpty(job, TERMINATION_GRACE_MS, &ignored);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        CloseHandle(job);
+        closeSandboxDesktop(desktop);
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, errorCode);
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
+    }
 
+    const DWORD waitMs = opts.timeoutMs > 0 ? opts.timeoutMs : INFINITE;
+    const DWORD waitResult = WaitForSingleObject(process.hProcess, waitMs);
+    if (waitResult == WAIT_OBJECT_0) {
+        DWORD exitCode = 1;
+        if (!GetExitCodeProcess(process.hProcess, &exitCode)) {
+            DWORD errorCode = GetLastError();
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+            CloseHandle(job);
+            closeSandboxDesktop(desktop);
+            emitTerminalRecord(L"termination_failed", false, 0, opts.timeoutMs, errorCode);
+            return HELPER_TERMINATION_FAILED_EXIT_CODE;
+        }
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        // KILL_ON_JOB_CLOSE preserves the existing contract: descendants cannot outlive
+        // the command even when the direct child exits before inherited stdio closes.
+        CloseHandle(job);
+        closeSandboxDesktop(desktop);
+        emitTerminalRecord(L"exited", true, exitCode, opts.timeoutMs);
+        return static_cast<int>(exitCode);
+    }
+
+    if (waitResult == WAIT_TIMEOUT) {
+        if (!TerminateJobObject(job, TIMEOUT_PROCESS_EXIT_CODE)) {
+            DWORD errorCode = GetLastError();
+            fail(L"TerminateJobObject failed: " + win32Message(errorCode));
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+            CloseHandle(job);
+            closeSandboxDesktop(desktop);
+            emitTerminalRecord(L"termination_failed", false, 0, opts.timeoutMs, errorCode);
+            return HELPER_TERMINATION_FAILED_EXIT_CODE;
+        }
+
+        DWORD convergenceError = ERROR_SUCCESS;
+        const bool converged = waitForJobEmpty(job, TERMINATION_GRACE_MS, &convergenceError);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        CloseHandle(job);
+        closeSandboxDesktop(desktop);
+        if (!converged) {
+            fail(L"sandbox Job did not converge after timeout: " + win32Message(convergenceError));
+            emitTerminalRecord(L"termination_failed", false, 0, opts.timeoutMs, convergenceError);
+            return HELPER_TERMINATION_FAILED_EXIT_CODE;
+        }
+        emitTerminalRecord(L"timed_out", true, TIMEOUT_PROCESS_EXIT_CODE, opts.timeoutMs);
+        return static_cast<int>(TIMEOUT_PROCESS_EXIT_CODE);
+    }
+
+    DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_INVALID_FUNCTION;
+    fail(L"WaitForSingleObject failed: " + win32Message(waitError));
+    if (TerminateJobObject(job, 1)) {
+        DWORD ignored = ERROR_SUCCESS;
+        waitForJobEmpty(job, TERMINATION_GRACE_MS, &ignored);
+    }
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
     CloseHandle(job);
     closeSandboxDesktop(desktop);
-    return static_cast<int>(exitCode);
+    emitTerminalRecord(L"termination_failed", false, 0, opts.timeoutMs, waitError);
+    return HELPER_TERMINATION_FAILED_EXIT_CODE;
 }
 
 static bool stringStartsWith(const std::wstring& value, const std::wstring& prefix) {
@@ -1484,7 +1631,8 @@ int wmain(int argc, wchar_t** argv) {
     std::vector<AclRestore> aclRestores;
     if (!convertRootSids(opts.writableRoots)) {
         freeRootSids(opts.writableRoots);
-        return 1;
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, GetLastError());
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
     }
     if (opts.diagnoseToken) {
         int diagnosticExitCode = diagnoseRestrictedToken(opts);
@@ -1494,13 +1642,17 @@ int wmain(int argc, wchar_t** argv) {
     if (!applyWriteAcls(opts.writableRoots, opts.denyWritePaths, aclRestores)) {
         restoreAcls(aclRestores);
         freeRootSids(opts.writableRoots);
-        return 1;
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, GetLastError());
+        return HELPER_LAUNCH_FAILED_EXIT_CODE;
     }
 
     HANDLE token = createRestrictedWriteToken(opts.writableRoots);
     if (token) {
         exitCode = runSandboxed(opts, token);
         CloseHandle(token);
+    } else {
+        exitCode = HELPER_LAUNCH_FAILED_EXIT_CODE;
+        emitTerminalRecord(L"launch_failed", false, 0, opts.timeoutMs, GetLastError());
     }
 
     restoreAcls(aclRestores);

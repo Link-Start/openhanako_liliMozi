@@ -147,6 +147,8 @@ describe('ws-message-handler session-scoped desktop events', () => {
   beforeEach(() => {
     useStore.setState({
       currentSessionPath: '/session/a.jsonl',
+      currentSessionId: null,
+      sessionLocatorsById: {},
       pendingNewSession: false,
       sessions: [{
         path: '/session/a.jsonl',
@@ -187,6 +189,34 @@ describe('ws-message-handler session-scoped desktop events', () => {
     expect(first.data.text).toBe('hello from bridge');
     expect(first.data.quotedText).toBe('quote');
     expect(first.data.attachments).toEqual([{ path: '/tmp/a.png', name: 'a.png', isDir: false }]);
+  });
+
+  it('drops a websocket event whose sessionId is already bound to a different known path (#2078)', () => {
+    useStore.setState({
+      currentSessionId: 'sess_a',
+      currentSessionPath: '/session/a.jsonl',
+      sessions: [
+        { path: '/session/a.jsonl', sessionId: 'sess_a', agentId: 'a1', agentName: 'Hana' },
+        { path: '/session/b.jsonl', sessionId: 'sess_b', agentId: 'a1', agentName: 'Hana' },
+      ],
+      sessionLocatorsById: {
+        sess_a: { path: '/session/a.jsonl' },
+        sess_b: { path: '/session/b.jsonl' },
+      },
+      streamingSessions: [],
+      activeSessionStreams: {},
+    } as never);
+
+    handleServerMessage({
+      type: 'status',
+      sessionId: 'sess_a',
+      sessionPath: '/session/b.jsonl',
+      streamId: 'stream-wrong',
+      isStreaming: true,
+    });
+
+    expect(useStore.getState().streamingSessions).toEqual([]);
+    expect(useStore.getState().sessionLocatorsById.sess_a).toEqual({ path: '/session/a.jsonl' });
   });
 
   it('session_user_message 透传 origin 到 store 里的 ChatMessage.origin', () => {
@@ -279,7 +309,7 @@ describe('ws-message-handler session-scoped desktop events', () => {
     expect(first.data.sendStatus).toBeUndefined();
   });
 
-  it('session_user_message uses sessionId from the event when the session path moved before refresh', () => {
+  it('drops an ordinary stream event that tries to move a known sessionId to an unknown new path', () => {
     const sessionId = 'sess_ws_moved';
     const oldPath = '/session/old-a.jsonl';
     const newPath = '/session/new-a.jsonl';
@@ -318,15 +348,8 @@ describe('ws-message-handler session-scoped desktop events', () => {
     });
 
     const state = useStore.getState();
-    expect(state.sessionLocatorsById[sessionId]).toEqual({ path: newPath });
-    expect(state.chatSessions[sessionId]?.items).toHaveLength(1);
-    expect(state.chatSessions[sessionId]?.items[0]).toMatchObject({
-      type: 'message',
-      data: {
-        id: 'moved-u1',
-        text: 'moved path event',
-      },
-    });
+    expect(state.sessionLocatorsById[sessionId]).toEqual({ path: oldPath });
+    expect(state.chatSessions[sessionId]?.items).toHaveLength(0);
     expect(state.chatSessions[newPath]).toBeUndefined();
   });
 
@@ -372,6 +395,12 @@ describe('ws-message-handler session-scoped desktop events', () => {
 
   it('session_created 乐观插入后延迟刷新 session 列表，避免同一波事件重复全量拉取', async () => {
     vi.useFakeTimers();
+    useStore.setState({
+      sessionLocatorsById: {
+        ...useStore.getState().sessionLocatorsById,
+        sess_ws_created: { path: '/session/creation-reservation.jsonl' },
+      },
+    } as never);
 
     handleServerMessage({
       type: 'session_created',

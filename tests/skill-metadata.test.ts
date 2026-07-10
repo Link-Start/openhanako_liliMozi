@@ -228,6 +228,44 @@ describe("SkillManager metadata scanning", () => {
     );
   });
 
+  it("retains same-name standard and compatible workspace candidates for per-Agent selection", () => {
+    const root = makeTmpRoot();
+    const agentsSkillsDir = path.join(root, "workspace", ".agents", "skills");
+    const codexSkillsDir = path.join(root, "workspace", ".codex", "skills");
+    for (const skillsDir of [agentsSkillsDir, codexSkillsDir]) {
+      const skillDir = path.join(skillsDir, "shared-skill");
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: shared-skill\n---\n", "utf-8");
+    }
+    const manager = new SkillManager({
+      skillsDir: path.join(root, "skills"),
+      externalPaths: [
+        { dirPath: agentsSkillsDir, label: "Agents", scope: "workspace", category: "standard" },
+        { dirPath: codexSkillsDir, label: "Codex", scope: "workspace", category: "compatible" },
+      ],
+    });
+    manager.init(
+      { getSkills: () => ({ skills: [], diagnostics: [] }) },
+      new Map(),
+      new Set(),
+    );
+
+    expect(manager.allSkills.filter(skill => skill.name === "shared-skill")).toHaveLength(2);
+    const compatibleOnly = {
+      config: {
+        workspace_context: {
+          discover_project_skills: false,
+          discover_compatible_project_skills: true,
+        },
+      },
+    };
+    expect(manager.getSkillsForAgent(compatibleOnly).skills[0]).toMatchObject({
+      name: "shared-skill",
+      _externalLabel: "Codex",
+      _workspaceSkillCategory: "compatible",
+    });
+  });
+
   it("workspace scope 的外部 watcher 会 pick up 隐藏目录下的 skill 变化", async () => {
     const root = makeTmpRoot();
     const workspaceSkillsDir = path.join(root, ".agents", "skills");

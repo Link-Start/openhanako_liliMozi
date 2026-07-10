@@ -1800,6 +1800,12 @@
       "injectAgentsMdDesc": "When enabled, new sessions read AGENTS.md from the current working directory up to the Git root.",
       "injectClaudeMd": "Inject CLAUDE.md",
       "injectClaudeMdDesc": "When enabled, new sessions read CLAUDE.md from the current working directory up to the Git root.",
+      "projectSkillsTitle": "Project skill discovery",
+      "projectSkillsDesc": "Choose which project skill directories this Agent loads into new sessions.",
+      "discoverProjectSkills": "Load project skills",
+      "discoverProjectSkillsDesc": "Discover and load skills from the current project's .agents/skills directory.",
+      "discoverCompatibleProjectSkills": "Load skills from other tools",
+      "discoverCompatibleProjectSkillsDesc": "Also discover project skills from Claude Code, Codex, and OpenClaw directories.",
       "agentDeskSection": "Agent desk settings"
     },
     "toolCaps": {
@@ -2485,6 +2491,9 @@
     "cwdSkillsHint": "Create a .agents/skills/ directory to get started",
     "cwdSkillsDesc": "Skills follow workspace",
     "cwdSkillsDrop": "Drop folder or .zip to install skills",
+    "cwdSkillActive": "Loaded",
+    "cwdSkillInactive": "Not loaded",
+    "cwdSkillShadowed": "Shadowed",
     "deleteSkill": "Delete Skill",
     "openInFinder": "Open Folder",
     "jianLabel": "Jian",

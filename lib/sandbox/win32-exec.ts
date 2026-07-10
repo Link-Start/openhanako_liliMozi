@@ -29,6 +29,7 @@ import { assertSafeWin32BashCommand } from "./win32-bash-guard.ts";
 import { buildWin32SandboxGrants } from "./win32-policy.ts";
 import {
   buildWin32SandboxHelperArgs,
+  createWin32SandboxTerminalStderrFilter,
   resolveWin32SandboxHelper,
   resourceSiblingDir,
 } from "./win32-sandbox-helper.ts";
@@ -60,6 +61,9 @@ const STATUS_DLL_INIT_FAILED_UNSIGNED = 0xC0000142;
 const STATUS_DLL_INIT_FAILED_SIGNED = -1073741502;
 const WIN32_SANDBOX_HELPER_LAUNCH_FAILURE_RE = /hana-win-sandbox:\s+CreateProcessAsUserW failed/i;
 const WIN32_DIAGNOSTIC_OUTPUT_PREVIEW_LIMIT = 8192;
+const WIN32_SANDBOX_TERMINATION_GRACE_MS = 5000;
+const WIN32_SANDBOX_HELPER_WATCHDOG_EXTRA_MS = WIN32_SANDBOX_TERMINATION_GRACE_MS + 2000;
+const WIN32_SANDBOX_HELPER_STDIO_GRACE_MS = 2000;
 
 // 枚举 Windows 盘符 C-Z（A/B 是软盘遗留，不扫）。
 // 用户可能把 Git/MSYS2/Cygwin 装在任意非 C 盘（如 D:\Git、E:\msys64），
@@ -1207,8 +1211,12 @@ async function spawnViaSandboxHelper({ sandbox, executable, args, cwd, env, onDa
   }
   assertSandboxNetworkSupported(sandbox);
   const grants = grantsForSandbox(sandbox, cwd);
+  const nativeTimeoutMs = timeout == null || timeout <= 0
+    ? 0
+    : Math.min(Math.ceil(timeout * 1000), 0xFFFFFFFE);
   const helperArgs = buildWin32SandboxHelperArgs({
     cwd,
+    timeoutMs: nativeTimeoutMs,
     grants,
     executable,
     args,
@@ -1217,7 +1225,50 @@ async function spawnViaSandboxHelper({ sandbox, executable, args, cwd, env, onDa
   const cleanupRoots = cleanupRootsForSandboxGrants(grants);
   const lease = cleanupQueue?.beginRootUse?.(cleanupRoots);
   try {
-    return await spawnAndStream(helper, helperArgs, { cwd, env, onData, signal, timeout });
+    const stderrFilter = createWin32SandboxTerminalStderrFilter({ onData });
+    const watchdogTimeout = nativeTimeoutMs > 0
+      ? (nativeTimeoutMs + WIN32_SANDBOX_HELPER_WATCHDOG_EXTRA_MS) / 1000
+      : undefined;
+    let result;
+    try {
+      result = await spawnAndStream(helper, helperArgs, {
+        cwd,
+        env,
+        onData,
+        onStdout: onData,
+        onStderr: (data) => stderrFilter.push(data),
+        signal,
+        timeout: watchdogTimeout,
+        timeoutErrorValue: timeout,
+        exitStdioGraceMs: WIN32_SANDBOX_HELPER_STDIO_GRACE_MS,
+        // Terminating the helper closes its KILL_ON_JOB_CLOSE handle. Do not start
+        // taskkill for sandbox execution; the private Job owns the command tree.
+        killMode: "process",
+      });
+    } finally {
+      stderrFilter.flush();
+    }
+    const terminal = stderrFilter.terminalRecord;
+    if (!terminal) {
+      const error: any = new Error("[win32-sandbox] helper terminal record missing or invalid");
+      error.code = "HANA_WIN32_SANDBOX_TERMINAL_PROTOCOL";
+      throw error;
+    }
+    if (terminal.status === "timed_out") {
+      throw new Error(`timeout:${timeout}`);
+    }
+    if (terminal.status === "termination_failed") {
+      const error: any = new Error(
+        `[win32-sandbox] native Job termination failed (win32Error=${terminal.win32Error})`
+      );
+      error.code = "HANA_WIN32_SANDBOX_TERMINATION_FAILED";
+      error.win32Error = terminal.win32Error;
+      throw error;
+    }
+    if (terminal.status === "exited" && terminal.exitCode !== null) {
+      return { exitCode: terminal.exitCode };
+    }
+    return result;
   } finally {
     cleanupQueue?.endRootUse?.(lease);
     cleanupQueue?.enqueueRoots?.(cleanupRoots);
