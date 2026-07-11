@@ -6401,7 +6401,9 @@ a.about-link:hover {
 
 /* 更新历史复用记忆浮层的窗口骨架，正文使用独立的发布文档排版。 */
 .update-history-viewer {
-    max-height: min(70vh, calc(100vh - var(--space-40) - var(--space-40)));
+    /* 百分比跟随 Overlay backdrop 的实际内容盒；在应用内设置弹窗里，
+       该内容盒由设置卡片而非主窗口决定。 */
+    max-height: 100%;
 }
 
 .update-history-subtitle {

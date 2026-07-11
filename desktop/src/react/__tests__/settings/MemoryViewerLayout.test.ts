@@ -18,6 +18,8 @@ describe('memory viewer layout contract', () => {
     expect(cssRule(css, '.memory-viewer-backdrop')).toMatch(/padding:\s*var\(--space-16\);/);
     expect(cssRule(css, '.compiled-memory-viewer-backdrop')).toMatch(/padding:\s*var\(--space-40\) var\(--space-24\);/);
     expect(cssRule(css, '.compiled-memory-viewer')).toMatch(/max-height:\s*100%;/);
+    expect(cssRule(css, '.update-history-viewer')).toMatch(/max-height:\s*100%;/);
+    expect(cssRule(css, '.update-history-viewer')).not.toMatch(/\d+vh/);
     expect(cssRule(css, '.memory-viewer')).toMatch(/min-height:\s*0;/);
     expect(cssRule(css, '.memory-viewer')).toMatch(/overflow:\s*hidden;/);
 
