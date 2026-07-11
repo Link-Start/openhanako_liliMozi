@@ -202,6 +202,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # dist-server-artifact/*/server-*.tar.gz and dist-renderer-artifact/renderer-*.tar.gz
+      # are the hot-update boxes packed by packDualKindSeed (see scripts/build-server-artifact.mjs).
+      # seed-train.json(.sig) living next to the server box is NOT uploaded here — the
+      # release job's train manifest is generated later by scripts/publish-train.mjs, not
+      # copied from any one platform's local seed.
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -214,6 +219,8 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/latest*.yml
+            dist-server-artifact/*/server-*.tar.gz
+            dist-renderer-artifact/renderer-*.tar.gz
           if-no-files-found: error
 
   release:
@@ -282,6 +289,27 @@ jobs:
               gh release upload "${{ github.ref_name }}" "$f" --clobber
             done
 
+          echo "=== Uploading server hot-update archives (one per platform-arch) ==="
+          find artifacts -path '*/dist-server-artifact/*/server-*.tar.gz' -print0 |
+            while IFS= read -r -d '' f; do
+              echo "  $f"
+              gh release upload "${{ github.ref_name }}" "$f" --clobber
+            done
+
+          # Renderer archive is platform-independent, so all four matrix jobs pack one, but
+          # they are NOT guaranteed byte-identical (embedded paths/timestamps can vary by OS).
+          # Only the macOS arm64 build's copy is published — the train manifest's sha256 MUST
+          # match whichever single file actually sits on the shelf.
+          echo "=== Uploading renderer hot-update archive (macOS arm64 build only) ==="
+          RENDERER_TGZ=$(find artifacts -path '*installer-macos-latest-arm64*/dist-renderer-artifact/renderer-*.tar.gz' | head -1)
+          if [ -n "$RENDERER_TGZ" ]; then
+            echo "  $RENDERER_TGZ"
+            gh release upload "${{ github.ref_name }}" "$RENDERER_TGZ" --clobber
+          else
+            echo "::error::renderer hot-update archive not found from the macOS arm64 build"
+            exit 1
+          fi
+
           echo "=== Uploading latest.yml (Windows) ==="
           WIN_YML=$(find artifacts -name 'latest.yml' | head -1)
           if [ -n "$WIN_YML" ]; then
@@ -330,6 +358,11 @@ jobs:
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
+          echo "$ASSETS" | grep -qE '^server-.*-darwin-arm64\.tar\.gz$' || MISSING+=("server darwin-arm64 hot-update archive")
+          echo "$ASSETS" | grep -qE '^server-.*-darwin-x64\.tar\.gz$' || MISSING+=("server darwin-x64 hot-update archive")
+          echo "$ASSETS" | grep -qE '^server-.*-win32-x64\.tar\.gz$' || MISSING+=("server win32-x64 hot-update archive")
+          echo "$ASSETS" | grep -qE '^server-.*-linux-x64\.tar\.gz$' || MISSING+=("server linux-x64 hot-update archive")
+          echo "$ASSETS" | grep -qE '^renderer-.*\.tar\.gz$' || MISSING+=("renderer hot-update archive")
 
           # 清洁性检查：不应该有 blockmap 漏进来
           if echo "$ASSETS" | grep -qE '\.blockmap$'; then
@@ -351,6 +384,72 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release edit "${{ github.ref_name }}" --prerelease --draft=false
+
+  # Publishes the hot-update train that already-installed clients pull automatically —
+  # separate from (and downstream of) the installer release above, so a failure here never
+  # touches the already-published installer assets. scripts/publish-train.mjs is resumable:
+  # rerunning this job after a partial failure is always safe (see the script's file header).
+  publish-train:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+
+      # Same materialization as the build job's "Materialize seed signing key" step:
+      # HANA_SIGN_KEY secret content is the PEM text itself, written to a runner-temp
+      # file and exported as a path (never written into the workspace).
+      - name: Materialize train signing key
+        shell: bash
+        env:
+          HANA_SIGN_KEY_PEM: ${{ secrets.HANA_SIGN_KEY }}
+        run: |
+          if [ -z "$HANA_SIGN_KEY_PEM" ]; then
+            echo "::error::HANA_SIGN_KEY secret is missing; the train manifest MUST be signed"
+            exit 1
+          fi
+          printf '%s\n' "$HANA_SIGN_KEY_PEM" > "$RUNNER_TEMP/hana-train-sign-key.pem"
+          echo "HANA_SIGN_KEY=$RUNNER_TEMP/hana-train-sign-key.pem" >> "$GITHUB_ENV"
+
+      # Stable is the primary channel for every tagged release. Beta has no separate
+      # pre-release track yet, so it always follows stable's every publish with the SAME
+      # archives (see scripts/publish-train.mjs's file header) so beta users never go
+      # without an update path.
+      - name: Publish stable train
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/publish-train.mjs --tag "${{ github.ref_name }}" --channel stable
+
+      - name: Publish beta train
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/publish-train.mjs --tag "${{ github.ref_name }}" --channel beta
+
+      - name: Publish train summary
+        if: always()
+        run: |
+          {
+            echo "### Hot-update train publish — ${{ github.ref_name }}"
+            echo ""
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "Both the stable and beta channel pointers were updated."
+            else
+              echo "This job did not finish. The installer release for ${{ github.ref_name }} is unaffected"
+              echo "(published by the separate, already-completed \`release\` job)."
+              echo ""
+              echo "To retry: re-run this job — the publish script detects and safely resumes a partially"
+              echo "created train release — or trigger the **Publish Train** workflow manually with"
+              echo "\`tag=${{ github.ref_name }}\` and \`channel=stable\`, then again with \`channel=beta\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   mirror-atomgit:
     needs: release
