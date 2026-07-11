@@ -15,6 +15,7 @@ import {
   parseRendererArchiveName,
   parseServerArchiveName,
   publishChannel,
+  releaseExistsFromExec,
 } from "../scripts/publish-train.mjs";
 
 const tempDirs: string[] = [];
@@ -271,6 +272,51 @@ describe("publish-train: discoverBoxes", () => {
   });
 });
 
+describe("publish-train: releaseExistsFromExec (only a real not-found reads as absent)", () => {
+  // Error shape matches what execFileSync throws for a failed gh call with
+  // encoding "utf8" and piped stdio: message "Command failed: ..." plus the
+  // captured stderr as a string property.
+  function makeExecError(stderr: string) {
+    const err = new Error(`Command failed: gh release view some-tag --json tagName\n${stderr}`);
+    (err as Error & { stderr: string }).stderr = stderr;
+    (err as Error & { status: number }).status = 1;
+    return err;
+  }
+
+  it("returns true when the gh call succeeds", () => {
+    expect(releaseExistsFromExec("train-1", () => '{"tagName":"train-1"}')).toBe(true);
+  });
+
+  it('returns false on the exact "release not found" stderr gh emits for a missing release', () => {
+    // Measured against gh 2.92.0: `gh release view <missing-tag> --json tagName`
+    // exits 1 with stderr "release not found\n".
+    const exec = vi.fn(() => {
+      throw makeExecError("release not found\n");
+    });
+    expect(releaseExistsFromExec("train-1", exec)).toBe(false);
+  });
+
+  it("rethrows auth/network/rate-limit failures instead of reading them as absent", () => {
+    for (const stderr of [
+      "HTTP 401: Bad credentials (https://api.github.com/graphql)\n",
+      "HTTP 403: API rate limit exceeded\n",
+      "error connecting to api.github.com\n",
+    ]) {
+      const exec = vi.fn(() => {
+        throw makeExecError(stderr);
+      });
+      expect(() => releaseExistsFromExec("train-1", exec)).toThrow(/gh release view train-1 failed/);
+    }
+  });
+
+  it("rethrows errors that carry no stderr at all (spawn failure, gh missing)", () => {
+    const exec = vi.fn(() => {
+      throw new Error("spawn gh ENOENT");
+    });
+    expect(() => releaseExistsFromExec("train-1", exec)).toThrow(/spawn gh ENOENT/);
+  });
+});
+
 describe("publish-train: publishChannel", () => {
   function baseDeps(overrides: Record<string, unknown> = {}) {
     return {
@@ -392,6 +438,23 @@ describe("publish-train: publishChannel", () => {
     ).rejects.toThrow(/real conflict, not a safe resume/);
     expect(deps.createRelease).not.toHaveBeenCalled();
     expect(deps.uploadAssets).not.toHaveBeenCalled();
+  });
+
+  it("propagates a non-not-found releaseExists failure and makes zero publish calls", async () => {
+    const deps = baseDeps({
+      releaseExists: vi.fn(() => {
+        throw new Error("gh release view channels failed: HTTP 401: Bad credentials");
+      }),
+    });
+    await expect(
+      publishChannel({
+        tag: "v1.2.3", channel: "stable", dryRun: false, repo: "liliMozi/openhanako",
+        releasedAt: "2026-07-11T00:00:00.000Z", boxes, env, deps, log: () => {},
+      }),
+    ).rejects.toThrow(/HTTP 401/);
+    expect(deps.createRelease).not.toHaveBeenCalled();
+    expect(deps.uploadAssets).not.toHaveBeenCalled();
+    expect(deps.signManifest).not.toHaveBeenCalled();
   });
 
   it("beta.json always carries channel:\"beta\" even when resuming off a train stable created first", async () => {

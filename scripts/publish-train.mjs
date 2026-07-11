@@ -337,13 +337,35 @@ function ghExec(args) {
   return execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
-function defaultReleaseExists(tag) {
+/**
+ * "Release exists" may only read as false on gh's actual missing-release
+ * error. Auth failures, rate limits, network errors etc. MUST propagate:
+ * misreading them as "absent" would silently restart a channel's train
+ * numbering at 1 (breaking the anti-rollback chain clients enforce) or
+ * wrongly attempt to re-create an existing train release. Measured against
+ * gh 2.92.0: `gh release view <missing-tag> --json tagName` exits 1 with
+ * stderr exactly "release not found".
+ * @param {string} tag
+ * @param {(args: string[]) => string} exec - throws on non-zero exit with
+ *   the child's stderr on the error's `stderr` property (execFileSync shape)
+ * @returns {boolean}
+ */
+export function releaseExistsFromExec(tag, exec) {
   try {
-    ghExec(["release", "view", tag, "--json", "tagName"]);
+    exec(["release", "view", tag, "--json", "tagName"]);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    const stderr = err && err.stderr != null ? String(err.stderr) : "";
+    if (stderr.includes("release not found")) return false;
+    // Spawn-level failures (gh binary missing etc.) carry no stderr —
+    // nothing to classify, rethrow untouched.
+    if (!stderr) throw err;
+    throw new Error(`publish-train: gh release view ${tag} failed: ${stderr.trim()}`, { cause: err });
   }
+}
+
+function defaultReleaseExists(tag) {
+  return releaseExistsFromExec(tag, ghExec);
 }
 
 function defaultReleaseAssetNames(tag) {
