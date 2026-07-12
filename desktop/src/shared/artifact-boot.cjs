@@ -38,9 +38,12 @@
  *   sha256 不匹配触发的"随包 seed 为准"重激活自然覆盖"server 版本换代"这
  *   一种情形。renderer 采用独立指针命名空间，用
  *   `${channel}.renderer` 作为独立指针命名空间（pointer-store 的 channel
- *   参数只是一个不透明的文件名片段，不做语义校验，因此这个限定符不需要碰
- *   受保护的 shared/artifact-core 任何模块）——两种 kind 各自的
- *   current/previous/next 互不覆盖。
+ *   参数只是一个不透明的文件名片段，不做语义校验）——两种 kind 各自的
+ *   current/previous/next 互不覆盖。`SEED_CHANNEL` 与 `rendererPointerChannel`
+ *   的唯一定义点是 `shared/artifact-core/pointer-channels.cjs`，本模块只
+ *   re-export；desktop/src/shared/artifact-ota.cjs（及其下沉后的
+ *   shared/artifact-core/ota-core.cjs 核心）也从同一处取值，不重复拼接
+ *   `${channel}.renderer` 这条字符串规则。
  * - HANA_HOME 纪律：homeDir 由调用方（main.cjs 的入口注入）传入，本模块
  *   不读环境变量、不拼 `.hanako*` 字面量。
  */
@@ -51,8 +54,9 @@ const path = require("path");
 const activation = require("../../../shared/artifact-core/activation.cjs");
 const pointerStore = require("../../../shared/artifact-core/pointer-store.cjs");
 const manifestModule = require("../../../shared/artifact-core/manifest.cjs");
+const pointerChannels = require("../../../shared/artifact-core/pointer-channels.cjs");
 
-const SEED_CHANNEL = "stable";
+const { SEED_CHANNEL, rendererPointerChannel } = pointerChannels;
 const SEED_MANIFEST_NAME = "seed-train.json";
 const HEALTHY_CLEAR_DELAY_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
@@ -108,16 +112,6 @@ function verifySeedManifest({ manifestBytes, sigBytes, keyset, platformArch, req
     result.rendererEntry = rendererEntry;
   }
   return result;
-}
-
-/**
- * renderer 的独立指针命名空间（同一 channel 下跟 server 互不覆盖，见文件头注释）。
- * 导出：desktop/src/shared/artifact-ota.cjs 写 renderer 的
- * `next` 指针时复用这个函数，不在第二个文件里重复"${channel}.renderer"
- * 这条字符串拼接规则——命名空间只有这一处定义。
- */
-function rendererPointerChannel(channel) {
-  return `${channel}.renderer`;
 }
 
 /**

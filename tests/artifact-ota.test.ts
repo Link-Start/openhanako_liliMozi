@@ -1564,3 +1564,68 @@ describe("artifact-ota: readStagedTrainStatus (filesystem integration)", () => {
     });
   });
 });
+
+// ── structural: shared OTA pipeline core must stay desktop-free ───────────
+//
+// The pipeline core (`shared/artifact-core/ota-core.cjs`) exists so a
+// future server/CLI consumer can run check/verify/download/activate
+// without importing anything under desktop/. These are text-level
+// assertions on purpose — a runtime behavioral test can't catch "someone
+// added a require to a desktop file" the way grepping the source can, and
+// the whole point of this boundary is that it must never regress silently.
+
+describe("artifact-ota: shared pipeline core stays desktop-free (structural)", () => {
+  const otaCoreSource = fs.readFileSync(
+    path.join(__dirname, "..", "shared", "artifact-core", "ota-core.cjs"),
+    "utf8",
+  );
+
+  it("never requires anything under desktop/", () => {
+    const requireCalls = otaCoreSource.match(/require\(\s*["'][^"']+["']\s*\)/g) || [];
+    expect(requireCalls.length).toBeGreaterThan(0);
+    for (const call of requireCalls) {
+      expect(call).not.toMatch(/desktop/);
+    }
+  });
+
+  it("never references the dev-only override env var's literal name", () => {
+    expect(otaCoreSource).not.toContain("HANA_ARTIFACT_MANIFEST");
+  });
+
+  it("desktop shell still holds the static dev-bypass require (vite alias contract)", () => {
+    const shellSource = fs.readFileSync(
+      path.join(__dirname, "..", "desktop", "src", "shared", "artifact-ota.cjs"),
+      "utf8",
+    );
+    expect(shellSource).toContain('require("./artifact-ota-dev-bypass.cjs")');
+  });
+
+  it("desktop shell's module.exports keys are exactly the pre-refactor set", () => {
+    const expectedKeys = [
+      "SEED_CHANNEL",
+      "FIRST_CHECK_DELAY_MS",
+      "RECHECK_INTERVAL_MS",
+      "ORIGIN_MANIFEST_RACE_TIMEOUT_MS",
+      "channelManifestUrls",
+      "isShellVersionSufficient",
+      "isPreloadContractSatisfied",
+      "computeRolloutBucket",
+      "isInRolloutBucket",
+      "ensureRolloutId",
+      "readOtaState",
+      "writeOtaChannelState",
+      "fetchWithRedirects",
+      "fetchBuffer",
+      "downloadToFile",
+      "fetchChannelManifest",
+      "checkOnce",
+      "downloadAndApplyArtifacts",
+      "scheduleBackgroundOtaChecks",
+      "hasDevOverrideConfigured",
+      "bothNextPointersReady",
+      "resolveStagedTrainStatus",
+      "readStagedTrainStatus",
+    ];
+    expect(Object.keys(ota).sort()).toEqual([...expectedKeys].sort());
+  });
+});
