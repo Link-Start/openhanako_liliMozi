@@ -211,6 +211,29 @@ function fakeStreamResponse(statusCode: number, headers: Record<string, string>,
   return { statusCode, headers, bodyStream: Readable.from(chunks) };
 }
 
+/**
+ * A Readable that emits `chunks` one at a time, each after a real
+ * `intervalMs` delay, then ends — used to simulate a slow/trickling
+ * network download with actual elapsed time (as opposed to
+ * `fakeStreamResponse`'s effectively-instant `Readable.from`), so the
+ * stall-window and attempt-deadline guards in `downloadToFile` have real
+ * time to observe.
+ */
+function makeTrickleStream(chunks: Buffer[], intervalMs: number): Readable {
+  let i = 0;
+  return new Readable({
+    read() {
+      if (i >= chunks.length) {
+        this.push(null);
+        return;
+      }
+      const chunk = chunks[i];
+      i += 1;
+      setTimeout(() => this.push(chunk), intervalMs);
+    },
+  });
+}
+
 describe("artifact-ota: fetchWithRedirects (fake transport)", () => {
   it("follows a chain of 302 redirects to a final 200", async () => {
     const calls: string[] = [];
@@ -327,6 +350,59 @@ describe("artifact-ota: downloadToFile", () => {
     const destPath = path.join(root, "archive.tar.gz");
     const fetchOnce = async () => fakeStreamResponse(500, {});
     await expect(downloadToFile("https://mirror.example/archive.tar.gz", destPath, { fetchOnce })).rejects.toThrow(/500/);
+    expect(fs.existsSync(destPath)).toBe(false);
+  });
+});
+
+describe("artifact-ota: downloadToFile stall/deadline guards (trickle-attack mitigation)", () => {
+  it("aborts a trickling download that never clears the rolling stall window, and cleans up the partial file", async () => {
+    const root = makeTempDir("hana-ota-dl-stall-");
+    const destPath = path.join(root, "archive.tar.gz");
+    // 5 chunks of 10 bytes each, one every 200ms — far slower than the 50ms
+    // stall window / 1000-byte minimum below, so the rolling-progress guard
+    // must fire long before the stream would ever finish naturally.
+    const chunks = Array.from({ length: 5 }, () => Buffer.alloc(10, 1));
+    const fetchOnce = async () => ({ statusCode: 200, headers: {}, bodyStream: makeTrickleStream(chunks, 200) });
+
+    await expect(
+      downloadToFile("https://mirror.example/archive.tar.gz", destPath, {
+        fetchOnce,
+        stallWindowMs: 50,
+        stallMinBytes: 1000,
+      }),
+    ).rejects.toThrow(/stalled/);
+    expect(fs.existsSync(destPath)).toBe(false);
+  });
+
+  it("does not abort a healthy trickling download that clears the stall window every round", async () => {
+    const root = makeTempDir("hana-ota-dl-stall-ok-");
+    const destPath = path.join(root, "archive.tar.gz");
+    const chunks = Array.from({ length: 5 }, () => Buffer.alloc(50, 2));
+    const fetchOnce = async () => ({ statusCode: 200, headers: {}, bodyStream: makeTrickleStream(chunks, 5) });
+
+    const result = await downloadToFile("https://mirror.example/archive.tar.gz", destPath, {
+      fetchOnce,
+      stallWindowMs: 50,
+      stallMinBytes: 10,
+    });
+    expect(result.bytesWritten).toBe(250);
+    expect(fs.readFileSync(destPath).length).toBe(250);
+  });
+
+  it("aborts a download that exceeds the hard per-attempt deadline even with otherwise-healthy progress", async () => {
+    const root = makeTempDir("hana-ota-dl-deadline-");
+    const destPath = path.join(root, "archive.tar.gz");
+    const chunks = Array.from({ length: 10 }, () => Buffer.alloc(50, 3));
+    const fetchOnce = async () => ({ statusCode: 200, headers: {}, bodyStream: makeTrickleStream(chunks, 20) });
+
+    await expect(
+      downloadToFile("https://mirror.example/archive.tar.gz", destPath, {
+        fetchOnce,
+        stallWindowMs: 1000, // generous — never the guard that fires here
+        stallMinBytes: 1,
+        attemptDeadlineMs: 40, // natural duration is ~200ms; deadline must win
+      }),
+    ).rejects.toThrow(/deadline/);
     expect(fs.existsSync(destPath)).toBe(false);
   });
 });

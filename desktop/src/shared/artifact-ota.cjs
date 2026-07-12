@@ -201,6 +201,15 @@ const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const MAX_REDIRECTS = 5;
 const MANIFEST_REQUEST_TIMEOUT_MS = 30_000;
 const DOWNLOAD_REQUEST_TIMEOUT_MS = 60_000;
+// Socket idle timeout above only catches a FULLY stalled connection; a
+// malicious or broken server trickling one byte per minute would hold the
+// download (and the artifacts lock) hostage forever. Two independent
+// guards close that: a rolling minimum-progress window and a hard
+// per-attempt deadline. Both abort into the existing mirror-rotation
+// retry loop in stageArtifact.
+const DOWNLOAD_STALL_WINDOW_MS = 60_000;
+const DOWNLOAD_STALL_MIN_BYTES = 64 * 1024;
+const DOWNLOAD_ATTEMPT_DEADLINE_MS = 60 * 60 * 1000;
 const MAX_MANIFEST_BYTES = 256 * 1024; // generous for a schema-1 manifest + mirrors array
 const MAX_SIG_BYTES = 4 * 1024; // raw ed25519 sig is 64 bytes; PEM-wrapped is still tiny
 // GitHub's race leg gets this short budget instead of the full 30s idle
@@ -338,9 +347,22 @@ async function fetchBuffer(url, opts = {}) {
  * partial file is removed. `onProgress(receivedBytes)` — when supplied —
  * is invoked after every chunk so a caller can report download progress;
  * purely observational, never affects control flow.
+ *
+ * Two independent guards close the "trickle" gap the transport's socket
+ * idle timeout leaves open (see the `DOWNLOAD_STALL_WINDOW_MS` doc comment
+ * above): a rolling minimum-progress window (`stallWindowMs`/
+ * `stallMinBytes`) and a hard per-attempt deadline (`attemptDeadlineMs`).
+ * Both are overridable via `opts` for testability; production callers rely
+ * on the module defaults.
  */
 async function downloadToFile(url, destPath, opts = {}) {
-  const { maxBytes, onProgress } = opts;
+  const {
+    maxBytes,
+    onProgress,
+    stallWindowMs = DOWNLOAD_STALL_WINDOW_MS,
+    stallMinBytes = DOWNLOAD_STALL_MIN_BYTES,
+    attemptDeadlineMs = DOWNLOAD_ATTEMPT_DEADLINE_MS,
+  } = opts;
   const { statusCode, headers, bodyStream } = await fetchWithRedirects(url, opts);
   if (statusCode < 200 || statusCode >= 300) {
     if (typeof bodyStream.resume === "function") bodyStream.resume();
@@ -349,14 +371,34 @@ async function downloadToFile(url, destPath, opts = {}) {
   await fsp.mkdir(path.dirname(destPath), { recursive: true });
   const writeStream = fs.createWriteStream(destPath);
   let total = 0;
+  let bytesAtWindowStart = 0;
+  let stallTimer = null;
+  let deadlineTimer = null;
   try {
     await new Promise((resolve, reject) => {
       let settled = false;
       const fail = (err) => {
         if (settled) return;
         settled = true;
+        if (typeof bodyStream.destroy === "function") bodyStream.destroy();
+        if (typeof writeStream.destroy === "function") writeStream.destroy();
         reject(err);
       };
+      stallTimer = setInterval(() => {
+        if (total - bytesAtWindowStart < stallMinBytes) {
+          fail(new Error(
+            `artifact-ota: download stalled — fewer than ${stallMinBytes} bytes received in the last `
+              + `${Math.round(stallWindowMs / 1000)}s for ${url}`,
+          ));
+          return;
+        }
+        bytesAtWindowStart = total;
+      }, stallWindowMs);
+      deadlineTimer = setTimeout(() => {
+        fail(new Error(
+          `artifact-ota: download exceeded the ${Math.round(attemptDeadlineMs / 1000)}s attempt deadline for ${url}`,
+        ));
+      }, attemptDeadlineMs);
       bodyStream.on("data", (chunk) => {
         total += chunk.length;
         if (maxBytes && total > maxBytes) {
@@ -380,6 +422,9 @@ async function downloadToFile(url, destPath, opts = {}) {
   } catch (err) {
     await fsp.rm(destPath, { force: true }).catch(() => {});
     throw err;
+  } finally {
+    if (stallTimer) clearInterval(stallTimer);
+    if (deadlineTimer) clearTimeout(deadlineTimer);
   }
   return { statusCode, headers, bytesWritten: total };
 }
