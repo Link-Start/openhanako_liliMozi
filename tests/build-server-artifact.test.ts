@@ -403,3 +403,124 @@ describe("build-server-artifact: packDualKindSeed guards and ordering", () => {
     ).rejects.toThrow(/renderer dist dir not found/);
   });
 });
+
+describe("build-server-artifact: packDualKindSeed prebuilt renderer archive reuse (CI single-source box)", () => {
+  function baseOpts(root: string) {
+    return {
+      outDir: makeServerTree(root),
+      rendererDistDir: makeRendererTree(root),
+      rendererArtifactOutDir: path.join(root, "dist-renderer-artifact"),
+      artifactOutDir: path.join(root, "dist-server-artifact", "mac-arm64"),
+      version: "0.381.0",
+      platform: "linux",
+      arch: "x64",
+      log: () => {},
+    };
+  }
+
+  /** Packs a standalone renderer box, standing in for the shared CI job's output. */
+  async function packSharedRendererBox(root: string, version = "0.381.0") {
+    const sharedSourceDir = path.join(root, "shared-source-renderer");
+    fs.mkdirSync(path.join(sharedSourceDir, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(sharedSourceDir, "index.html"), "<!doctype html><html></html>\n");
+    fs.writeFileSync(path.join(sharedSourceDir, "assets", "index.js"), "console.log('shared renderer');\n");
+    return packRendererArtifact({
+      rendererDistDir: sharedSourceDir,
+      artifactOutDir: path.join(root, "shared-renderer-box"),
+      version,
+      log: () => {},
+    });
+  }
+
+  it("reuses a prebuilt renderer archive instead of packing rendererDistDir on the spot", async () => {
+    const root = makeTempDir("hana-dual-prebuilt-");
+    const { keyPath, keysetPath } = makeKeypairFiles(root);
+    const prebuilt = await packSharedRendererBox(root);
+
+    const opts = {
+      outDir: makeServerTree(root),
+      // Deliberately missing: if packDualKindSeed still tried to pack this on the spot
+      // (i.e. the prebuilt path were NOT honored), packRendererArtifact's own dist-dir
+      // guard would throw "renderer dist dir not found" (see the regression test above).
+      // A clean pass here proves on-the-spot packing never ran.
+      rendererDistDir: path.join(root, "no-such-renderer-dist-dir"),
+      rendererArtifactOutDir: path.join(root, "dist-renderer-artifact"),
+      artifactOutDir: path.join(root, "dist-server-artifact", "mac-arm64"),
+      version: "0.381.0",
+      platform: "linux",
+      arch: "x64",
+      log: () => {},
+    };
+
+    const result = await packDualKindSeed({
+      ...opts,
+      env: { HANA_SIGN_KEY: keyPath, HANA_SIGN_KEYSET: keysetPath },
+      prebuiltRendererArchive: prebuilt.archivePath,
+    });
+
+    // Manifest records the sha256/size of the prebuilt file, verified by independent hashing.
+    const measuredSha256 = createHash("sha256").update(fs.readFileSync(prebuilt.archivePath)).digest("hex");
+    expect(prebuilt.sha256).toBe(measuredSha256);
+    const manifest = JSON.parse(fs.readFileSync(result.manifestPath, "utf8"));
+    expect(manifest.artifacts.renderer.sha256).toBe(measuredSha256);
+    expect(manifest.artifacts.renderer.size).toBe(prebuilt.size);
+    expect(manifest.artifacts.renderer.path).toBe("renderer-0.381.0.tar.gz");
+
+    // Lands in both required locations with identical bytes: the per-platform seed dir
+    // (what extraResources picks up) AND the shared artifact-out dir (what CI's
+    // "Upload artifacts" step publishes as dist-renderer-artifact/renderer-*.tar.gz).
+    const inSeedDir = path.join(opts.artifactOutDir, "renderer-0.381.0.tar.gz");
+    const inSharedDir = path.join(opts.rendererArtifactOutDir, "renderer-0.381.0.tar.gz");
+    expect(fs.existsSync(inSeedDir)).toBe(true);
+    expect(fs.existsSync(inSharedDir)).toBe(true);
+    expect(createHash("sha256").update(fs.readFileSync(inSeedDir)).digest("hex")).toBe(measuredSha256);
+    expect(createHash("sha256").update(fs.readFileSync(inSharedDir)).digest("hex")).toBe(measuredSha256);
+    expect(result.rendererArchivePath).toBe(inSeedDir);
+  });
+
+  it("picks up HANA_PREBUILT_RENDERER_BOX from env when the option is not passed explicitly", async () => {
+    const root = makeTempDir("hana-dual-prebuilt-env-");
+    const { keyPath, keysetPath } = makeKeypairFiles(root);
+    const prebuilt = await packSharedRendererBox(root);
+    const opts = baseOpts(root); // has a normal, valid rendererDistDir — must still be ignored
+
+    const result = await packDualKindSeed({
+      ...opts,
+      env: { HANA_SIGN_KEY: keyPath, HANA_SIGN_KEYSET: keysetPath, HANA_PREBUILT_RENDERER_BOX: prebuilt.archivePath },
+    });
+
+    const manifest = JSON.parse(fs.readFileSync(result.manifestPath, "utf8"));
+    expect(manifest.artifacts.renderer.sha256).toBe(prebuilt.sha256);
+    expect(manifest.artifacts.renderer.size).toBe(prebuilt.size);
+  });
+
+  it("hard-errors when the prebuilt renderer archive path does not exist", async () => {
+    const root = makeTempDir("hana-dual-prebuilt-missing-");
+    const { keyPath, keysetPath } = makeKeypairFiles(root);
+    const opts = baseOpts(root);
+
+    await expect(
+      packDualKindSeed({
+        ...opts,
+        env: { HANA_SIGN_KEY: keyPath, HANA_SIGN_KEYSET: keysetPath },
+        prebuiltRendererArchive: path.join(root, `renderer-${opts.version}.tar.gz`),
+      }),
+    ).rejects.toThrow(/prebuilt renderer archive path invalid/);
+  });
+
+  it("hard-errors when the prebuilt renderer archive filename does not match the build version", async () => {
+    const root = makeTempDir("hana-dual-prebuilt-mismatch-");
+    const { keyPath, keysetPath } = makeKeypairFiles(root);
+    const opts = baseOpts(root); // version: "0.381.0"
+    const wrongVersionArchive = path.join(root, "renderer-9.9.9.tar.gz");
+    fs.writeFileSync(wrongVersionArchive, "not really a tar\n");
+
+    await expect(
+      packDualKindSeed({
+        ...opts,
+        env: { HANA_SIGN_KEY: keyPath, HANA_SIGN_KEYSET: keysetPath },
+        prebuiltRendererArchive: wrongVersionArchive,
+      }),
+    ).rejects.toThrow(/prebuilt renderer archive name mismatch/);
+  });
+});

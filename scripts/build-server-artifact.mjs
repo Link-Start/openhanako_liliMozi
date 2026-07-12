@@ -331,6 +331,76 @@ export async function packRendererArtifact({ rendererDistDir, artifactOutDir, ve
 }
 
 /**
+ * 复用 CI 单点构建好的 renderer 归档字节，而不是在当前 job 里现场打包。
+ *
+ * 背景：renderer 归档（desktop/dist-renderer/ 树）是纯 web 静态资源，构建结果
+ * 平台无关。但 packTree 在 tar 头里写入真实文件 mtime，四个平台 runner 各自
+ * 现场打包会产生"内容相同、字节不同、sha256 不同"的四份归档——GitHub Release
+ * 上只发布其中一份（mac-arm64），而每个安装包里内嵌的种子却是各自 runner
+ * 自己那份，导致"全新安装后本地种子哈希与货架永远不一致"的生产事故。
+ *
+ * 修法：由独立 CI job 打包一次，四个平台 job 下载同一份字节复用，而不是各自
+ * 现场打包。这个函数只做"接过一份已经打好的箱子，量出它的哈希/体积，搬到
+ * 该搬的地方"——不做任何裁剪或改写，也绝不允许把内容跟版本号对不上的箱子
+ * 悄悄放行（文件名必须与传入的 version 精确匹配 renderer-<version>.tar.gz）。
+ * @param {{
+ *   archivePath: string,
+ *   rendererArtifactOutDir: string,
+ *   version: string,
+ *   log?: (msg: string) => void,
+ *   deps?: {
+ *     sha256File?: (filePath: string) => Promise<string>,
+ *     statSize?: (filePath: string) => number,
+ *   },
+ * }} opts
+ * @returns {Promise<{archivePath: string, archiveName: string, sha256: string, size: number}>}
+ */
+async function usePrebuiltRendererArchive({ archivePath, rendererArtifactOutDir, version, log = console.log, deps = {} }) {
+  const {
+    sha256File = activation.sha256File,
+    statSize = (filePath) => fs.statSync(filePath).size,
+  } = deps;
+
+  if (!fs.existsSync(archivePath)) {
+    throw new Error(
+      `[build-server] prebuilt renderer archive path invalid: ${archivePath} does not exist. `
+        + "HANA_PREBUILT_RENDERER_BOX (or the prebuiltRendererArchive option) must point at the renderer "
+        + "box produced by the shared CI job (see scripts/pack-renderer-box.mjs).",
+    );
+  }
+
+  const expectedName = `renderer-${version}.tar.gz`;
+  const actualName = path.basename(archivePath);
+  if (actualName !== expectedName) {
+    throw new Error(
+      `[build-server] prebuilt renderer archive name mismatch: expected "${expectedName}" `
+        + `(matching build version ${version}), got "${actualName}". Refusing to pack a renderer box `
+        + "built for a different version — this guards against a stale/mismatched shared artifact "
+        + "silently ending up inside this platform's seed.",
+    );
+  }
+
+  fs.mkdirSync(rendererArtifactOutDir, { recursive: true });
+  // 清掉上一次构建残留的旧归档（与 packRendererArtifact 的清理承诺一致），
+  // 但绝不删掉源文件本身——CI 里源文件通常在下载目录，跟这里是两个目录，
+  // 但本地手跑时调用方可能就地传入已经躺在 rendererArtifactOutDir 里的文件。
+  for (const entry of fs.readdirSync(rendererArtifactOutDir)) {
+    const entryPath = path.join(rendererArtifactOutDir, entry);
+    if (path.resolve(entryPath) === path.resolve(archivePath)) continue;
+    fs.rmSync(entryPath, { recursive: true, force: true });
+  }
+  const destPath = path.join(rendererArtifactOutDir, actualName);
+  if (path.resolve(destPath) !== path.resolve(archivePath)) {
+    fs.copyFileSync(archivePath, destPath);
+  }
+
+  const sha256 = await sha256File(destPath);
+  const size = statSize(destPath);
+  log(`[build-server] seed: reusing prebuilt ${actualName} (sha256=${sha256.slice(0, 12)}…) → ${rendererArtifactOutDir}`);
+  return { archivePath: destPath, archiveName: actualName, sha256, size };
+}
+
+/**
  * schema-1 seed train manifest，双 kind：同时携带
  * artifacts.renderer 与 artifacts.server（启用双 artifact 管线后，安装包不再只带
  * server，renderer 也已拆出 asar）。兼容基线取 1/1；renderer 加载层
@@ -384,6 +454,7 @@ export function buildSeedManifest({ version, platform, arch, keyId, releasedAt, 
  *     signManifestFile?: (opts: {manifestPath: string, signKeyPath: string}) => void,
  *     verifyManifest?: (manifestBytes: Buffer, sigBytes: Buffer, keyset: unknown[]) => object,
  *   },
+ *   prebuiltRendererArchive?: string,
  * }} opts
  * @returns {Promise<{serverArchivePath: string, rendererArchivePath: string,
  *                    manifestPath: string, sigPath: string, manifest: object}>}
@@ -399,6 +470,13 @@ export async function packDualKindSeed({
   env = process.env,
   log = console.log,
   deps = {},
+  // CI 的四个平台 job 各自现场打包 renderer 树会产生同内容不同字节的四份
+  // 归档（tar 头里的 mtime 不同），而发布货架只上传其中一份。设置这个参数
+  // （或环境变量 HANA_PREBUILT_RENDERER_BOX）指向共享 job 已经打好的箱子，
+  // 就跳过现场打包，直接复用那份字节——四个平台安装包内嵌的种子从此和货架
+  // 上的归档字节完全一致。留空（本地开发者手跑 / 未设置该环境变量）时行为
+  // 与过去完全一致：现场从 rendererDistDir 打包。
+  prebuiltRendererArchive = env.HANA_PREBUILT_RENDERER_BOX || undefined,
 }) {
   const { signManifestFile = defaultSignManifestFile, verifyManifest = manifestModule.verifyManifest } = deps;
 
@@ -411,13 +489,21 @@ export async function packDualKindSeed({
 
   // ── 两个归档都打完 ──
   const serverPack = await packServerArchive({ outDir, artifactOutDir, version, platform, arch, env, log, deps });
-  const rendererPackShared = await packRendererArtifact({
-    rendererDistDir,
-    artifactOutDir: rendererArtifactOutDir,
-    version,
-    log,
-    deps,
-  });
+  const rendererPackShared = prebuiltRendererArchive
+    ? await usePrebuiltRendererArchive({
+        archivePath: prebuiltRendererArchive,
+        rendererArtifactOutDir,
+        version,
+        log,
+        deps,
+      })
+    : await packRendererArtifact({
+        rendererDistDir,
+        artifactOutDir: rendererArtifactOutDir,
+        version,
+        log,
+        deps,
+      });
   // renderer 归档平台无关，先落共享目录（dist-renderer-artifact/），再复制一份
   // 进这次构建的 per-platform seed 目录，跟 server 归档同箱（extraResources
   // 按 ${os}-${arch} 取整个目录）。

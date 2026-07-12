@@ -6,7 +6,48 @@ on:
   workflow_dispatch:
 
 jobs:
+  # renderer 归档（renderer-<version>.tar.gz）是纯 web 静态资源，构建结果平台
+  # 无关。这里单点构建一次，四个平台的 build job 下载同一份字节复用——避免
+  # 各平台各自现场打包出"内容相同、字节不同、sha256 不同"的四份归档（packTree
+  # 在 tar 头里写入真实文件 mtime）。见 scripts/pack-renderer-box.mjs 与
+  # scripts/build-server-artifact.mjs 的 packDualKindSeed prebuiltRendererArchive
+  # / HANA_PREBUILT_RENDERER_BOX 入参。
+  renderer-box:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 顺序不能颠倒：build:theme 的产物写进 dist-renderer/lib/theme.js，
+      # 必须在 build:renderer 的 emptyOutDir 清空该目录之后才落地
+      # （见 vite.config.theme.js 文件头注释）。
+      - name: Build renderer bundle
+        run: npm run build:renderer
+
+      - name: Build theme bundle (writes into dist-renderer/lib, must run after build:renderer)
+        run: npm run build:theme
+
+      - name: Pack renderer hot-update box
+        run: node scripts/pack-renderer-box.mjs
+
+      - name: Upload renderer box
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-box
+          retention-days: 3
+          path: dist-renderer-artifact/renderer-*.tar.gz
+          if-no-files-found: error
+
   build:
+    needs: renderer-box
     permissions:
       contents: write
     strategy:
@@ -138,6 +179,38 @@ jobs:
           echo "HANA_MACHO_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
           echo "Signing identity registered for log masking and exported for seed signing."
 
+      # 下载 renderer-box job 单点构建好的共享归档，让四个平台复用同一份字节
+      # （而不是各自现场打包出内容相同但 tar mtime 不同、sha256 不同的四份）。
+      - name: Download shared renderer box
+        uses: actions/download-artifact@v4
+        with:
+          name: renderer-box
+          path: prebuilt-renderer
+
+      # 把共享归档的绝对路径通过 HANA_PREBUILT_RENDERER_BOX 环境变量透传给
+      # scripts/build-server.mjs 末尾调用的 packDualKindSeed（该函数默认从
+      # process.env 读取这个变量，见 scripts/build-server-artifact.mjs）。
+      # 这个变量之后由 Node（fs 原生 API）读取，不是再喂给另一个 bash 命令，
+      # 所以必须写成 Windows 原生路径（D:\... / D:/...），而不是 git-bash 的
+      # /d/... 风格路径——Node 在原生 Windows 上不认识 /d/... 这种挂载点写法。
+      # `pwd` 在 Git Bash 里默认返回 /d/... 风格；`pwd -W` 是 MSYS coreutils
+      # 提供的扩展，专门用来打印 Windows 原生等价路径，这里按 RUNNER_OS 分支。
+      - name: Point seed packer at the shared renderer box
+        shell: bash
+        run: |
+          BOX=$(ls prebuilt-renderer/renderer-*.tar.gz | head -1)
+          if [ -z "$BOX" ]; then
+            echo "::error::shared renderer box missing from the renderer-box job's upload"
+            exit 1
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            BOX_DIR=$(pwd -W)
+          else
+            BOX_DIR=$(pwd)
+          fi
+          echo "HANA_PREBUILT_RENDERER_BOX=$BOX_DIR/$BOX" >> "$GITHUB_ENV"
+          echo "Using shared renderer box: $BOX_DIR/$BOX"
+
       - name: Build server bundle
         shell: bash
         run: |
@@ -204,6 +277,9 @@ jobs:
 
       # dist-server-artifact/*/server-*.tar.gz and dist-renderer-artifact/renderer-*.tar.gz
       # are the hot-update boxes packed by packDualKindSeed (see scripts/build-server-artifact.mjs).
+      # The renderer box here is just this platform's copy of the SAME bytes downloaded from
+      # the renderer-box job (packDualKindSeed reuses it via HANA_PREBUILT_RENDERER_BOX rather
+      # than packing dist-renderer/ on the spot) — all four uploads are byte-identical now.
       # seed-train.json(.sig) living next to the server box is NOT uploaded here — the
       # release job's train manifest is generated later by scripts/publish-train.mjs, not
       # copied from any one platform's local seed.
@@ -296,10 +372,12 @@ jobs:
               gh release upload "${{ github.ref_name }}" "$f" --clobber
             done
 
-          # Renderer archive is platform-independent, so all four matrix jobs pack one, but
-          # they are NOT guaranteed byte-identical (embedded paths/timestamps can vary by OS).
-          # Only the macOS arm64 build's copy is published — the train manifest's sha256 MUST
-          # match whichever single file actually sits on the shelf.
+          # Renderer archive is platform-independent AND now byte-identical across all four
+          # matrix jobs: it is built once by the renderer-box job and downloaded/reused by
+          # every platform (see scripts/pack-renderer-box.mjs and packDualKindSeed's
+          # prebuiltRendererArchive / HANA_PREBUILT_RENDERER_BOX). Which platform's copy we
+          # publish here no longer matters for correctness — macOS arm64 is kept only to
+          # avoid widening this step's diff.
           echo "=== Uploading renderer hot-update archive (macOS arm64 build only) ==="
           RENDERER_TGZ=$(find artifacts -path '*installer-macos-latest-arm64*/dist-renderer-artifact/renderer-*.tar.gz' | head -1)
           if [ -n "$RENDERER_TGZ" ]; then
