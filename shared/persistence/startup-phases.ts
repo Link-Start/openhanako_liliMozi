@@ -1,8 +1,11 @@
 import type { StartupPhase } from "./store-registry-types.ts";
 
 export const STARTUP_PHASES: readonly StartupPhase[] = Object.freeze([
+  "desktop_bootstrap",
   "home_guard",
-  "epoch_preflight",
+  "epoch_read_preflight",
+  "epoch_transition",
+  "post_epoch_pre_bind",
   "transport_bind",
   "first_run_seed",
   "identity_seed",
@@ -11,7 +14,7 @@ export const STARTUP_PHASES: readonly StartupPhase[] = Object.freeze([
   "runtime_ready",
 ]);
 
-export const FUTURE_EPOCH_COORDINATOR_PHASE: StartupPhase = "epoch_preflight";
+export const FUTURE_EPOCH_COORDINATOR_PHASE: StartupPhase = "epoch_transition";
 
 export function startupPhaseIndex(phase: StartupPhase): number {
   const index = STARTUP_PHASES.indexOf(phase);

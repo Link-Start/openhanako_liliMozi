@@ -19,6 +19,8 @@ export const PERSISTENCE_SITE_KINDS = [
   "rename",
   "copy-file",
   "mkdir",
+  "remove-path",
+  "truncate-file",
   "atomic-write",
   "persistent-store-constructor",
 ] as const;
@@ -26,8 +28,11 @@ export const PERSISTENCE_SITE_KINDS = [
 export type PersistenceSiteKind = typeof PERSISTENCE_SITE_KINDS[number];
 
 export type StartupPhase =
+  | "desktop_bootstrap"
   | "home_guard"
-  | "epoch_preflight"
+  | "epoch_read_preflight"
+  | "epoch_transition"
+  | "post_epoch_pre_bind"
   | "transport_bind"
   | "first_run_seed"
   | "identity_seed"
@@ -91,12 +96,26 @@ export interface StoreDescriptor {
   schemaContract: PersistenceSchemaContract;
   openEntry: string[];
   migrationEntry: string[];
+  protocolModules: string[];
   firstPossibleOpenPhase: StartupPhase;
   firstPossibleWritePhase: StartupPhase;
   epochPolicy: "epoch-managed" | "compatible" | "regenerable" | "migration-source";
   checkpointPolicy: string;
   restorePolicy: string;
   affectedByEpochMigration: boolean;
+  bootstrapSafety: null | {
+    compatibility: "epoch-independent" | "regenerable";
+    reason: string;
+    unstampedHomeSafePaths: Array<{
+      relativePath: string;
+      kind: "file" | "tree";
+    }>;
+  };
+  preCoordinatorReadProjection: null | {
+    compatibility: "additive-only";
+    fields: string[];
+    reason: string;
+  };
   identityContract: string;
   exemption: null | {
     reason: string;

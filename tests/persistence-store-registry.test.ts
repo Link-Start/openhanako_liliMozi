@@ -14,7 +14,7 @@ import {
   PERSISTENCE_EXEMPTIONS,
   PERSISTENT_STORES,
 } from "../shared/persistence/store-registry.ts";
-import { PRODUCTION_ROOTS } from "../scripts/scan-persistent-stores.mjs";
+import { PRODUCTION_ROOTS, SOURCE_EXCLUSIONS } from "../scripts/scan-persistent-stores.mjs";
 import type { PersistenceExemption, StoreDescriptor } from "../shared/persistence/store-registry-types.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -93,6 +93,9 @@ describe("persistent store registry", () => {
       "skill-state",
       "usage-ledger",
       "operational-checkpoints",
+      "desktop-diagnostics",
+      "desktop-gpu-startup-state",
+      "desktop-window-version-state",
       "managed-runtime-caches",
       "legacy-pi-search-cache",
     ]));
@@ -108,6 +111,10 @@ describe("persistent store registry", () => {
       expect(store.checkpointPolicy).toBeTruthy();
       expect(store.restorePolicy).toBeTruthy();
       expect(store.identityContract).toBeTruthy();
+      if (store.firstPossibleWritePhase === "desktop_bootstrap" || store.firstPossibleWritePhase === "home_guard") {
+        expect(store.affectedByEpochMigration).toBe(false);
+        expect(store.bootstrapSafety).not.toBeNull();
+      }
     }
 
     const facts = PERSISTENT_STORES.find((store) => store.id === "agent-facts-sqlite")!;
@@ -214,7 +221,7 @@ describe("persistent store registry", () => {
     expect(() => discoverSites(root)).toThrow(/persistence scan root is missing: shared/);
   });
 
-  it("detects multiline, imported-alias, destructured-alias, stream, and SQLite writes", () => {
+  it("detects multiline, imported-alias, destructured-alias, stream, destructive, truncate, and SQLite writes", () => {
     const root = tempRepository();
     fs.writeFileSync(path.join(root, "core", "mutation.ts"), `
       import fs from "node:fs";
@@ -226,6 +233,9 @@ describe("persistent store registry", () => {
       await persist("state-2.json", "x");
       persistAppend("events.jsonl", "{}\\n");
       fs.createWriteStream("stream.bin");
+      fs.unlinkSync("old-state.json");
+      await fs.promises.rm("old-tree", { recursive: true });
+      fs.truncateSync("events.jsonl", 0);
       new Sqlite(
         "state.db",
       );
@@ -236,10 +246,84 @@ describe("persistent store registry", () => {
       "write-file",
       "append-file",
       "database-open",
+      "remove-path",
+      "truncate-file",
     ]));
     expect(sites.filter((site) => site.kind === "write-file")).toHaveLength(3);
     expect(() => scanPersistentStores({ rootDir: root, stores: [], exemptions: [], today: TODAY }))
       .toThrow(/unregistered persistence site/);
+  });
+
+  it("scans desktop host and CLI source while explicitly excluding generated, test, renderer, dist, and native products", () => {
+    const root = tempRepository();
+    const write = (relativePath: string) => {
+      const absolutePath = path.join(root, relativePath);
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+      fs.writeFileSync(absolutePath, 'const fs = require("fs"); fs.writeFileSync("state.json", "x");\n', "utf-8");
+    };
+
+    write("desktop/host.cjs");
+    write("desktop/src/shared/host.cjs");
+    write("cli/host.ts");
+    write("desktop/main.bundle.cjs");
+    write("desktop/dist-renderer/assets/generated.js");
+    write("desktop/dist-splash/assets/generated.js");
+    write("desktop/native/generated.cjs");
+    write("desktop/src/react/renderer.tsx");
+    write("desktop/src/main.tsx");
+    write("desktop/src/__tests__/host.test.ts");
+
+    const files = discoverSites(root).map((site) => site.sourceFile);
+    expect(files).toEqual(["cli/host.ts", "desktop/host.cjs", "desktop/src/shared/host.cjs"]);
+  });
+
+  it("rejects epoch-managed pre-coordinator access without a named additive read projection", () => {
+    const earlyRead = {
+      ...dummyStore("early-read", "early.json"),
+      affectedByEpochMigration: true,
+      bootstrapSafety: null,
+      firstPossibleOpenPhase: "desktop_bootstrap" as const,
+      firstPossibleWritePhase: "runtime_ready" as const,
+      preCoordinatorReadProjection: null,
+    };
+    expect(() => validateRegistry({ stores: [earlyRead], exemptions: [], today: TODAY }))
+      .toThrow(/without a read projection/);
+
+    const projected = {
+      ...earlyRead,
+      preCoordinatorReadProjection: {
+        compatibility: "additive-only" as const,
+        fields: ["optional_field"],
+        reason: "Read one optional field before the coordinator.",
+      },
+    };
+    expect(() => validateRegistry({ stores: [projected], exemptions: [], today: TODAY })).not.toThrow();
+  });
+
+  it("requires exact registered paths before bootstrap state may prove an unstamped home is new", () => {
+    const invalidSafePath = {
+      ...dummyStore("unsafe-bootstrap-proof", "diagnostics/desktop-launch", "tree"),
+      affectedByEpochMigration: false,
+      firstPossibleOpenPhase: "desktop_bootstrap" as const,
+      firstPossibleWritePhase: "desktop_bootstrap" as const,
+      bootstrapSafety: {
+        compatibility: "epoch-independent" as const,
+        reason: "Test-only bootstrap path.",
+        unstampedHomeSafePaths: [{ relativePath: "diagnostics/{anything}", kind: "tree" as const }],
+      },
+    };
+    expect(() => validateRegistry({ stores: [invalidSafePath], exemptions: [], today: TODAY }))
+      .toThrow(/must be exact/);
+
+    const unregisteredSafePath = {
+      ...invalidSafePath,
+      bootstrapSafety: {
+        ...invalidSafePath.bootstrapSafety,
+        unstampedHomeSafePaths: [{ relativePath: "diagnostics/other", kind: "tree" as const }],
+      },
+    };
+    expect(() => validateRegistry({ stores: [unregisteredSafePath], exemptions: [], today: TODAY }))
+      .toThrow(/is not registered/);
   });
 
   it("generates deterministic, repository-relative receipts that match the committed inventory", () => {
@@ -249,6 +333,10 @@ describe("persistent store registry", () => {
 
     const committed = JSON.parse(fs.readFileSync(INVENTORY_PATH, "utf-8"));
     expect(committed).toEqual(first.inventory);
+    expect(committed.sourceRoots).toEqual(expect.arrayContaining(["desktop", "cli"]));
+    expect(committed.sourceExclusions).toEqual(
+      SOURCE_EXCLUSIONS.map(({ id, reason }) => ({ id, reason })),
+    );
     const serialized = JSON.stringify(committed);
     expect(serialized).not.toMatch(/(?:\/Users\/|\/home\/|[A-Za-z]:\\)/);
     expect(committed.discoveredSites.every((site: { sourceFile: string }) => !site.sourceFile.includes("\\"))).toBe(true);

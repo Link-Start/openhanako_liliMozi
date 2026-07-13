@@ -276,28 +276,40 @@ async function piSessionContract(rootDir, store, sourceOverrides) {
 }
 
 async function schemaEntry(rootDir, store, sourceOverrides) {
+  let entry;
   switch (store.schemaSource.kind) {
     case "sqlite-runtime":
-      return sqliteContract(rootDir, store, sourceOverrides);
+      entry = await sqliteContract(rootDir, store, sourceOverrides);
+      break;
     case "runtime-contract":
     case "directory-contract":
-      return {
+      entry = {
         ...sourceContract(rootDir, store.schemaSource, sourceOverrides),
         kind: store.schemaSource.kind,
         storeId: store.id,
       };
+      break;
     case "external-versioned":
-      return piSessionContract(rootDir, store, sourceOverrides);
+      entry = await piSessionContract(rootDir, store, sourceOverrides);
+      break;
     case "narrow-exemption":
-      return {
+      entry = {
         expiresOn: store.schemaSource.expiresOn,
         kind: "narrow-exemption",
         reason: store.schemaSource.reason,
         storeId: store.id,
       };
+      break;
     default:
       throw new Error(`unsupported persistence schema source on ${store.id}: ${store.schemaSource.kind}`);
   }
+  const protocolModules = (store.protocolModules || [])
+    .map((module) => ({
+      module: normalizeRepositoryPath(module),
+      sourceHash: sha256(readRepositorySource(rootDir, module, sourceOverrides)),
+    }))
+    .sort((left, right) => left.module.localeCompare(right.module));
+  return protocolModules.length > 0 ? { ...entry, protocolModules } : entry;
 }
 
 function siteMapping(site) {
@@ -351,6 +363,7 @@ async function generatePersistenceSchemaPayload({
     generatedBy: "scripts/generate-persistence-schema-fingerprint.mjs",
     inventoryReceipt: {
       generatedBy: inventory.generatedBy,
+      sourceExclusions: [...(inventory.sourceExclusions ?? [])],
       sourceRoots: [...inventory.sourceRoots],
       version: inventory.version,
     },

@@ -320,6 +320,9 @@ function isHtmlPreviewDocumentRoute(verb, routePath) {
 
 function isClientLocalOnlyRoute(verb, routePath) {
   if (routePath === "/api/shutdown") return true;
+  if (routePath === "/api/preferences/legacy-gpu-safe-mode/hardware-acceleration") {
+    return verb === "POST";
+  }
   if (routePath.startsWith("/api/access/")) return true;
   if (routePath.startsWith("/api/devices/")) return true;
   if (routePath === "/api/skills/external-paths") return true;

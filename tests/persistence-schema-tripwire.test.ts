@@ -54,6 +54,12 @@ describe("persistence schema tripwire", () => {
     expect(first.registry.length).toBeGreaterThan(20);
     expect(first.siteMappings.length).toBeGreaterThan(500);
     expect(first.exemptions.length).toBeGreaterThan(0);
+    expect(first.inventoryReceipt.sourceRoots).toEqual(expect.arrayContaining(["desktop", "cli"]));
+    expect(first.inventoryReceipt.sourceExclusions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "desktop-generated-bundles" }),
+      expect.objectContaining({ id: "desktop-renderer-react" }),
+      expect.objectContaining({ id: "source-tests" }),
+    ]));
 
     const manifest = first.schemas.find((entry) => entry.storeId === "session-manifest-sqlite");
     expect(manifest).toMatchObject({

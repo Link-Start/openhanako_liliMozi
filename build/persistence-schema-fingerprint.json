@@ -23,12 +23,25 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
       "ownerModule": "lib/compat/checks/dirs.ts",
       "reason": "Compatibility check creates a fixed set of registered HANA_HOME roots; flow attribution remains with the first-run coordinator.",
       "sourceFile": "lib/compat/checks/dirs.ts"
+    },
+    {
+      "expiresOn": "2026-10-31",
+      "id": "conditional-plugin-install-cleanup",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "cleanupPath",
+      "ownerModule": "server/routes/plugins.ts",
+      "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
+      "sourceFile": "server/routes/plugins.ts"
     },
     {
       "expiresOn": "2026-10-31",
@@ -52,6 +65,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -69,6 +84,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -86,12 +103,123 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
       "ownerModule": "core/migrations.ts",
       "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
       "sourceFile": "core/migrations.ts"
+    },
+    {
+      "expiresOn": "2027-01-31",
+      "id": "desktop-caller-selected-output",
+      "kinds": [
+        "mkdir",
+        "write-file",
+        "copy-file"
+      ],
+      "linePattern": "(?:filePath, content|path[.]dirname\\(resolved\\)|resolved, Buffer|path[.]dirname\\(destinationPath\\)|sourcePath, destinationPath|mkdirSync\\(dir|filePath, pngBuffer)",
+      "ownerModule": "desktop/main.cjs",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs"
+    },
+    {
+      "expiresOn": "2027-01-31",
+      "id": "desktop-electron-update-cache",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "cacheDir",
+      "ownerModule": "desktop/auto-updater.cjs",
+      "reason": "Deletes Electron updater's regenerable pending cache under app.getPath(userData), not Hana application state.",
+      "sourceFile": "desktop/auto-updater.cjs"
+    },
+    {
+      "expiresOn": "2027-01-31",
+      "id": "desktop-external-text-file",
+      "kinds": [
+        "database-open",
+        "write-file",
+        "append-file",
+        "rename",
+        "copy-file",
+        "mkdir",
+        "remove-path",
+        "truncate-file",
+        "atomic-write",
+        "persistent-store-constructor"
+      ],
+      "ownerModule": "desktop/file-text-io.cjs",
+      "reason": "Writes an absolute artifact/editor path explicitly selected by the caller, outside any implied HANA_HOME store.",
+      "sourceFile": "desktop/file-text-io.cjs"
+    },
+    {
+      "expiresOn": "2026-10-31",
+      "id": "desktop-gpu-json-primitive",
+      "kinds": [
+        "mkdir",
+        "write-file",
+        "rename"
+      ],
+      "linePattern": "(?:path[.]dirname\\(filePath\\)|tmpPath, JSON|stringify|tmpPath, filePath)",
+      "ownerModule": "desktop/src/shared/gpu-startup-policy.cjs",
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs"
+    },
+    {
+      "expiresOn": "2026-10-31",
+      "id": "desktop-legacy-update-path-cleanup",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "(?:wrongFile|wrongDir)",
+      "ownerModule": "desktop/auto-updater.cjs",
+      "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
+      "sourceFile": "desktop/auto-updater.cjs"
+    },
+    {
+      "expiresOn": "2027-01-31",
+      "id": "desktop-office-render-output",
+      "kinds": [
+        "database-open",
+        "write-file",
+        "append-file",
+        "rename",
+        "copy-file",
+        "mkdir",
+        "remove-path",
+        "truncate-file",
+        "atomic-write",
+        "persistent-store-constructor"
+      ],
+      "ownerModule": "desktop/src/office-pdf-helper.cjs",
+      "reason": "Writes the output path supplied by a validated office render job; the owning plugin records the durable job/session state.",
+      "sourceFile": "desktop/src/office-pdf-helper.cjs"
+    },
+    {
+      "expiresOn": "2027-01-31",
+      "id": "desktop-screenshot-html-temp",
+      "kinds": [
+        "write-file",
+        "remove-path"
+      ],
+      "linePattern": "tmpHtml",
+      "ownerModule": "desktop/main.cjs",
+      "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
+      "sourceFile": "desktop/main.cjs"
+    },
+    {
+      "expiresOn": "2027-01-31",
+      "id": "desktop-skill-preview-temp",
+      "kinds": [
+        "mkdir"
+      ],
+      "linePattern": "tmpDir",
+      "ownerModule": "desktop/main.cjs",
+      "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
+      "sourceFile": "desktop/main.cjs"
     },
     {
       "expiresOn": "2027-01-31",
@@ -103,6 +231,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -120,6 +250,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -148,6 +280,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -165,6 +299,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -182,6 +318,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -199,6 +337,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -216,6 +356,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -233,6 +375,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -250,6 +394,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -290,6 +436,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -307,6 +455,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -324,6 +474,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -341,6 +493,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -370,6 +524,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
@@ -387,31 +543,81 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ],
       "ownerModule": "core/computer-use/providers/windows-uia-provider.ts",
       "reason": "Creates helper/request files in the operating-system temporary directory for one Windows UIA call.",
       "sourceFile": "core/computer-use/providers/windows-uia-provider.ts"
+    },
+    {
+      "expiresOn": "2027-01-31",
+      "id": "workspace-skill-delete",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "skillDir",
+      "ownerModule": "server/routes/desk.ts",
+      "reason": "Deletes a skill directory only after the route proves it belongs to the explicitly mounted workspace skill catalog, outside Hana-owned persistence.",
+      "sourceFile": "server/routes/desk.ts"
     }
   ],
   "generatedBy": "scripts/generate-persistence-schema-fingerprint.mjs",
   "inventoryReceipt": {
     "generatedBy": "scripts/scan-persistent-stores.mjs",
+    "sourceExclusions": [
+      {
+        "id": "desktop-generated-bundles",
+        "reason": "Generated Electron host bundles duplicate scanned source."
+      },
+      {
+        "id": "desktop-generated-dist",
+        "reason": "Generated Vite output is not source."
+      },
+      {
+        "id": "desktop-native-products",
+        "reason": "Native build products and sources are outside the JavaScript persistence census."
+      },
+      {
+        "id": "desktop-renderer-react",
+        "reason": "Renderer state uses authenticated server APIs and is not a host filesystem owner."
+      },
+      {
+        "id": "desktop-renderer-platform",
+        "reason": "Renderer platform and i18n modules are not Electron host persistence owners."
+      },
+      {
+        "id": "desktop-renderer-entries",
+        "reason": "Renderer entrypoints are not Electron host persistence owners."
+      },
+      {
+        "id": "desktop-renderer-workers",
+        "reason": "Renderer/service-worker code is not an Electron host persistence owner."
+      },
+      {
+        "id": "source-tests",
+        "reason": "Test fixtures and test-only mutations are excluded from production ownership."
+      }
+    ],
     "sourceRoots": [
       "server",
       "core",
       "hub",
       "lib",
       "shared",
-      "plugins"
+      "plugins",
+      "desktop",
+      "cli"
     ],
-    "version": 1
+    "version": 2
   },
-  "payloadFingerprint": "sha256:7181fa87725ca3fa5c7342c1ec1b1fa7d571246504dc7626d5cd4401c5fc6371",
+  "payloadFingerprint": "sha256:a335648618f99c295fa1289a9eae11cbdfb1d1fcdb9940c26f07ee12f87b4b77",
   "registry": [
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -435,6 +641,8 @@
         "agents/{agentId}/experience/{category}.md",
         "agents/{agentId}/diary/{date}.md"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -449,6 +657,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -471,6 +680,8 @@
       "pathPatterns": [
         "agents/{agentId}/memory/facts.db"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The FactStore runtime and its introspection are canonical; test-only v1 DDL is migration fixture data, never the schema source.",
@@ -485,6 +696,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -520,6 +732,8 @@
         "agents/{agentId}/memory/memories.db",
         "agents/{agentId}/memory/.v2-migrated"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -534,6 +748,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -556,6 +771,8 @@
         "agents/{agentId}/phone/conversations/{conversationId}.md",
         "agents/{agentId}/phone/session-runtime/{conversationId}.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -570,6 +787,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -600,6 +818,8 @@
         "agents/{agentId}/channels.md",
         "user/avatars/{fileName}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -614,6 +834,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -636,6 +857,8 @@
       "pathPatterns": [
         "channels/{channelId}.yaml"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -650,6 +873,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; plans and packages are request-scoped staging.",
       "epochPolicy": "regenerable",
       "exemption": null,
@@ -671,6 +895,8 @@
         ".ephemeral/character-card-imports/{token}",
         ".ephemeral/character-card-exports/{token}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Discard incomplete tokens and restart import/export from the original package.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -685,6 +911,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -710,6 +937,8 @@
         "studios/{studioId}/desk/cron-jobs.json",
         "studios/{studioId}/desk/cron-runs/{runId}.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -724,17 +953,23 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "The epoch stamp is coordinator metadata and is never interpreted as an epoch-managed business store.",
+        "unstampedHomeSafePaths": []
+      },
       "checkpointPolicy": "Never restore this stamp independently of the data tree it describes.",
       "epochPolicy": "compatible",
       "exemption": null,
-      "firstPossibleOpenPhase": "epoch_preflight",
-      "firstPossibleWritePhase": "epoch_preflight",
+      "firstPossibleOpenPhase": "epoch_read_preflight",
+      "firstPossibleWritePhase": "epoch_transition",
       "format": "json",
       "id": "data-epoch-stamp",
       "identityContract": "One high-water stamp belongs to one canonical HANA_HOME.",
       "migrationEntry": [],
       "openEntry": [
-        "assertAndStampDataEpoch"
+        "coordinateDataEpochStartup",
+        "inspectDataEpochMaintenance"
       ],
       "ownerModule": "shared/data-epoch.cjs",
       "pathExclusions": [],
@@ -743,6 +978,8 @@
       "pathPatterns": [
         "data-epoch.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Recreate only as the final commit record of a coordinated epoch transition.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -757,6 +994,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Include undelivered deferred results needed for restart notification; expired/delivered entries may be pruned.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -778,6 +1016,8 @@
       "pathPatterns": [
         ".ephemeral/deferred-tasks.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Load through DeferredResultStore so cleanup and delivery flags are applied before events resume.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -792,6 +1032,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -812,6 +1053,8 @@
       "pathPatterns": [
         "agents/{agentId}/desk/activities.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -826,6 +1069,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; each cover upload is request-scoped temporary input.",
       "epochPolicy": "regenerable",
       "exemption": null,
@@ -845,6 +1089,8 @@
       "pathPatterns": [
         "tmp/markdown-cover-uploads/{token}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Delete the temporary directory and upload the cover again.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -858,7 +1104,151 @@
       }
     },
     {
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "Desktop diagnostics are append/replace troubleshooting evidence whose reader does not depend on the application data epoch.",
+        "unstampedHomeSafePaths": [
+          {
+            "kind": "tree",
+            "relativePath": "diagnostics/desktop-launch"
+          },
+          {
+            "kind": "file",
+            "relativePath": "crash.log"
+          },
+          {
+            "kind": "file",
+            "relativePath": "browser-cmd.log"
+          }
+        ]
+      },
+      "checkpointPolicy": "Exclude best-effort diagnostic logs from epoch checkpoints.",
+      "epochPolicy": "compatible",
+      "exemption": null,
+      "firstPossibleOpenPhase": "desktop_bootstrap",
+      "firstPossibleWritePhase": "desktop_bootstrap",
+      "format": "mixed-directory",
+      "id": "desktop-diagnostics",
+      "identityContract": "Diagnostic filenames are fixed locators and never provide user, session, or epoch identity.",
+      "migrationEntry": [],
+      "openEntry": [
+        "desktop/bootstrap.cjs",
+        "desktop main-process diagnostics"
+      ],
+      "ownerModule": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "pathExclusions": [],
+      "pathKind": "tree",
+      "pathPattern": "diagnostics/desktop-launch",
+      "pathPatterns": [
+        "diagnostics/desktop-launch",
+        "crash.log",
+        "browser-cmd.log"
+      ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
+      "restorePolicy": "Do not restore as application state; retain only as independent troubleshooting evidence.",
+      "schemaContract": {
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
+        "kind": "protocol",
+        "source": "desktop/src/shared/desktop-launch-diagnostics.cjs"
+      },
+      "schemaSource": {
+        "contract": "desktop launch, renderer, server-crash, and browser-command diagnostic logs",
+        "kind": "directory-contract",
+        "module": "desktop/src/shared/desktop-launch-diagnostics.cjs"
+      }
+    },
+    {
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "GPU launch recovery is interpreted entirely by the versioned desktop policy before the server exists.",
+        "unstampedHomeSafePaths": [
+          {
+            "kind": "file",
+            "relativePath": "user/gpu-startup.json"
+          }
+        ]
+      },
+      "checkpointPolicy": "Exclude or preserve independently as launch-recovery metadata; never use it as an epoch checkpoint.",
+      "epochPolicy": "compatible",
+      "exemption": null,
+      "firstPossibleOpenPhase": "desktop_bootstrap",
+      "firstPossibleWritePhase": "desktop_bootstrap",
+      "format": "json",
+      "id": "desktop-gpu-startup-state",
+      "identityContract": "One fixed GPU startup record belongs to one desktop installation data home.",
+      "migrationEntry": [],
+      "openEntry": [
+        "resolveGpuStartupPolicy",
+        "desktop GPU startup markers"
+      ],
+      "ownerModule": "desktop/src/shared/gpu-startup-policy.cjs",
+      "pathExclusions": [],
+      "pathKind": "file",
+      "pathPattern": "user/gpu-startup.json",
+      "pathPatterns": [
+        "user/gpu-startup.json"
+      ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
+      "restorePolicy": "Load only through the GPU startup policy reader; corrupt exact-migration evidence fails explicitly.",
+      "schemaContract": {
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
+        "kind": "runtime-source",
+        "source": "desktop/src/shared/gpu-startup-policy.cjs"
+      },
+      "schemaSource": {
+        "contract": "GPU startup state version, crash evidence, recovery mode, and legacy migration markers",
+        "kind": "runtime-contract",
+        "module": "desktop/src/shared/gpu-startup-policy.cjs"
+      }
+    },
+    {
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "checkpointPolicy": "Optional compatible shell metadata; it is not required for restoring durable agent/session state.",
+      "epochPolicy": "compatible",
+      "exemption": null,
+      "firstPossibleOpenPhase": "runtime_ready",
+      "firstPossibleWritePhase": "runtime_ready",
+      "format": "mixed-directory",
+      "id": "desktop-window-version-state",
+      "identityContract": "Each fixed path is shell-local presentation or update metadata, never durable application identity.",
+      "migrationEntry": [],
+      "openEntry": [
+        "desktop window creation",
+        "post-update announcement",
+        "desktop update cache cleanup"
+      ],
+      "ownerModule": "desktop/main.cjs",
+      "pathExclusions": [],
+      "pathKind": "file",
+      "pathPattern": "user/window-state.json",
+      "pathPatterns": [
+        "user/window-state.json",
+        "user/quick-chat-window-state.json",
+        "user/last-seen-version.json",
+        "last-update-version"
+      ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
+      "restorePolicy": "Read through each desktop owner; invalid or absent shell metadata is recreated from safe defaults.",
+      "schemaContract": {
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
+        "kind": "protocol",
+        "source": "desktop/main.cjs"
+      },
+      "schemaSource": {
+        "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
+        "kind": "directory-contract",
+        "module": "desktop/main.cjs"
+      }
+    },
+    {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Checkpoint all three registries as one referential set.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -881,6 +1271,8 @@
         "device-credentials.json",
         "pairing-sessions.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore atomically before paired-device authentication is enabled.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -895,6 +1287,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Exclude expired leases and preserve live leases only with their grant principals.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -915,6 +1308,8 @@
       "pathPatterns": [
         "security/execution-leases.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Reload through the lease validator and re-evaluate expiry before execution resumes.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -929,6 +1324,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -953,6 +1349,8 @@
         "plugin-backups/{pluginId}",
         "plugin-marketplace/marketplace.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -967,6 +1365,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; the legacy tree is not Hana-owned active state.",
       "epochPolicy": "migration-source",
       "exemption": null,
@@ -986,6 +1385,8 @@
       "pathPatterns": [
         ".pi/agent/bin/{toolName}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Never rewrite or delete; copy a recognized file lazily into runtime/pi-sdk/bin.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1000,6 +1401,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; sessionless uploads are a short-lived compatibility cache.",
       "epochPolicy": "regenerable",
       "exemption": null,
@@ -1019,6 +1421,8 @@
       "pathPatterns": [
         "uploads/{uploadName}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Discard and ask the caller to upload again; age cleanup removes stale entries.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1033,6 +1437,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Checkpoint as permission-preserving secret material with its matching users.json identity.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1053,6 +1458,8 @@
       "pathPatterns": [
         "local-user-auth.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore atomically before local authentication is enabled.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1067,6 +1474,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; validated caches are rebuilt or recopied from trusted sources.",
       "epochPolicy": "regenerable",
       "exemption": null,
@@ -1088,6 +1496,8 @@
         "runtime/pi-sdk/bin/{toolName}",
         ".ephemeral/win32-sandbox-runtime/{fingerprint}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Delete and regenerate on incompatibility.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1102,6 +1512,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; jobs are request-scoped and generated PDFs are re-creatable outputs.",
       "epochPolicy": "regenerable",
       "exemption": null,
@@ -1122,6 +1533,8 @@
         "plugin-data/office/jobs",
         "plugin-data/office/generated"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Discard incomplete jobs; rerun rendering from source HTML when output is still needed.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1136,6 +1549,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "This is the existing operational checkpoint facility, not an epoch checkpoint system.",
       "epochPolicy": "compatible",
       "exemption": null,
@@ -1156,6 +1570,8 @@
       "pathPatterns": [
         "checkpoints/{checkpointId}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Existing restore APIs copy declared files; they provide no cross-store epoch transaction guarantee.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1170,6 +1586,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Include user-authored sources; run receipts may be regenerated only when their source still exists.",
       "epochPolicy": "compatible",
       "exemption": null,
@@ -1191,6 +1608,8 @@
         "plugin-dev-runs/{runId}.json",
         "plugin-dev-sources/{sourceId}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1205,6 +1624,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; packages can be downloaded again and must pass sha256 verification.",
       "epochPolicy": "regenerable",
       "exemption": null,
@@ -1224,6 +1644,8 @@
       "pathPatterns": [
         "plugin-install-sources/{pluginId}/{version}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Re-verify sha256 before reuse, otherwise delete and redownload.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1238,6 +1660,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Checkpoint by pluginId and declared migrationVersion; never infer one schema for plugin-data/**.",
       "epochPolicy": "epoch-managed",
       "exemption": {
@@ -1265,6 +1688,8 @@
       "pathPatterns": [
         "plugin-data/{pluginId}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only when the same pluginId and a compatible manifest/migrationVersion are available.",
       "schemaContract": {
         "compatibility": "No strict reader contract is claimed by this inventory.",
@@ -1281,6 +1706,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Include persisted task/schedule metadata when plugin recovery must survive the checkpoint; handlers remain runtime-only.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1300,6 +1726,8 @@
       "pathPatterns": [
         ".ephemeral/plugin-tasks.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Load through TaskRegistry, then let each plugin register its handler before recovery is attempted.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1314,6 +1742,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1343,6 +1772,8 @@
         "providers/{providerId}/manifest.json",
         "providers/{providerId}/provider.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1357,6 +1788,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Exclude rotating logs; browser/bridge cold state may be included as best-effort compatible cache.",
       "epochPolicy": "compatible",
       "exemption": null,
@@ -1381,6 +1813,8 @@
         "bridge/wechat/sync-{accountHash}.json",
         "bridge/wechat/context-{accountHash}.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Logs are append history; cache records may be dropped if incompatible.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1395,6 +1829,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Preserve byte order and complete lines; never merge by object key.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1414,6 +1849,8 @@
       "pathPatterns": [
         "logs/security-audit.jsonl"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Append only after the restored final newline; malformed tails require explicit repair.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1428,6 +1865,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Checkpoint the validated registry; quarantine evidence is diagnostic and optional.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1450,6 +1888,8 @@
         "security/grants.json.corrupt-{timestamp}",
         "security/grants.json.corrupt-{timestamp}.reason.txt"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Validate before enabling grants; corrupt input is quarantined and fails visibly.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1464,6 +1904,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Checkpoint exact bytes with restrictive permissions when continuity of issued tickets is required.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1486,6 +1927,8 @@
         "security/plugin-iframe-ticket-key",
         "security/plugin-surface-session-key"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore before constructing the matching service; missing keys rotate and invalidate old tickets.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1500,11 +1943,12 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Include as operator configuration.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
-      "firstPossibleOpenPhase": "identity_seed",
-      "firstPossibleWritePhase": "identity_seed",
+      "firstPossibleOpenPhase": "post_epoch_pre_bind",
+      "firstPossibleWritePhase": "post_epoch_pre_bind",
       "format": "json",
       "id": "server-network-config",
       "identityContract": "One network configuration belongs to one HANA_HOME server.",
@@ -1520,6 +1964,8 @@
       "pathPatterns": [
         "server-network.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Validate before binding; invalid restored values fail explicitly.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1534,6 +1980,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Include with the identity registries for the same HANA_HOME.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1554,6 +2001,8 @@
       "pathPatterns": [
         "server-node.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore before remote transport accepts identity-bound requests.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1568,11 +2017,16 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "regenerable",
+        "reason": "Server discovery state is deleted or regenerated from the live bound process and carries no durable user data.",
+        "unstampedHomeSafePaths": []
+      },
       "checkpointPolicy": "Excluded; it is live process discovery state.",
       "epochPolicy": "regenerable",
       "exemption": null,
-      "firstPossibleOpenPhase": "transport_bind",
-      "firstPossibleWritePhase": "transport_bind",
+      "firstPossibleOpenPhase": "home_guard",
+      "firstPossibleWritePhase": "home_guard",
       "format": "json",
       "id": "server-runtime-info",
       "identityContract": "At most one current server discovery record per HANA_HOME.",
@@ -1587,6 +2041,8 @@
       "pathPatterns": [
         "server-info.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Regenerate after transport binding.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1601,6 +2057,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1622,6 +2079,8 @@
         "input-drafts.v1.json",
         "user/session-projects.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1636,6 +2095,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Checkpoint sidecar and payload bytes together; exclude expired cold-session cache entries.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1657,6 +2117,8 @@
       "pathPatterns": [
         "session-files/{sessionHash}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore by sessionId ownership and rebuild locators through SessionFileRegistry.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1671,6 +2133,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1695,8 +2158,11 @@
         "agents/{agentId}/sessions/{sessionId}.jsonl",
         "agents/{agentId}/sessions/archived/{sessionId}.jsonl",
         "agents/{agentId}/activity/{sessionId}.jsonl",
-        "agents/{agentId}/subagent-sessions/{sessionId}.jsonl"
+        "agents/{agentId}/subagent-sessions/{sessionId}.jsonl",
+        "agents/{agentId}/.ephemeral/{sessionId}.jsonl"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The locked Pi package schema/version plus Hana repair and extension readers are canonical; Hana does not duplicate Pi's session schema.",
@@ -1716,6 +2182,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1739,6 +2206,8 @@
         "session-manifest.db-wal",
         "session-manifest.db-shm"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1753,6 +2222,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1781,6 +2251,8 @@
         "agents/{agentId}/sessions/session-vision-notes.json",
         "agents/{agentId}/subagent-sessions/session-meta.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1795,11 +2267,21 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "Signed component activation is verified by artifact manifests and pointers before application data is opened.",
+        "unstampedHomeSafePaths": [
+          {
+            "kind": "tree",
+            "relativePath": "artifacts"
+          }
+        ]
+      },
       "checkpointPolicy": "Exclude downloaded payload caches; preserve only if signature/pointer verification remains valid.",
       "epochPolicy": "compatible",
       "exemption": null,
-      "firstPossibleOpenPhase": "engine_construct",
-      "firstPossibleWritePhase": "runtime_ready",
+      "firstPossibleOpenPhase": "desktop_bootstrap",
+      "firstPossibleWritePhase": "desktop_bootstrap",
       "format": "mixed-directory",
       "id": "signed-artifacts",
       "identityContract": "Signed digest/version identify artifacts; pointer and staging paths are locators.",
@@ -1814,6 +2296,8 @@
       "pathPatterns": [
         "artifacts"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Re-verify every pointer and artifact before activation.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1828,6 +2312,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1852,6 +2337,8 @@
         "skill-bundles.json",
         ".ephemeral/skill-bundle-exports/{token}"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1866,6 +2353,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Excluded; translations are a versioned cache.",
       "epochPolicy": "regenerable",
       "exemption": null,
@@ -1885,6 +2373,8 @@
       "pathPatterns": [
         ".ephemeral/skill-name-translations.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Delete and regenerate when CACHE_VERSION or normalization becomes incompatible.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1899,6 +2389,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Include mount declarations but never copy external mounted content implicitly.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1919,6 +2410,8 @@
       "pathPatterns": [
         "studio-mounts.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore declarations, then revalidate each external root before granting access.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -1933,6 +2426,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1956,6 +2450,8 @@
         "subagent-runs.json",
         "subagent-threads.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "Current readers are permissive and repair legacy shapes; this inventory does not claim strict validation.",
@@ -1970,6 +2466,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Preserve metadata and transcript together only for diagnostic continuity; a live PTY handle is never checkpointed.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -1990,6 +2487,8 @@
         ".ephemeral/terminal-sessions/{terminalId}.json",
         ".ephemeral/terminal-sessions/{terminalId}.jsonl"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Load through TerminalSessionManager; persisted running entries are historical metadata, not resumable processes.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -2004,6 +2503,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -2023,6 +2523,8 @@
       "pathPatterns": [
         "usage-ledger.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -2037,10 +2539,11 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
-      "firstPossibleOpenPhase": "first_run_seed",
+      "firstPossibleOpenPhase": "desktop_bootstrap",
       "firstPossibleWritePhase": "first_run_seed",
       "format": "json",
       "id": "user-preferences",
@@ -2058,6 +2561,22 @@
       "pathPatterns": [
         "user/preferences.json"
       ],
+      "preCoordinatorReadProjection": {
+        "compatibility": "additive-only",
+        "fields": [
+          "auto_check_updates",
+          "hardware_acceleration",
+          "keep_awake",
+          "locale",
+          "network_proxy",
+          "primaryAgent",
+          "quick_chat",
+          "setupComplete",
+          "update_channel"
+        ],
+        "reason": "Desktop startup reads only these named optional fields before the epoch transition; removal or semantic reinterpretation requires moving the read behind the coordinator."
+      },
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "PreferencesManager is intentionally permissive; _dataVersion is the legacy migration cursor, not a strict schema validator.",
@@ -2072,6 +2591,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Checkpoint users and studios together; retain spaces.json only as a legacy migration source.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -2096,6 +2616,8 @@
         "studios.json",
         "spaces.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore users/studios before dependent grants or mounts; never project newer studio state back into spaces.json.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -2110,6 +2632,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Exclude expired sessions; preserve only live sessions when auth continuity is required.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -2130,6 +2653,8 @@
       "pathPatterns": [
         "web-sessions.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Load through WebSessionStore so expiry and validation run before use.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -2144,6 +2669,7 @@
     },
     {
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Include markers only with the migrated target state they describe.",
       "epochPolicy": "compatible",
       "exemption": null,
@@ -2164,6 +2690,8 @@
         "user/win32-sandbox-migration-v3.json",
         "user/win32-sandbox-cleanup-v4.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore markers and migrated state together or rerun the idempotent migration.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -2178,6 +2706,7 @@
     },
     {
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "epochPolicy": "epoch-managed",
       "exemption": null,
@@ -2200,6 +2729,8 @@
         "agents/{agentId}/workflow-sessions/{runId}",
         "workflow-activity.json"
       ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
@@ -2215,8 +2746,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Initial persistence schema baseline: this receipt records existing runtime readers and does not change persisted data or reader behavior.",
-    "payloadFingerprint": "sha256:7181fa87725ca3fa5c7342c1ec1b1fa7d571246504dc7626d5cd4401c5fc6371"
+    "compatibilityReason": "Expands persistence census coverage and records existing desktop-owned stores without changing stored data formats.",
+    "payloadFingerprint": "sha256:a335648618f99c295fa1289a9eae11cbdfb1d1fcdb9940c26f07ee12f87b4b77"
   },
   "schemas": [
     {
@@ -2349,6 +2880,27 @@
       "module": "server/routes/desk.ts",
       "sourceHash": "sha256:164cad0b1a18ea84cd826a1c41ef6609f20bd164fde131bd2b96194c68324038",
       "storeId": "desk-cover-upload-staging"
+    },
+    {
+      "contract": "desktop launch, renderer, server-crash, and browser-command diagnostic logs",
+      "kind": "directory-contract",
+      "module": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "sourceHash": "sha256:60d16b97e4fe7b423c3d8953e31e02f7e983dfa4e9324a19055591786644de93",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "contract": "GPU startup state version, crash evidence, recovery mode, and legacy migration markers",
+      "kind": "runtime-contract",
+      "module": "desktop/src/shared/gpu-startup-policy.cjs",
+      "sourceHash": "sha256:de4190cecffb418e3a540ec95812355b22d17530db87c15bcf1801812ac87a80",
+      "storeId": "desktop-gpu-startup-state"
+    },
+    {
+      "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
+      "kind": "directory-contract",
+      "module": "desktop/main.cjs",
+      "sourceHash": "sha256:907a85775c3b485cea7f4aa2571f6186f0f2b84c3b5153a3d445cde7ec8dce99",
+      "storeId": "desktop-window-version-state"
     },
     {
       "contract": "device, credential, and pairing-session validators/serializers",
@@ -2663,7 +3215,7 @@
       "contract": "PreferencesManager defaults, coercion, and _dataVersion migration driver",
       "kind": "runtime-contract",
       "module": "core/preferences-manager.ts",
-      "sourceHash": "sha256:a2b4eb4113ccf91ef7c2b06d296ee0ef24ecfc0dda9b0e200aa5824fe0bf7d93",
+      "sourceHash": "sha256:c0198a12def439b58f3c273ceabad4e3fef1653bbfad4efef5d100a8861ac8e7",
       "storeId": "user-preferences"
     },
     {
@@ -2708,7 +3260,15 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 561,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
+      "sourceFile": "core/agent-manager.ts",
+      "storeId": "agent-profile"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 577,
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2716,7 +3276,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 599,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2724,7 +3284,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 600,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2732,7 +3292,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 601,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2740,7 +3300,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 602,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2748,7 +3308,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 638,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2756,7 +3316,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 659,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2764,7 +3324,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 669,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2772,7 +3332,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 678,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2780,7 +3340,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 689,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2788,7 +3348,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 702,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2796,7 +3356,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 710,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2804,7 +3364,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 932,
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
     },
@@ -2895,6 +3455,14 @@
       "reason": "Creates the channel root or writes channel generations.",
       "sourceFile": "core/channel-manager.ts",
       "storeId": "channels"
+    },
+    {
+      "exemptionId": "windows-uia-request-temp",
+      "kind": "remove-path",
+      "line": 36,
+      "reason": "Creates helper/request files in the operating-system temporary directory for one Windows UIA call.",
+      "sourceFile": "core/computer-use/providers/windows-uia-provider.ts",
+      "storeId": null
     },
     {
       "exemptionId": "windows-uia-request-temp",
@@ -3027,15 +3595,23 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 1920,
+      "line": 1923,
       "reason": "Creates the user skill root.",
       "sourceFile": "core/engine.ts",
       "storeId": "skill-state"
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 2105,
+      "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
+      "sourceFile": "core/engine.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
-      "line": 2156,
+      "line": 2159,
       "reason": "Creates the plugin development source root.",
       "sourceFile": "core/engine.ts",
       "storeId": "plugin-development-state"
@@ -3314,6 +3890,22 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 323,
+      "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
+      "sourceFile": "core/local-provider-plugin-store.ts",
+      "storeId": "provider-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 326,
+      "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
+      "sourceFile": "core/local-provider-plugin-store.ts",
+      "storeId": "provider-state"
+    },
+    {
+      "exemptionId": null,
       "kind": "atomic-write",
       "line": 41,
       "reason": "Updates the local user record in users.json.",
@@ -3356,6 +3948,14 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 307,
+      "reason": "Writes data within the active pluginId-scoped data directory.",
+      "sourceFile": "core/media/universal-media-manager.ts",
+      "storeId": "plugin-runtime-data"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 964,
       "reason": "Writes data within the active pluginId-scoped data directory.",
       "sourceFile": "core/media/universal-media-manager.ts",
       "storeId": "plugin-runtime-data"
@@ -3578,6 +4178,14 @@
     },
     {
       "exemptionId": "cross-store-legacy-migrations",
+      "kind": "remove-path",
+      "line": 1800,
+      "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
+      "sourceFile": "core/migrations.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "cross-store-legacy-migrations",
       "kind": "copy-file",
       "line": 1801,
       "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
@@ -3602,8 +4210,24 @@
     },
     {
       "exemptionId": "cross-store-legacy-migrations",
+      "kind": "remove-path",
+      "line": 1809,
+      "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
+      "sourceFile": "core/migrations.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "cross-store-legacy-migrations",
       "kind": "mkdir",
       "line": 1843,
+      "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
+      "sourceFile": "core/migrations.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "cross-store-legacy-migrations",
+      "kind": "remove-path",
+      "line": 1893,
       "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
       "sourceFile": "core/migrations.ts",
       "storeId": null
@@ -3994,8 +4618,24 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 477,
+      "reason": "Writes plugin development source or run state.",
+      "sourceFile": "core/plugin-dev-service.ts",
+      "storeId": "plugin-development-state"
+    },
+    {
+      "exemptionId": null,
       "kind": "copy-file",
       "line": 478,
+      "reason": "Writes plugin development source or run state.",
+      "sourceFile": "core/plugin-dev-service.ts",
+      "storeId": "plugin-development-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 482,
       "reason": "Writes plugin development source or run state.",
       "sourceFile": "core/plugin-dev-service.ts",
       "storeId": "plugin-development-state"
@@ -4020,6 +4660,14 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "line": 491,
+      "reason": "Writes plugin development source or run state.",
+      "sourceFile": "core/plugin-dev-service.ts",
+      "storeId": "plugin-development-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 646,
       "reason": "Writes plugin development source or run state.",
       "sourceFile": "core/plugin-dev-service.ts",
       "storeId": "plugin-development-state"
@@ -4068,6 +4716,14 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "line": 132,
+      "reason": "Reads and atomically writes user preferences.",
+      "sourceFile": "core/preferences-manager.ts",
+      "storeId": "user-preferences"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 135,
       "reason": "Reads and atomically writes user preferences.",
       "sourceFile": "core/preferences-manager.ts",
       "storeId": "user-preferences"
@@ -4250,6 +4906,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 2176,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "core/session-coordinator.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
       "kind": "write-file",
       "line": 4347,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4330,8 +4994,24 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 5145,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "core/session-coordinator.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 5150,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "core/session-coordinator.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 5486,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -4370,6 +5050,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 35,
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "sourceFile": "core/session-manifest/checkpoint.ts",
+      "storeId": "operational-checkpoints"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 62,
       "reason": "Writes or restores an existing operational checkpoint.",
@@ -4380,6 +5068,14 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "line": 87,
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "sourceFile": "core/session-manifest/checkpoint.ts",
+      "storeId": "operational-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 90,
       "reason": "Writes or restores an existing operational checkpoint.",
       "sourceFile": "core/session-manifest/checkpoint.ts",
       "storeId": "operational-checkpoints"
@@ -4436,6 +5132,14 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 102,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "core/slash-commands/session-ops.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 120,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/slash-commands/session-ops.ts",
       "storeId": "session-jsonl"
@@ -4571,7 +5275,431 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
+      "line": 182,
+      "reason": "Appends desktop auto-update diagnostics.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": "runtime-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "append-file",
+      "line": 183,
+      "reason": "Appends desktop auto-update diagnostics.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": "runtime-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 411,
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "line": 412,
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": "desktop-legacy-update-path-cleanup",
+      "kind": "remove-path",
+      "line": 414,
+      "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-legacy-update-path-cleanup",
+      "kind": "remove-path",
+      "line": 417,
+      "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 436,
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 437,
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": "desktop-electron-update-cache",
+      "kind": "remove-path",
+      "line": 452,
+      "reason": "Deletes Electron updater's regenerable pending cache under app.getPath(userData), not Hana application state.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 32,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/bootstrap.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 34,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/bootstrap.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 67,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/bootstrap.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "append-file",
+      "line": 69,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/bootstrap.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": "desktop-external-text-file",
+      "kind": "write-file",
+      "line": 49,
+      "reason": "Writes an absolute artifact/editor path explicitly selected by the caller, outside any implied HANA_HOME store.",
+      "sourceFile": "desktop/file-text-io.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1213,
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "server-runtime-info"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1217,
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "server-runtime-info"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1719,
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "server-runtime-info"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 2087,
+      "reason": "Writes desktop crash or browser-command diagnostics.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 2088,
+      "reason": "Writes desktop crash or browser-command diagnostics.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 2149,
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 2150,
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 2218,
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 2317,
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 2318,
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-window-version-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "append-file",
+      "line": 4063,
+      "reason": "Writes desktop crash or browser-command diagnostics.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": "desktop-screenshot-html-temp",
+      "kind": "write-file",
+      "line": 4630,
+      "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-screenshot-html-temp",
+      "kind": "remove-path",
+      "line": 4684,
+      "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-skill-preview-temp",
+      "kind": "mkdir",
+      "line": 5239,
+      "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "write-file",
+      "line": 5385,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "mkdir",
+      "line": 5407,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "write-file",
+      "line": 5408,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "mkdir",
+      "line": 5419,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "copy-file",
+      "line": 5420,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "mkdir",
+      "line": 5453,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "write-file",
+      "line": 5454,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 5976,
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": "server-runtime-info"
+    },
+    {
+      "exemptionId": "desktop-office-render-output",
+      "kind": "mkdir",
+      "line": 128,
+      "reason": "Writes the output path supplied by a validated office render job; the owning plugin records the durable job/session state.",
+      "sourceFile": "desktop/src/office-pdf-helper.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-office-render-output",
+      "kind": "write-file",
+      "line": 129,
+      "reason": "Writes the output path supplied by a validated office render job; the owning plugin records the durable job/session state.",
+      "sourceFile": "desktop/src/office-pdf-helper.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 166,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "desktop/src/shared/artifact-gc.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 81,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "desktop/src/shared/artifact-repair.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 36,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "append-file",
+      "line": 37,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 44,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 45,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": "desktop-gpu-json-primitive",
+      "kind": "mkdir",
+      "line": 77,
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-gpu-json-primitive",
+      "kind": "write-file",
+      "line": 79,
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-gpu-json-primitive",
+      "kind": "rename",
+      "line": 80,
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 104,
+      "reason": "Atomically writes desktop GPU startup state.",
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "storeId": "desktop-gpu-startup-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 255,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 257,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 267,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "append-file",
+      "line": 269,
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "storeId": "desktop-diagnostics"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
       "line": 207,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "hub/agent-executor.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 291,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "hub/agent-executor.ts",
       "storeId": "session-jsonl"
@@ -4628,7 +5756,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 205,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "lib/agent-appearance-summary.ts",
       "storeId": "agent-profile"
     },
@@ -4714,6 +5842,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 393,
+      "reason": "Creates the channel root or writes channel generations.",
+      "sourceFile": "lib/channels/channel-store.ts",
+      "storeId": "channels"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 483,
       "reason": "Creates the channel root or writes channel generations.",
@@ -4756,7 +5892,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 527,
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "character-card-staging"
     },
@@ -4772,7 +5908,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 604,
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "character-card-staging"
     },
@@ -4780,7 +5916,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 610,
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "character-card-staging"
     },
@@ -4788,7 +5924,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 615,
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "character-card-staging"
     },
@@ -4796,7 +5932,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 636,
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "character-card-staging"
     },
@@ -4804,7 +5940,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 643,
-      "reason": "Installs or renames a skill imported from a character card.",
+      "reason": "Installs, rolls back, or renames a skill imported from a character card.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "skill-state"
     },
@@ -4812,7 +5948,15 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 657,
-      "reason": "Installs or renames a skill imported from a character card.",
+      "reason": "Installs, rolls back, or renames a skill imported from a character card.",
+      "sourceFile": "lib/character-cards/service.ts",
+      "storeId": "skill-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 670,
+      "reason": "Installs, rolls back, or renames a skill imported from a character card.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "skill-state"
     },
@@ -4820,7 +5964,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 906,
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "character-card-staging"
     },
@@ -4828,7 +5972,15 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "line": 908,
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
+      "sourceFile": "lib/character-cards/service.ts",
+      "storeId": "character-card-staging"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 921,
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "sourceFile": "lib/character-cards/service.ts",
       "storeId": "character-card-staging"
     },
@@ -4874,9 +6026,25 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 111,
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "sourceFile": "lib/checkpoint-store.ts",
+      "storeId": "operational-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 129,
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "sourceFile": "lib/checkpoint-store.ts",
+      "storeId": "operational-checkpoints"
+    },
+    {
+      "exemptionId": null,
       "kind": "rename",
       "line": 25,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "lib/compat/checks/config-yaml.ts",
       "storeId": "agent-profile"
     },
@@ -4884,7 +6052,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 35,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "lib/compat/checks/config-yaml.ts",
       "storeId": "agent-profile"
     },
@@ -4986,6 +6154,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 75,
+      "reason": "Writes Agent Phone projection or runtime state.",
+      "sourceFile": "lib/conversations/agent-phone-runtime.ts",
+      "storeId": "agent-phone"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 27,
       "reason": "Writes runtime diagnostics or recoverable cold state.",
@@ -5026,6 +6202,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 192,
+      "reason": "Writes runtime diagnostics or recoverable cold state.",
+      "sourceFile": "lib/debug-log.ts",
+      "storeId": "runtime-diagnostics"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 375,
       "reason": "Persists deferred task/result delivery state.",
@@ -5052,6 +6236,14 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "line": 95,
+      "reason": "Writes the activity index or activity session lifecycle state.",
+      "sourceFile": "lib/desk/activity-store.ts",
+      "storeId": "desk-activity"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 173,
       "reason": "Writes the activity index or activity session lifecycle state.",
       "sourceFile": "lib/desk/activity-store.ts",
       "storeId": "desk-activity"
@@ -5250,6 +6442,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 97,
+      "reason": "Writes a named per-agent memory protocol file.",
+      "sourceFile": "lib/memory/cache-snapshot-observation.ts",
+      "storeId": "agent-memory"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 107,
       "reason": "Writes a named per-agent memory protocol file.",
@@ -5268,6 +6468,14 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 405,
+      "reason": "Writes a named per-agent memory protocol file.",
+      "sourceFile": "lib/memory/compile.ts",
+      "storeId": "agent-memory"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 432,
       "reason": "Writes a named per-agent memory protocol file.",
       "sourceFile": "lib/memory/compile.ts",
       "storeId": "agent-memory"
@@ -5308,6 +6516,14 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 846,
+      "reason": "Writes a named per-agent memory protocol file.",
+      "sourceFile": "lib/memory/compile.ts",
+      "storeId": "agent-memory"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 940,
       "reason": "Writes a named per-agent memory protocol file.",
       "sourceFile": "lib/memory/compile.ts",
       "storeId": "agent-memory"
@@ -5388,6 +6604,14 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 45,
+      "reason": "Writes a named per-agent memory protocol file.",
+      "sourceFile": "lib/memory/compiled-memory-state.ts",
+      "storeId": "agent-memory"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 103,
       "reason": "Writes a named per-agent memory protocol file.",
       "sourceFile": "lib/memory/compiled-memory-state.ts",
       "storeId": "agent-memory"
@@ -5498,6 +6722,22 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 184,
+      "reason": "Writes a named per-agent memory protocol file.",
+      "sourceFile": "lib/memory/session-summary.ts",
+      "storeId": "agent-memory"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 156,
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "sourceFile": "lib/pi-sdk/search-tools.ts",
+      "storeId": "managed-runtime-caches"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 174,
       "reason": "Populates a Hana-owned regenerable runtime cache.",
@@ -5554,8 +6794,40 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 302,
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "sourceFile": "lib/pi-sdk/search-tools.ts",
+      "storeId": "managed-runtime-caches"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 303,
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "sourceFile": "lib/pi-sdk/search-tools.ts",
+      "storeId": "managed-runtime-caches"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 29,
+      "reason": "Backs up or records an installed plugin package.",
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 42,
+      "reason": "Backs up or records an installed plugin package.",
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 46,
       "reason": "Backs up or records an installed plugin package.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
@@ -5586,6 +6858,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 58,
+      "reason": "Backs up or records an installed plugin package.",
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
       "kind": "copy-file",
       "line": 59,
       "reason": "Backs up or records an installed plugin package.",
@@ -5604,6 +6884,22 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "line": 27,
+      "reason": "Backs up or records an installed plugin package.",
+      "sourceFile": "lib/plugin-install-records.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 84,
+      "reason": "Backs up or records an installed plugin package.",
+      "sourceFile": "lib/plugin-install-records.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 92,
       "reason": "Backs up or records an installed plugin package.",
       "sourceFile": "lib/plugin-install-records.ts",
       "storeId": "installed-plugins"
@@ -5636,6 +6932,14 @@
       "exemptionId": "external-resource-io",
       "kind": "mkdir",
       "line": 161,
+      "reason": "Writes explicit user-selected local filesystem resource targets outside Hana persistence ownership.",
+      "sourceFile": "lib/resource-io/providers/local-fs-provider.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "external-resource-io",
+      "kind": "remove-path",
+      "line": 169,
       "reason": "Writes explicit user-selected local filesystem resource targets outside Hana persistence ownership.",
       "sourceFile": "lib/resource-io/providers/local-fs-provider.ts",
       "storeId": null
@@ -5753,6 +7057,14 @@
       "storeId": null
     },
     {
+      "exemptionId": "sandbox-script-output",
+      "kind": "remove-path",
+      "line": 45,
+      "reason": "Writes a generated script into a request-scoped sandbox or operating-system temporary directory.",
+      "sourceFile": "lib/sandbox/script.ts",
+      "storeId": null
+    },
+    {
       "exemptionId": "sandbox-win32-command-temp",
       "kind": "mkdir",
       "line": 526,
@@ -5818,6 +7130,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 101,
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
+      "storeId": "managed-runtime-caches"
+    },
+    {
+      "exemptionId": null,
       "kind": "copy-file",
       "line": 103,
       "reason": "Populates a Hana-owned regenerable runtime cache.",
@@ -5834,8 +7154,24 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 109,
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
+      "storeId": "managed-runtime-caches"
+    },
+    {
+      "exemptionId": null,
       "kind": "rename",
       "line": 110,
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
+      "storeId": "managed-runtime-caches"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 112,
       "reason": "Populates a Hana-owned regenerable runtime cache.",
       "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
       "storeId": "managed-runtime-caches"
@@ -5906,6 +7242,22 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 46,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "lib/session-files/session-file-registry.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 307,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "lib/session-files/session-file-registry.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 433,
       "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
@@ -5948,6 +7300,14 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 207,
+      "reason": "Installs, exports, uploads, or records skill packages.",
+      "sourceFile": "lib/skill-bundles/package-service.ts",
+      "storeId": "skill-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 226,
       "reason": "Installs, exports, uploads, or records skill packages.",
       "sourceFile": "lib/skill-bundles/package-service.ts",
       "storeId": "skill-state"
@@ -6012,6 +7372,14 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 34,
+      "reason": "Installs, exports, uploads, or records skill packages.",
+      "sourceFile": "lib/skills/skill-package-installer.ts",
+      "storeId": "skill-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 40,
       "reason": "Installs, exports, uploads, or records skill packages.",
       "sourceFile": "lib/skills/skill-package-installer.ts",
       "storeId": "skill-state"
@@ -6242,6 +7610,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 120,
+      "reason": "Writes a user- or agent-authored Markdown record.",
+      "sourceFile": "lib/tools/experience.ts",
+      "storeId": "agent-authored-records"
+    },
+    {
+      "exemptionId": null,
       "kind": "persistent-store-constructor",
       "line": 209,
       "reason": "Writes workflow journal, session, or activity state.",
@@ -6370,6 +7746,22 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 128,
+      "reason": "Writes data within the active pluginId-scoped data directory.",
+      "sourceFile": "plugins/image-gen/index.ts",
+      "storeId": "plugin-runtime-data"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 139,
+      "reason": "Writes data within the active pluginId-scoped data directory.",
+      "sourceFile": "plugins/image-gen/index.ts",
+      "storeId": "plugin-runtime-data"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 30,
       "reason": "Writes data within the active pluginId-scoped data directory.",
@@ -6466,6 +7858,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 296,
+      "reason": "Writes or deletes live server discovery state.",
+      "sourceFile": "server/index.ts",
+      "storeId": "server-runtime-info"
+    },
+    {
+      "exemptionId": null,
       "kind": "persistent-store-constructor",
       "line": 459,
       "reason": "Constructs the deferred result store.",
@@ -6516,7 +7916,15 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 1218,
-      "reason": "Writes live server discovery state.",
+      "reason": "Writes or deletes live server discovery state.",
+      "sourceFile": "server/index.ts",
+      "storeId": "server-runtime-info"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1316,
+      "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
     },
@@ -6524,7 +7932,15 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 418,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "sourceFile": "server/routes/agents.ts",
+      "storeId": "agent-profile"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 420,
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/agents.ts",
       "storeId": "agent-profile"
     },
@@ -6532,7 +7948,15 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 422,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "sourceFile": "server/routes/agents.ts",
+      "storeId": "agent-profile"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 435,
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/agents.ts",
       "storeId": "agent-profile"
     },
@@ -6540,7 +7964,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 700,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/agents.ts",
       "storeId": "agent-profile"
     },
@@ -6548,7 +7972,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 739,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/agents.ts",
       "storeId": "agent-profile"
     },
@@ -6556,7 +7980,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 777,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/agents.ts",
       "storeId": "agent-profile"
     },
@@ -6564,7 +7988,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 30,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/avatar.ts",
       "storeId": "agent-profile"
     },
@@ -6572,7 +7996,15 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 31,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "sourceFile": "server/routes/avatar.ts",
+      "storeId": "agent-profile"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 98,
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/avatar.ts",
       "storeId": "agent-profile"
     },
@@ -6580,7 +8012,15 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 102,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "sourceFile": "server/routes/avatar.ts",
+      "storeId": "agent-profile"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 115,
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/avatar.ts",
       "storeId": "agent-profile"
     },
@@ -6604,7 +8044,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 443,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/config.ts",
       "storeId": "agent-profile"
     },
@@ -6612,7 +8052,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 477,
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "server/routes/config.ts",
       "storeId": "agent-profile"
     },
@@ -6628,7 +8068,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 543,
-      "reason": "Writes a bounded temporary cover upload.",
+      "reason": "Writes or removes a bounded temporary cover upload.",
       "sourceFile": "server/routes/desk.ts",
       "storeId": "desk-cover-upload-staging"
     },
@@ -6636,7 +8076,15 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 546,
-      "reason": "Writes a bounded temporary cover upload.",
+      "reason": "Writes or removes a bounded temporary cover upload.",
+      "sourceFile": "server/routes/desk.ts",
+      "storeId": "desk-cover-upload-staging"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 549,
+      "reason": "Writes or removes a bounded temporary cover upload.",
       "sourceFile": "server/routes/desk.ts",
       "storeId": "desk-cover-upload-staging"
     },
@@ -6645,6 +8093,14 @@
       "kind": "mkdir",
       "line": 1105,
       "reason": "Creates an approved external workspace root or its .agents/skills directory; the mount registry owns authorization, not the external content.",
+      "sourceFile": "server/routes/desk.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "workspace-skill-delete",
+      "kind": "remove-path",
+      "line": 1155,
+      "reason": "Deletes a skill directory only after the route proves it belongs to the explicitly mounted workspace skill catalog, outside Hana-owned persistence.",
       "sourceFile": "server/routes/desk.ts",
       "storeId": null
     },
@@ -6668,7 +8124,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 397,
-      "reason": "Creates or promotes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },
@@ -6676,7 +8132,31 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 421,
-      "reason": "Creates or promotes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "sourceFile": "server/routes/plugins.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": "conditional-plugin-install-cleanup",
+      "kind": "remove-path",
+      "line": 428,
+      "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
+      "sourceFile": "server/routes/plugins.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 473,
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "sourceFile": "server/routes/plugins.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 535,
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },
@@ -6684,9 +8164,17 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 536,
-      "reason": "Creates or promotes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": "conditional-plugin-install-cleanup",
+      "kind": "remove-path",
+      "line": 562,
+      "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
+      "sourceFile": "server/routes/plugins.ts",
+      "storeId": null
     },
     {
       "exemptionId": null,
@@ -6706,6 +8194,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1186,
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "sourceFile": "server/routes/plugins.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
       "kind": "write-file",
       "line": 41,
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
@@ -6722,6 +8218,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 646,
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
+      "sourceFile": "server/routes/sessions.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
       "kind": "append-file",
       "line": 2069,
       "reason": "Appends switch failure diagnostics.",
@@ -6730,9 +8234,17 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 2191,
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
+      "sourceFile": "server/routes/sessions.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "line": 2254,
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "sourceFile": "server/routes/sessions.ts",
       "storeId": "session-jsonl"
     },
@@ -6740,7 +8252,7 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 2262,
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "sourceFile": "server/routes/sessions.ts",
       "storeId": "session-jsonl"
     },
@@ -6748,7 +8260,7 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 2328,
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "sourceFile": "server/routes/sessions.ts",
       "storeId": "session-jsonl"
     },
@@ -6756,7 +8268,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 2340,
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "sourceFile": "server/routes/sessions.ts",
       "storeId": "session-jsonl"
     },
@@ -6764,9 +8276,33 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 2341,
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "sourceFile": "server/routes/sessions.ts",
       "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 2374,
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
+      "sourceFile": "server/routes/sessions.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 41,
+      "reason": "Removes an installed user skill through the skill owner route.",
+      "sourceFile": "server/routes/skills.ts",
+      "storeId": "skill-state"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 216,
+      "reason": "Expires a sessionless legacy upload cache entry.",
+      "sourceFile": "server/routes/upload.ts",
+      "storeId": "legacy-upload-cache"
     },
     {
       "exemptionId": "conditional-upload-target",
@@ -6826,9 +8362,17 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 44,
+      "reason": "Installs, exports, uploads, or records skill packages.",
+      "sourceFile": "server/utils/uploaded-skill-package.ts",
+      "storeId": "skill-state"
+    },
+    {
+      "exemptionId": null,
       "kind": "rename",
       "line": 164,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/activation.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6836,7 +8380,7 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 169,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/activation.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6844,7 +8388,7 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 171,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/activation.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6852,7 +8396,47 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 174,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 191,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 307,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 324,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 395,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 405,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/activation.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6860,7 +8444,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 399,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6868,7 +8452,15 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 400,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 451,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6876,7 +8468,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 776,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6884,7 +8476,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 778,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6892,7 +8484,23 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 779,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 823,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 849,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6900,7 +8508,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "line": 850,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6908,7 +8516,15 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 851,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 861,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6916,7 +8532,23 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 863,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 869,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 879,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6924,7 +8556,39 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 1388,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1456,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1457,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1458,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1459,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6932,7 +8596,23 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 1670,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1712,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 1713,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/ota-core.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6940,7 +8620,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 60,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/pointer-store.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6948,7 +8628,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 63,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/pointer-store.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6956,7 +8636,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 65,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/pointer-store.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6964,7 +8644,31 @@
       "exemptionId": null,
       "kind": "rename",
       "line": 70,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 100,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 105,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 177,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/pointer-store.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6972,7 +8676,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "line": 195,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/pointer-store.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6980,7 +8684,7 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 200,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/pointer-store.cjs",
       "storeId": "signed-artifacts"
     },
@@ -6988,7 +8692,23 @@
       "exemptionId": null,
       "kind": "write-file",
       "line": 201,
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 205,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "storeId": "signed-artifacts"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 214,
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "sourceFile": "shared/artifact-core/pointer-store.cjs",
       "storeId": "signed-artifacts"
     },
@@ -7039,6 +8759,22 @@
       "reason": "The archive codec writes caller-selected archive/extraction paths; signed artifact ownership is assigned at its callers.",
       "sourceFile": "shared/artifact-core/ustar.cjs",
       "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 94,
+      "reason": "Atomically writes the DATA_EPOCH coordinator stamp.",
+      "sourceFile": "shared/data-epoch.cjs",
+      "storeId": "data-epoch-stamp"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 144,
+      "reason": "Atomically writes the DATA_EPOCH coordinator stamp.",
+      "sourceFile": "shared/data-epoch.cjs",
+      "storeId": "data-epoch-stamp"
     },
     {
       "exemptionId": "external-default-workspace",
@@ -7132,6 +8868,14 @@
       "exemptionId": "generic-safe-fs-primitives",
       "kind": "copy-file",
       "line": 130,
+      "reason": "Shared atomic-write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
+      "sourceFile": "shared/safe-fs.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "generic-safe-fs-primitives",
+      "kind": "remove-path",
+      "line": 136,
       "reason": "Shared atomic-write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
       "sourceFile": "shared/safe-fs.ts",
       "storeId": null

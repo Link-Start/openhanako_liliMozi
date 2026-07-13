@@ -49,6 +49,19 @@ describe("desktop main GPU startup contract", () => {
     }
   });
 
+  it("settles legacy GPU preference cleanup only after the local server is ready", () => {
+    const source = fs.readFileSync(MAIN_PATH, "utf-8");
+    const startupBlockIndex = source.indexOf('console.log("[desktop] 启动 HanaAgent Server...")');
+    const serverStartIndex = source.indexOf("await startServer();", startupBlockIndex);
+    const settleIndex = source.indexOf("await settleLegacyGpuPreferenceAfterServerStart();", serverStartIndex);
+    const serverReadyIndex = source.indexOf('phase: "server-ready"', settleIndex);
+
+    expect(startupBlockIndex).toBeGreaterThan(-1);
+    expect(serverStartIndex).toBeGreaterThan(startupBlockIndex);
+    expect(settleIndex).toBeGreaterThan(serverStartIndex);
+    expect(serverReadyIndex).toBeGreaterThan(settleIndex);
+  });
+
   it("records Windows window-starting phases before BrowserWindow creation can fail", () => {
     const source = fs.readFileSync(MAIN_PATH, "utf-8");
     const mainStartingIndex = source.indexOf('phase: "main-window-starting"');

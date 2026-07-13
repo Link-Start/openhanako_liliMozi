@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "generatedBy": "scripts/scan-persistent-stores.mjs",
   "sourceRoots": [
     "server",
@@ -7,7 +7,43 @@
     "hub",
     "lib",
     "shared",
-    "plugins"
+    "plugins",
+    "desktop",
+    "cli"
+  ],
+  "sourceExclusions": [
+    {
+      "id": "desktop-generated-bundles",
+      "reason": "Generated Electron host bundles duplicate scanned source."
+    },
+    {
+      "id": "desktop-generated-dist",
+      "reason": "Generated Vite output is not source."
+    },
+    {
+      "id": "desktop-native-products",
+      "reason": "Native build products and sources are outside the JavaScript persistence census."
+    },
+    {
+      "id": "desktop-renderer-react",
+      "reason": "Renderer state uses authenticated server APIs and is not a host filesystem owner."
+    },
+    {
+      "id": "desktop-renderer-platform",
+      "reason": "Renderer platform and i18n modules are not Electron host persistence owners."
+    },
+    {
+      "id": "desktop-renderer-entries",
+      "reason": "Renderer entrypoints are not Electron host persistence owners."
+    },
+    {
+      "id": "desktop-renderer-workers",
+      "reason": "Renderer/service-worker code is not an Electron host persistence owner."
+    },
+    {
+      "id": "source-tests",
+      "reason": "Test fixtures and test-only mutations are excluded from production ownership."
+    }
   ],
   "stores": [
     {
@@ -38,12 +74,15 @@
         "user profile and agent tools"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Files are owned by userId or agentId; peer/category/date names define stable logical records.",
       "exemption": null
     },
@@ -74,12 +113,15 @@
         "FactStore store-local migrations",
         "lib/compat/checks/facts-db.ts"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "One facts database belongs to one agentId; SQLite user_version is store-local and never DATA_EPOCH.",
       "exemption": null
     },
@@ -123,12 +165,15 @@
         "HanaAgent v1 memories.db import",
         "core/migrations.ts memory migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "agentId owns long-term memory; session summaries are keyed by sessionId, never by sessionPath.",
       "exemption": null
     },
@@ -159,12 +204,15 @@
       "migrationEntry": [
         "core/migrations.ts Agent Phone projection migration"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "conversationId is identity within agentId; projection/runtime paths are locators.",
       "exemption": null
     },
@@ -203,12 +251,15 @@
       "migrationEntry": [
         "lib/compat/checks/config-yaml.ts"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "first_run_seed",
       "firstPossibleWritePhase": "first_run_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "agentId owns the profile; each filename has a fixed semantic role.",
       "exemption": null
     },
@@ -239,12 +290,15 @@
       "migrationEntry": [
         "core/migrations.ts channel migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "channelId is durable; YAML filename is its canonical locator.",
       "exemption": null
     },
@@ -274,12 +328,15 @@
         "character card upload, import planning, or export"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; plans and packages are request-scoped staging.",
       "restorePolicy": "Discard incomplete tokens and restart import/export from the original package.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Random token owns one staging subtree; staged paths never become agent or skill identities.",
       "exemption": null
     },
@@ -313,12 +370,15 @@
       "migrationEntry": [
         "core/migrations.ts cron migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "jobId and runId are scoped to their agentId or studioId owner.",
       "exemption": null
     },
@@ -343,15 +403,23 @@
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
       },
       "openEntry": [
-        "assertAndStampDataEpoch"
+        "coordinateDataEpochStartup",
+        "inspectDataEpochMaintenance"
       ],
       "migrationEntry": [],
-      "firstPossibleOpenPhase": "epoch_preflight",
-      "firstPossibleWritePhase": "epoch_preflight",
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "epoch_read_preflight",
+      "firstPossibleWritePhase": "epoch_transition",
       "epochPolicy": "compatible",
       "checkpointPolicy": "Never restore this stamp independently of the data tree it describes.",
       "restorePolicy": "Recreate only as the final commit record of a coordinated epoch transition.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "The epoch stamp is coordinator metadata and is never interpreted as an epoch-managed business store.",
+        "unstampedHomeSafePaths": []
+      },
+      "preCoordinatorReadProjection": null,
       "identityContract": "One high-water stamp belongs to one canonical HANA_HOME.",
       "exemption": null
     },
@@ -381,12 +449,15 @@
       "migrationEntry": [
         "core/migrations.ts deferred result migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "engine_construct",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Include undelivered deferred results needed for restart notification; expired/delivered entries may be pruned.",
       "restorePolicy": "Load through DeferredResultStore so cleanup and delivery flags are applied before events resume.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "taskId is durable; session ownership prefers sessionId and retains sessionPath only as a locator.",
       "exemption": null
     },
@@ -415,12 +486,15 @@
         "DeskManager"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "activityId/sessionId identify records; session files remain agent-owned locators.",
       "exemption": null
     },
@@ -448,13 +522,159 @@
         "writeUploadedCoverImage"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; each cover upload is request-scoped temporary input.",
       "restorePolicy": "Delete the temporary directory and upload the cover again.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Temporary directory token owns the upload bytes; the final Markdown attachment has separate workspace ownership.",
+      "exemption": null
+    },
+    {
+      "id": "desktop-diagnostics",
+      "ownerModule": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "pathPattern": "diagnostics/desktop-launch",
+      "pathPatterns": [
+        "diagnostics/desktop-launch",
+        "crash.log",
+        "browser-cmd.log"
+      ],
+      "pathExclusions": [],
+      "pathKind": "tree",
+      "format": "mixed-directory",
+      "schemaSource": {
+        "kind": "directory-contract",
+        "module": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+        "contract": "desktop launch, renderer, server-crash, and browser-command diagnostic logs"
+      },
+      "schemaContract": {
+        "kind": "protocol",
+        "source": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
+      },
+      "openEntry": [
+        "desktop/bootstrap.cjs",
+        "desktop main-process diagnostics"
+      ],
+      "migrationEntry": [],
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "desktop_bootstrap",
+      "firstPossibleWritePhase": "desktop_bootstrap",
+      "epochPolicy": "compatible",
+      "checkpointPolicy": "Exclude best-effort diagnostic logs from epoch checkpoints.",
+      "restorePolicy": "Do not restore as application state; retain only as independent troubleshooting evidence.",
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "Desktop diagnostics are append/replace troubleshooting evidence whose reader does not depend on the application data epoch.",
+        "unstampedHomeSafePaths": [
+          {
+            "relativePath": "diagnostics/desktop-launch",
+            "kind": "tree"
+          },
+          {
+            "relativePath": "crash.log",
+            "kind": "file"
+          },
+          {
+            "relativePath": "browser-cmd.log",
+            "kind": "file"
+          }
+        ]
+      },
+      "preCoordinatorReadProjection": null,
+      "identityContract": "Diagnostic filenames are fixed locators and never provide user, session, or epoch identity.",
+      "exemption": null
+    },
+    {
+      "id": "desktop-gpu-startup-state",
+      "ownerModule": "desktop/src/shared/gpu-startup-policy.cjs",
+      "pathPattern": "user/gpu-startup.json",
+      "pathPatterns": [
+        "user/gpu-startup.json"
+      ],
+      "pathExclusions": [],
+      "pathKind": "file",
+      "format": "json",
+      "schemaSource": {
+        "kind": "runtime-contract",
+        "module": "desktop/src/shared/gpu-startup-policy.cjs",
+        "contract": "GPU startup state version, crash evidence, recovery mode, and legacy migration markers"
+      },
+      "schemaContract": {
+        "kind": "runtime-source",
+        "source": "desktop/src/shared/gpu-startup-policy.cjs",
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
+      },
+      "openEntry": [
+        "resolveGpuStartupPolicy",
+        "desktop GPU startup markers"
+      ],
+      "migrationEntry": [],
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "desktop_bootstrap",
+      "firstPossibleWritePhase": "desktop_bootstrap",
+      "epochPolicy": "compatible",
+      "checkpointPolicy": "Exclude or preserve independently as launch-recovery metadata; never use it as an epoch checkpoint.",
+      "restorePolicy": "Load only through the GPU startup policy reader; corrupt exact-migration evidence fails explicitly.",
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "GPU launch recovery is interpreted entirely by the versioned desktop policy before the server exists.",
+        "unstampedHomeSafePaths": [
+          {
+            "relativePath": "user/gpu-startup.json",
+            "kind": "file"
+          }
+        ]
+      },
+      "preCoordinatorReadProjection": null,
+      "identityContract": "One fixed GPU startup record belongs to one desktop installation data home.",
+      "exemption": null
+    },
+    {
+      "id": "desktop-window-version-state",
+      "ownerModule": "desktop/main.cjs",
+      "pathPattern": "user/window-state.json",
+      "pathPatterns": [
+        "user/window-state.json",
+        "user/quick-chat-window-state.json",
+        "user/last-seen-version.json",
+        "last-update-version"
+      ],
+      "pathExclusions": [],
+      "pathKind": "file",
+      "format": "mixed-directory",
+      "schemaSource": {
+        "kind": "directory-contract",
+        "module": "desktop/main.cjs",
+        "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers"
+      },
+      "schemaContract": {
+        "kind": "protocol",
+        "source": "desktop/main.cjs",
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
+      },
+      "openEntry": [
+        "desktop window creation",
+        "post-update announcement",
+        "desktop update cache cleanup"
+      ],
+      "migrationEntry": [],
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "runtime_ready",
+      "firstPossibleWritePhase": "runtime_ready",
+      "epochPolicy": "compatible",
+      "checkpointPolicy": "Optional compatible shell metadata; it is not required for restoring durable agent/session state.",
+      "restorePolicy": "Read through each desktop owner; invalid or absent shell metadata is recreated from safe defaults.",
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
+      "identityContract": "Each fixed path is shell-local presentation or update metadata, never durable application identity.",
       "exemption": null
     },
     {
@@ -484,12 +704,15 @@
         "loadDeviceAccessRegistries"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Checkpoint all three registries as one referential set.",
       "restorePolicy": "Restore atomically before paired-device authentication is enabled.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "deviceId, credentialId, and pairingSessionId are durable cross-registry keys.",
       "exemption": null
     },
@@ -518,12 +741,15 @@
         "loadExecutionLeaseRegistry"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Exclude expired leases and preserve live leases only with their grant principals.",
       "restorePolicy": "Reload through the lease validator and re-evaluate expiry before execution resumes.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "leaseId is durable only within its principal, grant, and expiry scope.",
       "exemption": null
     },
@@ -556,12 +782,15 @@
       "migrationEntry": [
         "plugin installation compatibility checks"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "pluginId from manifest is identity; versions and directories are locators/generations.",
       "exemption": null
     },
@@ -589,12 +818,15 @@
         "search tool legacy cache probe"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "migration-source",
       "checkpointPolicy": "Excluded; the legacy tree is not Hana-owned active state.",
       "restorePolicy": "Never rewrite or delete; copy a recognized file lazily into runtime/pi-sdk/bin.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Legacy path is a compatibility source only, not an active cache identity.",
       "exemption": null
     },
@@ -622,12 +854,15 @@
         "resolveUploadTarget without sessionPath"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; sessionless uploads are a short-lived compatibility cache.",
       "restorePolicy": "Discard and ask the caller to upload again; age cleanup removes stale entries.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Generated uploadName is a cache locator, not a durable file or session identity.",
       "exemption": null
     },
@@ -656,12 +891,15 @@
         "authenticateLocalUser"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Checkpoint as permission-preserving secret material with its matching users.json identity.",
       "restorePolicy": "Restore atomically before local authentication is enabled.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "The credential belongs to the local userId in the same HANA_HOME.",
       "exemption": null
     },
@@ -691,12 +929,15 @@
         "Windows sandbox runtime preparation"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; validated caches are rebuilt or recopied from trusted sources.",
       "restorePolicy": "Delete and regenerate on incompatibility.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Cache key is tool/runtime fingerprint; cached paths are never persistent business identity.",
       "exemption": null
     },
@@ -725,12 +966,15 @@
         "renderHtmlToPdf"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; jobs are request-scoped and generated PDFs are re-creatable outputs.",
       "restorePolicy": "Discard incomplete jobs; rerun rendering from source HTML when output is still needed.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "jobId scopes one render request; outputPath is a locator and SessionFile registration supplies durable session ownership.",
       "exemption": null
     },
@@ -759,12 +1003,15 @@
         "createSessionManifestCheckpoint"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "compatible",
       "checkpointPolicy": "This is the existing operational checkpoint facility, not an epoch checkpoint system.",
       "restorePolicy": "Existing restore APIs copy declared files; they provide no cross-store epoch transaction guarantee.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "checkpointId names an operational snapshot; it does not establish a global data epoch.",
       "exemption": null
     },
@@ -794,12 +1041,15 @@
         "PluginDevService"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "compatible",
       "checkpointPolicy": "Include user-authored sources; run receipts may be regenerated only when their source still exists.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "pluginId/sourceId/runId are explicit keys; temporary paths are not identities.",
       "exemption": null
     },
@@ -827,12 +1077,15 @@
         "downloadMarketplacePluginRelease"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; packages can be downloaded again and must pass sha256 verification.",
       "restorePolicy": "Re-verify sha256 before reuse, otherwise delete and redownload.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "pluginId/version identify the source generation; ZIP path is a verified cache locator.",
       "exemption": null
     },
@@ -867,12 +1120,15 @@
       "migrationEntry": [
         "plugin manifest/migrationVersion hook; no host-wide implicit migration"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Checkpoint by pluginId and declared migrationVersion; never infer one schema for plugin-data/**.",
       "restorePolicy": "Restore only when the same pluginId and a compatible manifest/migrationVersion are available.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "pluginId from the active manifest owns exactly its plugin-data subtree.",
       "exemption": {
         "reason": "Dynamic plugin schemas must be registered by pluginId and migrationVersion before a coordinated data migration consumes them.",
@@ -903,12 +1159,15 @@
         "new TaskRegistry"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "engine_construct",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Include persisted task/schedule metadata when plugin recovery must survive the checkpoint; handlers remain runtime-only.",
       "restorePolicy": "Load through TaskRegistry, then let each plugin register its handler before recovery is attempted.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "taskId/scheduleId are durable registry keys; parent session ownership prefers sessionId.",
       "exemption": null
     },
@@ -946,12 +1205,15 @@
         "core/provider-auth-migration.ts",
         "core/provider-media-config.ts"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "engine_construct",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "providerId is the durable key; YAML/JSON paths are storage locators.",
       "exemption": null
     },
@@ -984,12 +1246,15 @@
         "runtime logging and bridge/browser startup"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "compatible",
       "checkpointPolicy": "Exclude rotating logs; browser/bridge cold state may be included as best-effort compatible cache.",
       "restorePolicy": "Logs are append history; cache records may be dropped if incompatible.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Diagnostic filenames are locators; browser and bridge cache keys are runtime-owned account/session keys.",
       "exemption": null
     },
@@ -1017,12 +1282,15 @@
         "appendSecurityAuditRecord"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Preserve byte order and complete lines; never merge by object key.",
       "restorePolicy": "Append only after the restored final newline; malformed tails require explicit repair.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Log sequence and record timestamps provide provenance; the path is a fixed locator.",
       "exemption": null
     },
@@ -1053,12 +1321,15 @@
         "loadGrantRegistry"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Checkpoint the validated registry; quarantine evidence is diagnostic and optional.",
       "restorePolicy": "Validate before enabling grants; corrupt input is quarantined and fails visibly.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "grantId and its principal/resource scope are the durable authorization identity.",
       "exemption": null
     },
@@ -1089,12 +1360,15 @@
         "security ticket service construction"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "engine_construct",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Checkpoint exact bytes with restrictive permissions when continuity of issued tickets is required.",
       "restorePolicy": "Restore before constructing the matching service; missing keys rotate and invalidate old tickets.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Each fixed filename is a distinct service signing boundary; key bytes must never be interchanged.",
       "exemption": null
     },
@@ -1123,12 +1397,15 @@
         "loadServerNetworkConfig"
       ],
       "migrationEntry": [],
-      "firstPossibleOpenPhase": "identity_seed",
-      "firstPossibleWritePhase": "identity_seed",
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "post_epoch_pre_bind",
+      "firstPossibleWritePhase": "post_epoch_pre_bind",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Include as operator configuration.",
       "restorePolicy": "Validate before binding; invalid restored values fail explicitly.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "One network configuration belongs to one HANA_HOME server.",
       "exemption": null
     },
@@ -1157,12 +1434,15 @@
         "ensureLocalIdentityRegistries"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Include with the identity registries for the same HANA_HOME.",
       "restorePolicy": "Restore before remote transport accepts identity-bound requests.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "serverNodeId is the stable identity of one HANA_HOME server node.",
       "exemption": null
     },
@@ -1190,12 +1470,19 @@
         "server/index.ts bootstrap"
       ],
       "migrationEntry": [],
-      "firstPossibleOpenPhase": "transport_bind",
-      "firstPossibleWritePhase": "transport_bind",
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "home_guard",
+      "firstPossibleWritePhase": "home_guard",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; it is live process discovery state.",
       "restorePolicy": "Regenerate after transport binding.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "regenerable",
+        "reason": "Server discovery state is deleted or regenerated from the live bound process and carries no durable user data.",
+        "unstampedHomeSafePaths": []
+      },
+      "preCoordinatorReadProjection": null,
       "identityContract": "At most one current server discovery record per HANA_HOME.",
       "exemption": null
     },
@@ -1225,12 +1512,15 @@
         "new SessionProjectCatalogStore"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "engine_construct",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Draft/project records are keyed by sessionId; any saved sessionPath is a locator only.",
       "exemption": null
     },
@@ -1260,12 +1550,15 @@
       "migrationEntry": [
         "core/migrations.ts SessionFile migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Checkpoint sidecar and payload bytes together; exclude expired cold-session cache entries.",
       "restorePolicy": "Restore by sessionId ownership and rebuild locators through SessionFileRegistry.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "SessionFile ID and owning sessionId are identities; the hash directory and payload paths are locators.",
       "exemption": null
     },
@@ -1277,7 +1570,8 @@
         "agents/{agentId}/sessions/{sessionId}.jsonl",
         "agents/{agentId}/sessions/archived/{sessionId}.jsonl",
         "agents/{agentId}/activity/{sessionId}.jsonl",
-        "agents/{agentId}/subagent-sessions/{sessionId}.jsonl"
+        "agents/{agentId}/subagent-sessions/{sessionId}.jsonl",
+        "agents/{agentId}/.ephemeral/{sessionId}.jsonl"
       ],
       "pathExclusions": [],
       "pathKind": "file",
@@ -1305,12 +1599,15 @@
         "core/session-jsonl-file.ts",
         "core/migrations.ts session JSONL migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "sessionId is identity. sessionPath is a mutable locator and must be resolved at boundaries before keyed state access.",
       "exemption": null
     },
@@ -1342,12 +1639,15 @@
       "migrationEntry": [
         "core/session-manifest/legacy-migration.ts"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "engine_construct",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "sessionId is the durable identity; sessionPath is only the current JSONL locator.",
       "exemption": null
     },
@@ -1384,12 +1684,15 @@
         "core/session-manifest/legacy-migration.ts",
         "core/migrations.ts"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Entries are keyed by sessionId where available; any sessionPath field is only a locator compatibility field.",
       "exemption": null
     },
@@ -1417,12 +1720,24 @@
         "artifact activation and OTA check"
       ],
       "migrationEntry": [],
-      "firstPossibleOpenPhase": "engine_construct",
-      "firstPossibleWritePhase": "runtime_ready",
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "desktop_bootstrap",
+      "firstPossibleWritePhase": "desktop_bootstrap",
       "epochPolicy": "compatible",
       "checkpointPolicy": "Exclude downloaded payload caches; preserve only if signature/pointer verification remains valid.",
       "restorePolicy": "Re-verify every pointer and artifact before activation.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": {
+        "compatibility": "epoch-independent",
+        "reason": "Signed component activation is verified by artifact manifests and pointers before application data is opened.",
+        "unstampedHomeSafePaths": [
+          {
+            "relativePath": "artifacts",
+            "kind": "tree"
+          }
+        ]
+      },
+      "preCoordinatorReadProjection": null,
       "identityContract": "Signed digest/version identify artifacts; pointer and staging paths are locators.",
       "exemption": null
     },
@@ -1455,12 +1770,15 @@
       "migrationEntry": [
         "core/migrations.ts skill migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "first_run_seed",
       "firstPossibleWritePhase": "first_run_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "skillName is identity within the user skill root; bundle IDs are registry keys.",
       "exemption": null
     },
@@ -1488,12 +1806,15 @@
         "skill name translation lookup"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "regenerable",
       "checkpointPolicy": "Excluded; translations are a versioned cache.",
       "restorePolicy": "Delete and regenerate when CACHE_VERSION or normalization becomes incompatible.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Cache keys derive from skill names/content; the file path is not a durable identity.",
       "exemption": null
     },
@@ -1522,12 +1843,15 @@
         "loadStudioMountRegistry"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Include mount declarations but never copy external mounted content implicitly.",
       "restorePolicy": "Restore declarations, then revalidate each external root before granting access.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "mountId is durable; external paths are locators that require revalidation.",
       "exemption": null
     },
@@ -1559,12 +1883,15 @@
       "migrationEntry": [
         "core/migrations.ts subagent identity migrations"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "runId and threadId are durable; parent session references prefer sessionId and retain path only as a locator.",
       "exemption": null
     },
@@ -1593,12 +1920,15 @@
         "new TerminalSessionManager"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Preserve metadata and transcript together only for diagnostic continuity; a live PTY handle is never checkpointed.",
       "restorePolicy": "Load through TerminalSessionManager; persisted running entries are historical metadata, not resumable processes.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "terminalId identifies metadata/transcript; session ownership must resolve to sessionId before keyed access.",
       "exemption": null
     },
@@ -1626,12 +1956,15 @@
         "new UsageLedger"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Usage buckets are keyed by their runtime dimensions inside one HANA_HOME ledger.",
       "exemption": null
     },
@@ -1661,12 +1994,29 @@
       "migrationEntry": [
         "core/migrations.ts runMigrations"
       ],
-      "firstPossibleOpenPhase": "first_run_seed",
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "desktop_bootstrap",
       "firstPossibleWritePhase": "first_run_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": {
+        "compatibility": "additive-only",
+        "fields": [
+          "auto_check_updates",
+          "hardware_acceleration",
+          "keep_awake",
+          "locale",
+          "network_proxy",
+          "primaryAgent",
+          "quick_chat",
+          "setupComplete",
+          "update_channel"
+        ],
+        "reason": "Desktop startup reads only these named optional fields before the epoch transition; removal or semantic reinterpretation requires moving the read behind the coordinator."
+      },
       "identityContract": "One preferences document belongs to the local user in one HANA_HOME.",
       "exemption": null
     },
@@ -1699,12 +2049,15 @@
       "migrationEntry": [
         "legacy spaces.json compatibility reader"
       ],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Checkpoint users and studios together; retain spaces.json only as a legacy migration source.",
       "restorePolicy": "Restore users/studios before dependent grants or mounts; never project newer studio state back into spaces.json.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "userId and studioId are durable identities; spaces.json is a legacy locator/source only.",
       "exemption": null
     },
@@ -1733,12 +2086,15 @@
         "WebSessionStore"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "identity_seed",
       "firstPossibleWritePhase": "identity_seed",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Exclude expired sessions; preserve only live sessions when auth continuity is required.",
       "restorePolicy": "Load through WebSessionStore so expiry and validation run before use.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "webSessionId is durable only for the validated lifetime of its user-bound session.",
       "exemption": null
     },
@@ -1767,12 +2123,15 @@
         "Windows sandbox legacy migration"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "compatible",
       "checkpointPolicy": "Include markers only with the migrated target state they describe.",
       "restorePolicy": "Restore markers and migrated state together or rerun the idempotent migration.",
       "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "Each fixed marker records completion for one HANA_HOME.",
       "exemption": null
     },
@@ -1803,12 +2162,15 @@
         "new WorkflowActivityStore"
       ],
       "migrationEntry": [],
+      "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
       "checkpointPolicy": "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
       "restorePolicy": "Restore only through the owning module after reader compatibility is established.",
       "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
       "identityContract": "runId is workflow identity; activity entries reference that ID, not the journal path.",
       "exemption": null
     }
@@ -1828,7 +2190,16 @@
       "line": 561,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(descPath, `<!-- sourceHash: ${hash} -->\\n${desc}`, \"utf-8\")",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
+      "storeId": "agent-profile",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/agent-manager.ts",
+      "line": 577,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(agentDir, { recursive: true, force: true })",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1837,7 +2208,7 @@
       "line": 599,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(agentDir, { recursive: true })",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1846,7 +2217,7 @@
       "line": 600,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.join(agentDir, \"memory\"), { recursive: true })",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1855,7 +2226,7 @@
       "line": 601,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.join(agentDir, \"sessions\"), { recursive: true })",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1864,7 +2235,7 @@
       "line": 602,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.join(agentDir, \"avatars\"), { recursive: true })",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1873,7 +2244,7 @@
       "line": 638,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync( path.join(agentDir, \"config.yaml\"), YAML.dump(config, { indent: 2, lineWidth: -1, sortKeys: false, quotingType: '\"' }), \"utf-8\", )",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1882,7 +2253,7 @@
       "line": 659,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(path.join(agentDir, \"identity.md\"), tmpl, \"utf-8\")",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1891,7 +2262,7 @@
       "line": 669,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(ishikiSrc, path.join(agentDir, \"ishiki.md\"))",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1900,7 +2271,7 @@
       "line": 678,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(publicIshikiSrc, path.join(agentDir, \"public-ishiki.md\"))",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1909,7 +2280,7 @@
       "line": 689,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(path.join(agentDir, fileName), initialFiles[key], \"utf-8\")",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1918,7 +2289,7 @@
       "line": 702,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(avatarPath, path.join(agentDir, \"avatars\", `agent${avatarExt}`))",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1927,7 +2298,7 @@
       "line": 710,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(p, '', 'utf-8')",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -1936,7 +2307,7 @@
       "line": 932,
       "kind": "write-file",
       "excerpt": "fsp.writeFile( this._deletedAgentTombstonePath(agentId), JSON.stringify(tombstone, null, 2), \"utf-8\", )",
-      "reason": "Creates or edits agent profile material.",
+      "reason": "Creates, rolls back, or edits agent profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -2038,6 +2409,15 @@
       "reason": "Creates the channel root or writes channel generations.",
       "storeId": "channels",
       "exemptionId": null
+    },
+    {
+      "sourceFile": "core/computer-use/providers/windows-uia-provider.ts",
+      "line": 36,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(filePath)",
+      "reason": "Creates helper/request files in the operating-system temporary directory for one Windows UIA call.",
+      "storeId": null,
+      "exemptionId": "windows-uia-request-temp"
     },
     {
       "sourceFile": "core/computer-use/providers/windows-uia-provider.ts",
@@ -2185,7 +2565,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1920,
+      "line": 1923,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(skillsDir, { recursive: true })",
       "reason": "Creates the user skill root.",
@@ -2194,7 +2574,16 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2156,
+      "line": 2105,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(filePath)",
+      "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/engine.ts",
+      "line": 2159,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(pluginDevSourcesDir, { recursive: true })",
       "reason": "Creates the plugin development source root.",
@@ -2508,6 +2897,24 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "core/local-provider-plugin-store.ts",
+      "line": 323,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(this.providerDir(providerId), { recursive: true, force: true })",
+      "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
+      "storeId": "provider-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/local-provider-plugin-store.ts",
+      "line": 326,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(legacyDir, { recursive: true, force: true })",
+      "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
+      "storeId": "provider-state",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "core/local-user-account.ts",
       "line": 41,
       "kind": "atomic-write",
@@ -2557,6 +2964,15 @@
       "line": 307,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(this._generatedDir, { recursive: true })",
+      "reason": "Writes data within the active pluginId-scoped data directory.",
+      "storeId": "plugin-runtime-data",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/media/universal-media-manager.ts",
+      "line": 964,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(path.join(this._generatedDir, filename))",
       "reason": "Writes data within the active pluginId-scoped data directory.",
       "storeId": "plugin-runtime-data",
       "exemptionId": null
@@ -2806,6 +3222,15 @@
     },
     {
       "sourceFile": "core/migrations.ts",
+      "line": 1800,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmpDir, { recursive: true, force: true })",
+      "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
+      "storeId": null,
+      "exemptionId": "cross-store-legacy-migrations"
+    },
+    {
+      "sourceFile": "core/migrations.ts",
       "line": 1801,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(srcDir, tmpDir, { recursive: true })",
@@ -2833,9 +3258,27 @@
     },
     {
       "sourceFile": "core/migrations.ts",
+      "line": 1809,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmpDir, { recursive: true, force: true })",
+      "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
+      "storeId": null,
+      "exemptionId": "cross-store-legacy-migrations"
+    },
+    {
+      "sourceFile": "core/migrations.ts",
       "line": 1843,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(skillsDir, { recursive: true })",
+      "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
+      "storeId": null,
+      "exemptionId": "cross-store-legacy-migrations"
+    },
+    {
+      "sourceFile": "core/migrations.ts",
+      "line": 1893,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(learnedDir, { recursive: true, force: true })",
       "reason": "The legacy migration orchestrator mutates many registered targets. Each target is inventoried, while exact-site flow attribution remains prerequisite work for the coordinator.",
       "storeId": null,
       "exemptionId": "cross-store-legacy-migrations"
@@ -3274,9 +3717,27 @@
     },
     {
       "sourceFile": "core/plugin-dev-service.ts",
+      "line": 477,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tempDir, { recursive: true, force: true })",
+      "reason": "Writes plugin development source or run state.",
+      "storeId": "plugin-development-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/plugin-dev-service.ts",
       "line": 478,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(sourcePath, tempDir, { recursive: true, filter: (src) => shouldCopyPath(src, sourcePath), })",
+      "reason": "Writes plugin development source or run state.",
+      "storeId": "plugin-development-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/plugin-dev-service.ts",
+      "line": 482,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Writes plugin development source or run state.",
       "storeId": "plugin-development-state",
       "exemptionId": null
@@ -3304,6 +3765,15 @@
       "line": 491,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(runPath, JSON.stringify(record, null, 2))",
+      "reason": "Writes plugin development source or run state.",
+      "storeId": "plugin-development-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/plugin-dev-service.ts",
+      "line": 646,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(removeTarget, { recursive: true, force: true })",
       "reason": "Writes plugin development source or run state.",
       "storeId": "plugin-development-state",
       "exemptionId": null
@@ -3358,6 +3828,15 @@
       "line": 132,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(this._path, JSON.stringify(next, null, 2) + \"\\n\")",
+      "reason": "Reads and atomically writes user preferences.",
+      "storeId": "user-preferences",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/preferences-manager.ts",
+      "line": 135,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(this._path + \".tmp\")",
       "reason": "Reads and atomically writes user preferences.",
       "storeId": "user-preferences",
       "exemptionId": null
@@ -3562,6 +4041,15 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
+      "line": 2176,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(createdSessionPath, { force: true })",
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/session-coordinator.ts",
       "line": 4347,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(titlePath, JSON.stringify(titles, null, 2), \"utf-8\")",
@@ -3652,9 +4140,27 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
+      "line": 5145,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(sp)",
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/session-coordinator.ts",
       "line": 5150,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(sessionDir, { recursive: true })",
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/session-coordinator.ts",
+      "line": 5486,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(sessionPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "storeId": "session-jsonl",
       "exemptionId": null
@@ -3697,6 +4203,15 @@
     },
     {
       "sourceFile": "core/session-manifest/checkpoint.ts",
+      "line": 35,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(probe)",
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "storeId": "operational-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/session-manifest/checkpoint.ts",
       "line": 62,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(checkpointDirectory, { recursive: true })",
@@ -3709,6 +4224,15 @@
       "line": 87,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(path.join(checkpointDirectory, \"checkpoint.json\"), `${JSON.stringify(receipt, null, 2)}\\n`)",
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "storeId": "operational-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/session-manifest/checkpoint.ts",
+      "line": 90,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(checkpointDirectory, { recursive: true, force: true })",
       "reason": "Writes or restores an existing operational checkpoint.",
       "storeId": "operational-checkpoints",
       "exemptionId": null
@@ -3772,6 +4296,15 @@
       "line": 102,
       "kind": "rename",
       "excerpt": "fs.renameSync(src, path.join(bridgeDir, archived))",
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/slash-commands/session-ops.ts",
+      "line": 120,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(p)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "storeId": "session-jsonl",
       "exemptionId": null
@@ -3921,10 +4454,487 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 182,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(logDir, { recursive: true })",
+      "reason": "Appends desktop auto-update diagnostics.",
+      "storeId": "runtime-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 183,
+      "kind": "append-file",
+      "excerpt": "fs.appendFileSync(path.join(logDir, \"auto-update.log\"), line + \"\\n\", \"utf-8\")",
+      "reason": "Appends desktop auto-update diagnostics.",
+      "storeId": "runtime-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 411,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(versionFile), { recursive: true })",
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 412,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(wrongFile, versionFile)",
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 414,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(wrongFile)",
+      "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
+      "storeId": null,
+      "exemptionId": "desktop-legacy-update-path-cleanup"
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 417,
+      "kind": "remove-path",
+      "excerpt": "fs.rmdirSync(wrongDir)",
+      "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
+      "storeId": null,
+      "exemptionId": "desktop-legacy-update-path-cleanup"
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 436,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(versionFile), { recursive: true })",
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 437,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(versionFile, currentVersion)",
+      "reason": "Migrates or writes the current desktop update-cache version marker.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/auto-updater.cjs",
+      "line": 452,
+      "kind": "remove-path",
+      "excerpt": "fs.promises.rm(cacheDir, { recursive: true, force: true })",
+      "reason": "Deletes Electron updater's regenerable pending cache under app.getPath(userData), not Hana application state.",
+      "storeId": null,
+      "exemptionId": "desktop-electron-update-cache"
+    },
+    {
+      "sourceFile": "desktop/bootstrap.cjs",
+      "line": 32,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(diagnosticsDir, { recursive: true })",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/bootstrap.cjs",
+      "line": 34,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, JSON.stringify({ event, time: new Date().toISOString(), payload, }, null, 2) + \"\\n\", \"utf-8\")",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/bootstrap.cjs",
+      "line": 67,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(diagnosticsDir, { recursive: true })",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/bootstrap.cjs",
+      "line": 69,
+      "kind": "append-file",
+      "excerpt": "fs.appendFileSync(filePath, JSON.stringify({ event, time: new Date().toISOString(), payload, }) + \"\\n\", \"utf-8\")",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/file-text-io.cjs",
+      "line": 49,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, content, \"utf-8\")",
+      "reason": "Writes an absolute artifact/editor path explicitly selected by the caller, outside any implied HANA_HOME store.",
+      "storeId": null,
+      "exemptionId": "desktop-external-text-file"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 1213,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(serverInfoPath)",
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "storeId": "server-runtime-info",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 1217,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(serverInfoPath)",
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "storeId": "server-runtime-info",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 1719,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(serverInfoPath)",
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "storeId": "server-runtime-info",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 2087,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(hanakoHome, { recursive: true })",
+      "reason": "Writes desktop crash or browser-command diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 2088,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(crashLogPath, content, \"utf-8\")",
+      "reason": "Writes desktop crash or browser-command diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 2149,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(lastSeenVersionPath), { recursive: true })",
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 2150,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(lastSeenVersionPath, JSON.stringify({ version }))",
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 2218,
+      "kind": "write-file",
+      "excerpt": "fs.promises.writeFile(windowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 2317,
+      "kind": "mkdir",
+      "excerpt": "fs.promises.mkdir(path.dirname(quickChatWindowStatePath), { recursive: true })",
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 2318,
+      "kind": "write-file",
+      "excerpt": "fs.promises.writeFile(quickChatWindowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
+      "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
+      "storeId": "desktop-window-version-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 4063,
+      "kind": "append-file",
+      "excerpt": "require(\"fs\").appendFileSync(require(\"path\").join(hanakoHome, \"browser-cmd.log\"), `${new Date().toISOString()} ${redactMainLogText(line)}\\n`)",
+      "reason": "Writes desktop crash or browser-command diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 4630,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(tmpHtml, htmlContent, \"utf-8\")",
+      "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
+      "storeId": null,
+      "exemptionId": "desktop-screenshot-html-temp"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 4684,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(tmpHtml)",
+      "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
+      "storeId": null,
+      "exemptionId": "desktop-screenshot-html-temp"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5239,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(tmpDir, { recursive: true })",
+      "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
+      "storeId": null,
+      "exemptionId": "desktop-skill-preview-temp"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5385,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, content, \"utf-8\")",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "storeId": null,
+      "exemptionId": "desktop-caller-selected-output"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5407,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(resolved), { recursive: true })",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "storeId": null,
+      "exemptionId": "desktop-caller-selected-output"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5408,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(resolved, Buffer.from(base64Data, \"base64\"))",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "storeId": null,
+      "exemptionId": "desktop-caller-selected-output"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5419,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(destinationPath), { recursive: true })",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "storeId": null,
+      "exemptionId": "desktop-caller-selected-output"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5420,
+      "kind": "copy-file",
+      "excerpt": "fs.copyFileSync(sourcePath, destinationPath)",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "storeId": null,
+      "exemptionId": "desktop-caller-selected-output"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5453,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(dir, { recursive: true })",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "storeId": null,
+      "exemptionId": "desktop-caller-selected-output"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5454,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, pngBuffer)",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "storeId": null,
+      "exemptionId": "desktop-caller-selected-output"
+    },
+    {
+      "sourceFile": "desktop/main.cjs",
+      "line": 5976,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(path.join(hanakoHome, \"server-info.json\"))",
+      "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
+      "storeId": "server-runtime-info",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/office-pdf-helper.cjs",
+      "line": 128,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(job.outputPath), { recursive: true })",
+      "reason": "Writes the output path supplied by a validated office render job; the owning plugin records the durable job/session state.",
+      "storeId": null,
+      "exemptionId": "desktop-office-render-output"
+    },
+    {
+      "sourceFile": "desktop/src/office-pdf-helper.cjs",
+      "line": 129,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(job.outputPath, pdf)",
+      "reason": "Writes the output path supplied by a validated office render job; the owning plugin records the durable job/session state.",
+      "storeId": null,
+      "exemptionId": "desktop-office-render-output"
+    },
+    {
+      "sourceFile": "desktop/src/shared/artifact-gc.cjs",
+      "line": 166,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(dirPath, { recursive: true, force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/artifact-repair.cjs",
+      "line": 81,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(target, { recursive: true, force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "line": 36,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(dir, { recursive: true })",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "line": 37,
+      "kind": "append-file",
+      "excerpt": "fs.appendFileSync(rendererLogPath, text, \"utf-8\")",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "line": 44,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(dir, { recursive: true })",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/desktop-launch-diagnostics.cjs",
+      "line": 45,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(rendererLogPath, \"\", \"utf-8\")",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "line": 77,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(filePath), { recursive: true })",
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "storeId": null,
+      "exemptionId": "desktop-gpu-json-primitive"
+    },
+    {
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "line": 79,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(tmpPath, JSON.stringify(value, null, 2) + \"\\n\", \"utf-8\")",
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "storeId": null,
+      "exemptionId": "desktop-gpu-json-primitive"
+    },
+    {
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "line": 80,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(tmpPath, filePath)",
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "storeId": null,
+      "exemptionId": "desktop-gpu-json-primitive"
+    },
+    {
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "line": 104,
+      "kind": "atomic-write",
+      "excerpt": "writeJson(getGpuStartupStatePath(hanakoHome), { ...state, version: STATE_VERSION, })",
+      "reason": "Atomically writes desktop GPU startup state.",
+      "storeId": "desktop-gpu-startup-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "line": 255,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(diagnosticsDir, { recursive: true })",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "line": 257,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, JSON.stringify({ event, time: now instanceof Date ? now.toISOString() : String(now), payload, }, null, 2) + \"\\n\", \"utf-8\")",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "line": 267,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(diagnosticsDir, { recursive: true })",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "desktop/src/shared/launch-integrity.cjs",
+      "line": 269,
+      "kind": "append-file",
+      "excerpt": "fs.appendFileSync(filePath, JSON.stringify({ event, time: now instanceof Date ? now.toISOString() : String(now), payload, }) + \"\\n\", \"utf-8\")",
+      "reason": "Writes epoch-independent desktop launch diagnostics.",
+      "storeId": "desktop-diagnostics",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "hub/agent-executor.ts",
       "line": 207,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(sessionDir, { recursive: true })",
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "hub/agent-executor.ts",
+      "line": 291,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(sessionPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "storeId": "session-jsonl",
       "exemptionId": null
@@ -3988,7 +4998,7 @@
       "line": 205,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(agentAppearanceSummaryPath(agentDir), `${JSON.stringify(payload, null, 2)}\\n`, \"utf-8\")",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -4084,6 +5094,15 @@
     },
     {
       "sourceFile": "lib/channels/channel-store.ts",
+      "line": 393,
+      "kind": "remove-path",
+      "excerpt": "fsp.unlink(filePath)",
+      "reason": "Creates the channel root or writes channel generations.",
+      "storeId": "channels",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/channels/channel-store.ts",
       "line": 483,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(channelsMdPath), { recursive: true })",
@@ -4132,7 +5151,7 @@
       "line": 527,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, JSON.stringify(value, null, 2), \"utf-8\")",
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "storeId": "character-card-staging",
       "exemptionId": null
     },
@@ -4150,7 +5169,7 @@
       "line": 604,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(packageRoot, { recursive: true })",
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "storeId": "character-card-staging",
       "exemptionId": null
     },
@@ -4159,7 +5178,7 @@
       "line": 610,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(sourcePath, packageRoot, { recursive: true })",
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "storeId": "character-card-staging",
       "exemptionId": null
     },
@@ -4168,7 +5187,7 @@
       "line": 615,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(sourcePath, path.join(packageRoot, path.basename(sourcePath)))",
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "storeId": "character-card-staging",
       "exemptionId": null
     },
@@ -4177,7 +5196,7 @@
       "line": 636,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(path.join(stageDir, \"plan.json\"), JSON.stringify(plan, null, 2), \"utf-8\")",
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "storeId": "character-card-staging",
       "exemptionId": null
     },
@@ -4186,7 +5205,7 @@
       "line": 643,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(engine.userSkillsDir, { recursive: true })",
-      "reason": "Installs or renames a skill imported from a character card.",
+      "reason": "Installs, rolls back, or renames a skill imported from a character card.",
       "storeId": "skill-state",
       "exemptionId": null
     },
@@ -4195,7 +5214,16 @@
       "line": 657,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(skillMdPath, rewriteSkillName(current, dstName), \"utf-8\")",
-      "reason": "Installs or renames a skill imported from a character card.",
+      "reason": "Installs, rolls back, or renames a skill imported from a character card.",
+      "storeId": "skill-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/character-cards/service.ts",
+      "line": 670,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(item.dir, { recursive: true, force: true })",
+      "reason": "Installs, rolls back, or renames a skill imported from a character card.",
       "storeId": "skill-state",
       "exemptionId": null
     },
@@ -4204,7 +5232,7 @@
       "line": 906,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(packageRoot, { recursive: true })",
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "storeId": "character-card-staging",
       "exemptionId": null
     },
@@ -4213,7 +5241,16 @@
       "line": 908,
       "kind": "atomic-write",
       "excerpt": "writeJsonFile(path.join(plan.packageRoot, \"card.json\"), buildExportCard(plan, { exportMemory: options.exportMemory === true, }))",
-      "reason": "Writes a token-scoped character-card import/export plan or package.",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
+      "storeId": "character-card-staging",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/character-cards/service.ts",
+      "line": 921,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(exportRoot, { recursive: true, force: true })",
+      "reason": "Writes or removes a token-scoped character-card import/export plan or package.",
       "storeId": "character-card-staging",
       "exemptionId": null
     },
@@ -4263,11 +5300,29 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/checkpoint-store.ts",
+      "line": 111,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(filePath)",
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "storeId": "operational-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/checkpoint-store.ts",
+      "line": 129,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(path.join(this._dir, name))",
+      "reason": "Writes or restores an existing operational checkpoint.",
+      "storeId": "operational-checkpoints",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/compat/checks/config-yaml.ts",
       "line": 25,
       "kind": "rename",
       "excerpt": "fs.renameSync(configPath, backupPath)",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -4276,7 +5331,7 @@
       "line": 35,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(tpl, configPath)",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -4389,6 +5444,15 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/conversations/agent-phone-runtime.ts",
+      "line": 75,
+      "kind": "remove-path",
+      "excerpt": "fsp.unlink(filePath)",
+      "reason": "Writes Agent Phone projection or runtime state.",
+      "storeId": "agent-phone",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/debug-log.ts",
       "line": 27,
       "kind": "mkdir",
@@ -4434,6 +5498,15 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/debug-log.ts",
+      "line": 192,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(filePath)",
+      "reason": "Writes runtime diagnostics or recoverable cold state.",
+      "storeId": "runtime-diagnostics",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/deferred-result-store.ts",
       "line": 375,
       "kind": "mkdir",
@@ -4465,6 +5538,15 @@
       "line": 95,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(this._filePath, JSON.stringify(this._entries, null, 2))",
+      "reason": "Writes the activity index or activity session lifecycle state.",
+      "storeId": "desk-activity",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/desk/activity-store.ts",
+      "line": 173,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(sessionPath)",
       "reason": "Writes the activity index or activity session lifecycle state.",
       "storeId": "desk-activity",
       "exemptionId": null
@@ -4686,6 +5768,15 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/memory/cache-snapshot-observation.ts",
+      "line": 97,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(cacheSnapshotObservationPath(agentDir))",
+      "reason": "Writes a named per-agent memory protocol file.",
+      "storeId": "agent-memory",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/memory/compile.ts",
       "line": 107,
       "kind": "mkdir",
@@ -4708,6 +5799,15 @@
       "line": 405,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(dailyDir, { recursive: true })",
+      "reason": "Writes a named per-agent memory protocol file.",
+      "storeId": "agent-memory",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/memory/compile.ts",
+      "line": 432,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(fpPath)",
       "reason": "Writes a named per-agent memory protocol file.",
       "storeId": "agent-memory",
       "exemptionId": null
@@ -4753,6 +5853,15 @@
       "line": 846,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(memoryDir, { recursive: true })",
+      "reason": "Writes a named per-agent memory protocol file.",
+      "storeId": "agent-memory",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/memory/compile.ts",
+      "line": 940,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(filePath)",
       "reason": "Writes a named per-agent memory protocol file.",
       "storeId": "agent-memory",
       "exemptionId": null
@@ -4843,6 +5952,15 @@
       "line": 45,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(summariesDir, { recursive: true })",
+      "reason": "Writes a named per-agent memory protocol file.",
+      "storeId": "agent-memory",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/memory/compiled-memory-state.ts",
+      "line": 103,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(filePath)",
       "reason": "Writes a named per-agent memory protocol file.",
       "storeId": "agent-memory",
       "exemptionId": null
@@ -4965,6 +6083,24 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/memory/session-summary.ts",
+      "line": 184,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(file)",
+      "reason": "Writes a named per-agent memory protocol file.",
+      "storeId": "agent-memory",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/pi-sdk/search-tools.ts",
+      "line": 156,
+      "kind": "remove-path",
+      "excerpt": "rmSync(tempPath, { force: true })",
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "storeId": "managed-runtime-caches",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/pi-sdk/search-tools.ts",
       "line": 174,
       "kind": "mkdir",
@@ -5028,10 +6164,46 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/pi-sdk/search-tools.ts",
+      "line": 302,
+      "kind": "remove-path",
+      "excerpt": "rmSync(archivePath, { force: true })",
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "storeId": "managed-runtime-caches",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/pi-sdk/search-tools.ts",
+      "line": 303,
+      "kind": "remove-path",
+      "excerpt": "rmSync(extractDir, { recursive: true, force: true })",
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "storeId": "managed-runtime-caches",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "line": 29,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(entry.fullPath, { recursive: true, force: true })",
+      "reason": "Backs up or records an installed plugin package.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/plugin-install-backups.ts",
       "line": 42,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(backupRoot, { recursive: true })",
+      "reason": "Backs up or records an installed plugin package.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "line": 46,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmpDir, { recursive: true, force: true })",
       "reason": "Backs up or records an installed plugin package.",
       "storeId": "installed-plugins",
       "exemptionId": null
@@ -5065,6 +6237,15 @@
     },
     {
       "sourceFile": "lib/plugin-install-backups.ts",
+      "line": 58,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
+      "reason": "Backs up or records an installed plugin package.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-backups.ts",
       "line": 59,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(backup.backupDir, targetDir, { recursive: true })",
@@ -5086,6 +6267,24 @@
       "line": 27,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(filePath, `${JSON.stringify(value, null, 2)}\\n`)",
+      "reason": "Backs up or records an installed plugin package.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-records.ts",
+      "line": 84,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteJson(this._path, records)",
+      "reason": "Backs up or records an installed plugin package.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-records.ts",
+      "line": 92,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteJson(this._path, records)",
       "reason": "Backs up or records an installed plugin package.",
       "storeId": "installed-plugins",
       "exemptionId": null
@@ -5122,6 +6321,15 @@
       "line": 161,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(filePath, { recursive: true })",
+      "reason": "Writes explicit user-selected local filesystem resource targets outside Hana persistence ownership.",
+      "storeId": null,
+      "exemptionId": "external-resource-io"
+    },
+    {
+      "sourceFile": "lib/resource-io/providers/local-fs-provider.ts",
+      "line": 169,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(filePath, { recursive: true, force: false })",
       "reason": "Writes explicit user-selected local filesystem resource targets outside Hana persistence ownership.",
       "storeId": null,
       "exemptionId": "external-resource-io"
@@ -5253,6 +6461,15 @@
       "exemptionId": "sandbox-script-output"
     },
     {
+      "sourceFile": "lib/sandbox/script.ts",
+      "line": 45,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(p)",
+      "reason": "Writes a generated script into a request-scoped sandbox or operating-system temporary directory.",
+      "storeId": null,
+      "exemptionId": "sandbox-script-output"
+    },
+    {
       "sourceFile": "lib/sandbox/win32-exec.ts",
       "line": 526,
       "kind": "mkdir",
@@ -5326,6 +6543,15 @@
     },
     {
       "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
+      "line": 101,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmpRoot, { recursive: true, force: true })",
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "storeId": "managed-runtime-caches",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
       "line": 103,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(sourceRoot, tmpRoot, { recursive: true, force: true, dereference: true, })",
@@ -5344,9 +6570,27 @@
     },
     {
       "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
+      "line": 109,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(targetRoot, { recursive: true, force: true })",
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "storeId": "managed-runtime-caches",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
       "line": 110,
       "kind": "rename",
       "excerpt": "fs.renameSync(tmpRoot, targetRoot)",
+      "reason": "Populates a Hana-owned regenerable runtime cache.",
+      "storeId": "managed-runtime-caches",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/sandbox/win32-runtime-cache.ts",
+      "line": 112,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmpRoot, { recursive: true, force: true })",
       "reason": "Populates a Hana-owned regenerable runtime cache.",
       "storeId": "managed-runtime-caches",
       "exemptionId": null
@@ -5425,6 +6669,24 @@
     },
     {
       "sourceFile": "lib/session-files/session-file-registry.ts",
+      "line": 46,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(sessionFileSidecarPath(sessionPath), { force: true })",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/session-files/session-file-registry.ts",
+      "line": 307,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(target, { recursive: true, force: true })",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/session-files/session-file-registry.ts",
       "line": 433,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(sidecarPath), { recursive: true })",
@@ -5473,6 +6735,15 @@
       "line": 207,
       "kind": "write-file",
       "excerpt": "fsp.writeFile( path.join(packageRoot, \"bundle.json\"), JSON.stringify(buildManifest(bundle, exportedSkills, resolvedFileName), null, 2) + \"\\n\", \"utf-8\", )",
+      "reason": "Installs, exports, uploads, or records skill packages.",
+      "storeId": "skill-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/skill-bundles/package-service.ts",
+      "line": 226,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(exportRoot, { recursive: true, force: true })",
       "reason": "Installs, exports, uploads, or records skill packages.",
       "storeId": "skill-state",
       "exemptionId": null
@@ -5545,6 +6816,15 @@
       "line": 34,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(dir, { recursive: true })",
+      "reason": "Installs, exports, uploads, or records skill packages.",
+      "storeId": "skill-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/skills/skill-package-installer.ts",
+      "line": 40,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
       "reason": "Installs, exports, uploads, or records skill packages.",
       "storeId": "skill-state",
       "exemptionId": null
@@ -5802,6 +7082,15 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/tools/experience.ts",
+      "line": 120,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(doc.filePath)",
+      "reason": "Writes a user- or agent-authored Markdown record.",
+      "storeId": "agent-authored-records",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/tools/workflow-tool.ts",
       "line": 209,
       "kind": "persistent-store-constructor",
@@ -5946,6 +7235,24 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "plugins/image-gen/index.ts",
+      "line": 128,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(path.join(generatedDir, f))",
+      "reason": "Writes data within the active pluginId-scoped data directory.",
+      "storeId": "plugin-runtime-data",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "plugins/image-gen/index.ts",
+      "line": 139,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(path.join(generatedDir, f))",
+      "reason": "Writes data within the active pluginId-scoped data directory.",
+      "storeId": "plugin-runtime-data",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "plugins/image-gen/lib/download.ts",
       "line": 30,
       "kind": "mkdir",
@@ -6055,6 +7362,15 @@
     },
     {
       "sourceFile": "server/index.ts",
+      "line": 296,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(serverInfoPath)",
+      "reason": "Writes or deletes live server discovery state.",
+      "storeId": "server-runtime-info",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/index.ts",
       "line": 459,
       "kind": "persistent-store-constructor",
       "excerpt": "new DeferredResultStore( hub.eventBus, path.join(hanakoHome, \".ephemeral\", \"deferred-tasks.json\"), { getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null }, )",
@@ -6112,7 +7428,16 @@
       "line": 1218,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(serverInfoPath, JSON.stringify({ pid: process.pid, port: actualPort, host, configuredHost: serverRuntimeState.listenHost, networkMode: serverRuntimeState.mode, configuredMode: serverRuntimeState.configuredMode, configuredLi",
-      "reason": "Writes live server discovery state.",
+      "reason": "Writes or deletes live server discovery state.",
+      "storeId": "server-runtime-info",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/index.ts",
+      "line": 1316,
+      "kind": "remove-path",
+      "excerpt": "fs.unlinkSync(path.join(hanakoHome, \"server-info.json\"))",
+      "reason": "Writes or deletes live server discovery state.",
       "storeId": "server-runtime-info",
       "exemptionId": null
     },
@@ -6121,7 +7446,16 @@
       "line": 418,
       "kind": "mkdir",
       "excerpt": "fs.mkdir(dir, { recursive: true })",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "storeId": "agent-profile",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/agents.ts",
+      "line": 420,
+      "kind": "remove-path",
+      "excerpt": "fs.unlink(path.join(dir, `agent.${oldExt}`))",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6130,7 +7464,16 @@
       "line": 422,
       "kind": "write-file",
       "excerpt": "fs.writeFile(path.join(dir, `agent.${ext}`), buf)",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "storeId": "agent-profile",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/agents.ts",
+      "line": 435,
+      "kind": "remove-path",
+      "excerpt": "fs.unlink(path.join(dir, `agent.${ext}`))",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6139,7 +7482,7 @@
       "line": 700,
       "kind": "write-file",
       "excerpt": "fs.writeFile(path.join(agentDir(engine, id), \"identity.md\"), content, \"utf-8\")",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6148,7 +7491,7 @@
       "line": 739,
       "kind": "write-file",
       "excerpt": "fs.writeFile(path.join(agentDir(engine, id), \"ishiki.md\"), content, \"utf-8\")",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6157,7 +7500,7 @@
       "line": 777,
       "kind": "write-file",
       "excerpt": "fs.writeFile(path.join(agentDir(engine, id), \"public-ishiki.md\"), content, \"utf-8\")",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6166,7 +7509,7 @@
       "line": 30,
       "kind": "mkdir",
       "excerpt": "fsSync.mkdirSync(avatarDirFor(\"agent\"), { recursive: true })",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6175,7 +7518,16 @@
       "line": 31,
       "kind": "mkdir",
       "excerpt": "fsSync.mkdirSync(avatarDirFor(\"user\"), { recursive: true })",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "storeId": "agent-profile",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/avatar.ts",
+      "line": 98,
+      "kind": "remove-path",
+      "excerpt": "fs.unlink(path.join(dir, `${role}.${oldExt}`))",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6184,7 +7536,16 @@
       "line": 102,
       "kind": "write-file",
       "excerpt": "fs.writeFile(path.join(dir, `${role}.${ext}`), buf)",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
+      "storeId": "agent-profile",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/avatar.ts",
+      "line": 115,
+      "kind": "remove-path",
+      "excerpt": "fs.unlink(path.join(dir, `${role}.${ext}`))",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6211,7 +7572,7 @@
       "line": 443,
       "kind": "write-file",
       "excerpt": "fs.writeFile(ishikiPath, content, \"utf-8\")",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6220,7 +7581,7 @@
       "line": 477,
       "kind": "write-file",
       "excerpt": "fs.writeFile(identityPath, content, \"utf-8\")",
-      "reason": "Reads, repairs, or edits agent/user profile material.",
+      "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "storeId": "agent-profile",
       "exemptionId": null
     },
@@ -6238,7 +7599,7 @@
       "line": 543,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(uploadRoot, { recursive: true })",
-      "reason": "Writes a bounded temporary cover upload.",
+      "reason": "Writes or removes a bounded temporary cover upload.",
       "storeId": "desk-cover-upload-staging",
       "exemptionId": null
     },
@@ -6247,7 +7608,16 @@
       "line": 546,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, buffer)",
-      "reason": "Writes a bounded temporary cover upload.",
+      "reason": "Writes or removes a bounded temporary cover upload.",
+      "storeId": "desk-cover-upload-staging",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/desk.ts",
+      "line": 549,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tempDir, { recursive: true, force: true })",
+      "reason": "Writes or removes a bounded temporary cover upload.",
       "storeId": "desk-cover-upload-staging",
       "exemptionId": null
     },
@@ -6259,6 +7629,15 @@
       "reason": "Creates an approved external workspace root or its .agents/skills directory; the mount registry owns authorization, not the external content.",
       "storeId": null,
       "exemptionId": "external-desk-workspace-roots"
+    },
+    {
+      "sourceFile": "server/routes/desk.ts",
+      "line": 1155,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(skillDir, { recursive: true, force: true })",
+      "reason": "Deletes a skill directory only after the route proves it belongs to the explicitly mounted workspace skill catalog, outside Hana-owned persistence.",
+      "storeId": null,
+      "exemptionId": "workspace-skill-delete"
     },
     {
       "sourceFile": "server/routes/desk.ts",
@@ -6283,7 +7662,7 @@
       "line": 397,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(userPluginsDir, { recursive: true })",
-      "reason": "Creates or promotes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
@@ -6292,7 +7671,34 @@
       "line": 421,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
-      "reason": "Creates or promotes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 428,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
+      "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
+      "storeId": null,
+      "exemptionId": "conditional-plugin-install-cleanup"
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 473,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 535,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
@@ -6301,9 +7707,18 @@
       "line": 536,
       "kind": "rename",
       "excerpt": "fs.renameSync(stagedDir, targetDir)",
-      "reason": "Creates or promotes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 562,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
+      "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
+      "storeId": null,
+      "exemptionId": "conditional-plugin-install-cleanup"
     },
     {
       "sourceFile": "server/routes/plugins.ts",
@@ -6321,6 +7736,15 @@
       "excerpt": "fs.writeFileSync(packagePath, body)",
       "reason": "Caches a sha256-verified plugin release package.",
       "storeId": "plugin-download-cache",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 1186,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
@@ -6343,6 +7767,15 @@
     },
     {
       "sourceFile": "server/routes/sessions.ts",
+      "line": 646,
+      "kind": "remove-path",
+      "excerpt": "fs.unlink(destPath)",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/sessions.ts",
       "line": 2069,
       "kind": "append-file",
       "excerpt": "appendFileSync(path.join(engine.hanakoHome, \"switch-error.log\"), `${new Date().toISOString()}\\n${errDetail}\\n---\\n`)",
@@ -6352,10 +7785,19 @@
     },
     {
       "sourceFile": "server/routes/sessions.ts",
+      "line": 2191,
+      "kind": "remove-path",
+      "excerpt": "fs.unlink(fp)",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/sessions.ts",
       "line": 2254,
       "kind": "mkdir",
       "excerpt": "fs.mkdir(archiveDir, { recursive: true })",
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "storeId": "session-jsonl",
       "exemptionId": null
     },
@@ -6364,7 +7806,7 @@
       "line": 2262,
       "kind": "rename",
       "excerpt": "fs.rename(sessionPath, destPath)",
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "storeId": "session-jsonl",
       "exemptionId": null
     },
@@ -6373,7 +7815,7 @@
       "line": 2328,
       "kind": "rename",
       "excerpt": "fs.rename(sessionPath, destPath)",
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "storeId": "session-jsonl",
       "exemptionId": null
     },
@@ -6382,7 +7824,7 @@
       "line": 2340,
       "kind": "mkdir",
       "excerpt": "fs.mkdir(archDir, { recursive: true })",
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "storeId": "session-jsonl",
       "exemptionId": null
     },
@@ -6391,8 +7833,35 @@
       "line": 2341,
       "kind": "rename",
       "excerpt": "fs.rename(destPath, sessionPath)",
-      "reason": "Archives or restores a session JSONL locator.",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
       "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/sessions.ts",
+      "line": 2374,
+      "kind": "remove-path",
+      "excerpt": "fs.unlink(sessionPath)",
+      "reason": "Archives, restores, or deletes a session JSONL locator.",
+      "storeId": "session-jsonl",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/skills.ts",
+      "line": 41,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
+      "reason": "Removes an installed user skill through the skill owner route.",
+      "storeId": "skill-state",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/upload.ts",
+      "line": 216,
+      "kind": "remove-path",
+      "excerpt": "fs.rm(fullPath, { recursive: true, force: true })",
+      "reason": "Expires a sessionless legacy upload cache entry.",
+      "storeId": "legacy-upload-cache",
       "exemptionId": null
     },
     {
@@ -6459,11 +7928,20 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "server/utils/uploaded-skill-package.ts",
+      "line": 44,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tempDir, { recursive: true, force: true })",
+      "reason": "Installs, exports, uploads, or records skill packages.",
+      "storeId": "skill-state",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "shared/artifact-core/activation.cjs",
       "line": 164,
       "kind": "rename",
       "excerpt": "fsp.rename(tmpDir, versionedDir)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6472,7 +7950,7 @@
       "line": 169,
       "kind": "rename",
       "excerpt": "fsp.rename(versionedDir, oldDir)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6481,7 +7959,7 @@
       "line": 171,
       "kind": "rename",
       "excerpt": "fsp.rename(tmpDir, versionedDir)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6490,7 +7968,52 @@
       "line": 174,
       "kind": "rename",
       "excerpt": "fsp.rename(oldDir, versionedDir)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "line": 191,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(oldDir, { recursive: true, force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "line": 307,
+      "kind": "atomic-write",
+      "excerpt": "pointerStore.atomicWriteJson(path.join(tmpDir, \".verified\"), receipt)",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "line": 324,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(tmpDir, { recursive: true, force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "line": 395,
+      "kind": "atomic-write",
+      "excerpt": "pointerStore.atomicWriteJson(filePath, value)",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/activation.cjs",
+      "line": 405,
+      "kind": "remove-path",
+      "excerpt": "fsp.unlink(sentinelPath(homeDir, channel))",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6499,7 +8022,7 @@
       "line": 399,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(destPath), { recursive: true })",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6508,7 +8031,16 @@
       "line": 400,
       "kind": "write-file",
       "excerpt": "fs.createWriteStream(destPath)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 451,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(destPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6517,7 +8049,7 @@
       "line": 776,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(filePath), { recursive: true })",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6526,7 +8058,7 @@
       "line": 778,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(tmpPath, text, \"utf8\")",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6535,7 +8067,25 @@
       "line": 779,
       "kind": "rename",
       "excerpt": "fsp.rename(tmpPath, filePath)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 823,
+      "kind": "atomic-write",
+      "excerpt": "pointerStore.atomicWriteJson(otaStatePath(homeDir), state)",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 849,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(partPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6544,7 +8094,7 @@
       "line": 850,
       "kind": "copy-file",
       "excerpt": "fsp.copyFile(sourcePath, partPath)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6553,7 +8103,16 @@
       "line": 851,
       "kind": "rename",
       "excerpt": "fsp.rename(partPath, finalPath)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 861,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(partPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6562,7 +8121,25 @@
       "line": 863,
       "kind": "rename",
       "excerpt": "fsp.rename(partPath, finalPath)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 869,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(partPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 879,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(finalPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6571,7 +8148,43 @@
       "line": 1388,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(stagingDir, { recursive: true })",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 1456,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(serverStagedPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 1457,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(rendererStagedPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 1458,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(`${serverStagedPath}.part`, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 1459,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(`${rendererStagedPath}.part`, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6580,7 +8193,25 @@
       "line": 1670,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(stagingDir, { recursive: true })",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 1712,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(rendererStagedPath, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/ota-core.cjs",
+      "line": 1713,
+      "kind": "remove-path",
+      "excerpt": "fsp.rm(`${rendererStagedPath}.part`, { force: true })",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6589,7 +8220,7 @@
       "line": 60,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(filePath), { recursive: true })",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6598,7 +8229,7 @@
       "line": 63,
       "kind": "write-file",
       "excerpt": "fsp.open(tmpPath, \"w\")",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6607,7 +8238,7 @@
       "line": 65,
       "kind": "write-file",
       "excerpt": "handle.writeFile(data, \"utf8\")",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6616,7 +8247,34 @@
       "line": 70,
       "kind": "rename",
       "excerpt": "fsp.rename(tmpPath, filePath)",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "line": 100,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteJson(pointerPath(homeDir, channel, slot), value)",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "line": 105,
+      "kind": "remove-path",
+      "excerpt": "fsp.unlink(pointerPath(homeDir, channel, slot))",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "line": 177,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteJson(quarantinePath(homeDir), list)",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6625,7 +8283,7 @@
       "line": 195,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(artifactsRoot(homeDir), { recursive: true })",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6634,7 +8292,7 @@
       "line": 200,
       "kind": "write-file",
       "excerpt": "fsp.open(filePath, \"wx\")",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6643,7 +8301,25 @@
       "line": 201,
       "kind": "write-file",
       "excerpt": "handle.writeFile(payload, \"utf8\")",
-      "reason": "Writes signed artifact activation or OTA state.",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "line": 205,
+      "kind": "remove-path",
+      "excerpt": "fsp.unlink(filePath)",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
+      "storeId": "signed-artifacts",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/artifact-core/pointer-store.cjs",
+      "line": 214,
+      "kind": "remove-path",
+      "excerpt": "fsp.unlink(filePath)",
+      "reason": "Writes, deletes, or repairs signed artifact activation and OTA state.",
       "storeId": "signed-artifacts",
       "exemptionId": null
     },
@@ -6700,6 +8376,24 @@
       "reason": "The archive codec writes caller-selected archive/extraction paths; signed artifact ownership is assigned at its callers.",
       "storeId": null,
       "exemptionId": "generic-archive-writer"
+    },
+    {
+      "sourceFile": "shared/data-epoch.cjs",
+      "line": 94,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteJson(stampPath, { epoch: ownEpoch, lastVersion: ownVersion, updatedAt: new Date().toISOString() })",
+      "reason": "Atomically writes the DATA_EPOCH coordinator stamp.",
+      "storeId": "data-epoch-stamp",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "shared/data-epoch.cjs",
+      "line": 144,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteJson(stampPath, { epoch: ownEpoch, lastVersion: ownVersion, updatedAt: new Date().toISOString() })",
+      "reason": "Atomically writes the DATA_EPOCH coordinator stamp.",
+      "storeId": "data-epoch-stamp",
+      "exemptionId": null
     },
     {
       "sourceFile": "shared/default-workspace.ts",
@@ -6808,6 +8502,15 @@
       "reason": "Shared atomic-write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
       "storeId": null,
       "exemptionId": "generic-safe-fs-primitives"
+    },
+    {
+      "sourceFile": "shared/safe-fs.ts",
+      "line": 136,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
+      "reason": "Shared atomic-write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
+      "storeId": null,
+      "exemptionId": "generic-safe-fs-primitives"
     }
   ],
   "exemptions": [
@@ -6836,9 +8539,22 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
+    },
+    {
+      "id": "conditional-plugin-install-cleanup",
+      "ownerModule": "server/routes/plugins.ts",
+      "sourceFile": "server/routes/plugins.ts",
+      "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
+      "expiresOn": "2026-10-31",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "cleanupPath"
     },
     {
       "id": "conditional-upload-target",
@@ -6865,6 +8581,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -6882,6 +8600,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -6899,9 +8619,120 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
+    },
+    {
+      "id": "desktop-caller-selected-output",
+      "ownerModule": "desktop/main.cjs",
+      "sourceFile": "desktop/main.cjs",
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "expiresOn": "2027-01-31",
+      "kinds": [
+        "mkdir",
+        "write-file",
+        "copy-file"
+      ],
+      "linePattern": "(?:filePath, content|path[.]dirname\\(resolved\\)|resolved, Buffer|path[.]dirname\\(destinationPath\\)|sourcePath, destinationPath|mkdirSync\\(dir|filePath, pngBuffer)"
+    },
+    {
+      "id": "desktop-electron-update-cache",
+      "ownerModule": "desktop/auto-updater.cjs",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "reason": "Deletes Electron updater's regenerable pending cache under app.getPath(userData), not Hana application state.",
+      "expiresOn": "2027-01-31",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "cacheDir"
+    },
+    {
+      "id": "desktop-external-text-file",
+      "ownerModule": "desktop/file-text-io.cjs",
+      "sourceFile": "desktop/file-text-io.cjs",
+      "reason": "Writes an absolute artifact/editor path explicitly selected by the caller, outside any implied HANA_HOME store.",
+      "expiresOn": "2027-01-31",
+      "kinds": [
+        "database-open",
+        "write-file",
+        "append-file",
+        "rename",
+        "copy-file",
+        "mkdir",
+        "remove-path",
+        "truncate-file",
+        "atomic-write",
+        "persistent-store-constructor"
+      ]
+    },
+    {
+      "id": "desktop-gpu-json-primitive",
+      "ownerModule": "desktop/src/shared/gpu-startup-policy.cjs",
+      "sourceFile": "desktop/src/shared/gpu-startup-policy.cjs",
+      "reason": "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+      "expiresOn": "2026-10-31",
+      "kinds": [
+        "mkdir",
+        "write-file",
+        "rename"
+      ],
+      "linePattern": "(?:path[.]dirname\\(filePath\\)|tmpPath, JSON|stringify|tmpPath, filePath)"
+    },
+    {
+      "id": "desktop-legacy-update-path-cleanup",
+      "ownerModule": "desktop/auto-updater.cjs",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
+      "expiresOn": "2026-10-31",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "(?:wrongFile|wrongDir)"
+    },
+    {
+      "id": "desktop-office-render-output",
+      "ownerModule": "desktop/src/office-pdf-helper.cjs",
+      "sourceFile": "desktop/src/office-pdf-helper.cjs",
+      "reason": "Writes the output path supplied by a validated office render job; the owning plugin records the durable job/session state.",
+      "expiresOn": "2027-01-31",
+      "kinds": [
+        "database-open",
+        "write-file",
+        "append-file",
+        "rename",
+        "copy-file",
+        "mkdir",
+        "remove-path",
+        "truncate-file",
+        "atomic-write",
+        "persistent-store-constructor"
+      ]
+    },
+    {
+      "id": "desktop-screenshot-html-temp",
+      "ownerModule": "desktop/main.cjs",
+      "sourceFile": "desktop/main.cjs",
+      "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
+      "expiresOn": "2027-01-31",
+      "kinds": [
+        "write-file",
+        "remove-path"
+      ],
+      "linePattern": "tmpHtml"
+    },
+    {
+      "id": "desktop-skill-preview-temp",
+      "ownerModule": "desktop/main.cjs",
+      "sourceFile": "desktop/main.cjs",
+      "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
+      "expiresOn": "2027-01-31",
+      "kinds": [
+        "mkdir"
+      ],
+      "linePattern": "tmpDir"
     },
     {
       "id": "external-beautify-markdown-output",
@@ -6916,6 +8747,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -6933,6 +8766,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -6961,6 +8796,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -6978,6 +8815,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -6995,6 +8834,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7012,6 +8853,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7029,6 +8872,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7046,6 +8891,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7063,6 +8910,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7103,6 +8952,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7120,6 +8971,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7137,6 +8990,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7154,6 +9009,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7183,6 +9040,8 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
@@ -7200,9 +9059,22 @@
         "rename",
         "copy-file",
         "mkdir",
+        "remove-path",
+        "truncate-file",
         "atomic-write",
         "persistent-store-constructor"
       ]
+    },
+    {
+      "id": "workspace-skill-delete",
+      "ownerModule": "server/routes/desk.ts",
+      "sourceFile": "server/routes/desk.ts",
+      "reason": "Deletes a skill directory only after the route proves it belongs to the explicitly mounted workspace skill catalog, outside Hana-owned persistence.",
+      "expiresOn": "2027-01-31",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "skillDir"
     }
   ]
 }

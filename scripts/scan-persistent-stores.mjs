@@ -15,7 +15,26 @@ import {
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const REPOSITORY_ROOT = path.resolve(SCRIPT_DIR, "..");
-export const PRODUCTION_ROOTS = Object.freeze(["server", "core", "hub", "lib", "shared", "plugins"]);
+export const PRODUCTION_ROOTS = Object.freeze([
+  "server",
+  "core",
+  "hub",
+  "lib",
+  "shared",
+  "plugins",
+  "desktop",
+  "cli",
+]);
+export const SOURCE_EXCLUSIONS = Object.freeze([
+  { id: "desktop-generated-bundles", pattern: /^desktop\/(?:main|preload)[.]bundle[.]cjs$/, reason: "Generated Electron host bundles duplicate scanned source." },
+  { id: "desktop-generated-dist", pattern: /^desktop\/dist-(?:renderer|splash)(?:\/|$)/, reason: "Generated Vite output is not source." },
+  { id: "desktop-native-products", pattern: /^desktop\/native(?:\/|$)/, reason: "Native build products and sources are outside the JavaScript persistence census." },
+  { id: "desktop-renderer-react", pattern: /^desktop\/src\/react(?:\/|$)/, reason: "Renderer state uses authenticated server APIs and is not a host filesystem owner." },
+  { id: "desktop-renderer-platform", pattern: /^desktop\/src\/(?:lib|modules)(?:\/|$)/, reason: "Renderer platform and i18n modules are not Electron host persistence owners." },
+  { id: "desktop-renderer-entries", pattern: /^desktop\/src\/(?:browser-viewer-main|main|mobile-main|onboarding-main|quick-chat-main|settings-main|splash-main|viewer-window-entry)[.]tsx$/, reason: "Renderer entrypoints are not Electron host persistence owners." },
+  { id: "desktop-renderer-workers", pattern: /^desktop\/src\/(?:mobile-sw[.]js|viewer-resource-events[.]ts)$/, reason: "Renderer/service-worker code is not an Electron host persistence owner." },
+  { id: "source-tests", pattern: /\/(?:tests|__tests__)(?:\/|$)|[.](?:test|spec)[.](?:[cm]?[jt]sx?)$/, reason: "Test fixtures and test-only mutations are excluded from production ownership." },
+]);
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs"]);
 
 const FS_METHOD_KINDS = new Map([
@@ -32,14 +51,25 @@ const FS_METHOD_KINDS = new Map([
   ["cpSync", "copy-file"],
   ["mkdir", "mkdir"],
   ["mkdirSync", "mkdir"],
+  ["unlink", "remove-path"],
+  ["unlinkSync", "remove-path"],
+  ["rm", "remove-path"],
+  ["rmSync", "remove-path"],
+  ["rmdir", "remove-path"],
+  ["rmdirSync", "remove-path"],
+  ["truncate", "truncate-file"],
+  ["truncateSync", "truncate-file"],
 ]);
 const ATOMIC_HELPERS = new Set([
   "atomicWriteSync",
+  "durableWriteJson",
   "atomicWriteFile",
   "atomicWriteFileSync",
+  "atomicWriteJson",
   "writeJsonAtomic",
   "writeJsonFile",
   "safeWriteJson",
+  "writeJson",
 ]);
 const PERSISTENT_CONSTRUCTORS = new Set([
   "ActivityStore",
@@ -81,14 +111,16 @@ function listSourceFiles(rootDir) {
         const absolute = path.join(current, entry.name);
         if (entry.isDirectory()) {
           const relativeDirectory = toPosix(path.relative(rootDir, absolute));
-          if (/^plugins\/[^/]+\/(?:tests|__tests__)(?:\/|$)/.test(`${relativeDirectory}/`)) continue;
+          if (SOURCE_EXCLUSIONS.some((rule) => rule.pattern.test(`${relativeDirectory}/`))) continue;
           stack.push(absolute);
           continue;
         }
         if (!entry.isFile()) continue;
         if (!SOURCE_EXTENSIONS.has(path.extname(entry.name))) continue;
         if (entry.name.endsWith(".d.ts") || entry.name.endsWith(".d.cts")) continue;
-        files.push(toPosix(path.relative(rootDir, absolute)));
+        const relativeFile = toPosix(path.relative(rootDir, absolute));
+        if (SOURCE_EXCLUSIONS.some((rule) => rule.pattern.test(relativeFile))) continue;
+        files.push(relativeFile);
       }
     }
   }
@@ -171,7 +203,6 @@ function callKind(node, bindings) {
   const callee = node.expression;
   if (ts.isIdentifier(callee)) {
     if (bindings.directCalls.has(callee.text)) return bindings.directCalls.get(callee.text);
-    if (FS_METHOD_KINDS.has(callee.text)) return FS_METHOD_KINDS.get(callee.text);
     if (ATOMIC_HELPERS.has(callee.text)) return "atomic-write";
     return null;
   }
@@ -179,7 +210,9 @@ function callKind(node, bindings) {
   const method = callee.name.text;
   if (FS_METHOD_KINDS.has(method)) {
     const root = expressionRootName(callee.expression);
-    if (root && (bindings.fsNamespaces.has(root) || /^(?:file)?handle$/i.test(root))) {
+    const expressionText = callee.expression.getText();
+    const inlineFsRequire = /^(?:require\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\))(?:[.]promises)?$/.test(expressionText);
+    if ((root && (bindings.fsNamespaces.has(root) || /^(?:file)?handle$/i.test(root))) || inlineFsRequire) {
       return FS_METHOD_KINDS.get(method);
     }
   }
@@ -288,6 +321,7 @@ export function pathPatternsOverlap(leftStore, rightStore, platform = "posix") {
 }
 
 export function validateRegistry({ stores, exemptions, today = new Date().toISOString().slice(0, 10) }) {
+  const coordinatorIndex = startupPhaseIndex(FUTURE_EPOCH_COORDINATOR_PHASE);
   const storeIds = new Set();
   for (const store of stores) {
     if (storeIds.has(store.id)) throw new Error(`duplicate store id: ${store.id}`);
@@ -325,11 +359,67 @@ export function validateRegistry({ stores, exemptions, today = new Date().toISOS
     if (store.pathPattern !== store.pathPatterns[0]) {
       throw new Error(`store ${store.id} pathPattern must equal its first pathPatterns entry`);
     }
+    if (!Array.isArray(store.protocolModules)
+      || store.protocolModules.some((module) => typeof module !== "string" || !module || module.includes("\\") || /^(?:\/|[A-Za-z]:)/.test(module))
+      || new Set(store.protocolModules).size !== store.protocolModules.length) {
+      throw new Error(`store ${store.id} protocolModules must be unique repository-relative POSIX paths`);
+    }
     if (!STARTUP_PHASES.includes(store.firstPossibleOpenPhase)) {
       throw new Error(`store ${store.id} has unknown open phase: ${store.firstPossibleOpenPhase}`);
     }
     if (!STARTUP_PHASES.includes(store.firstPossibleWritePhase)) {
       throw new Error(`store ${store.id} has unknown write phase: ${store.firstPossibleWritePhase}`);
+    }
+    const openIndex = startupPhaseIndex(store.firstPossibleOpenPhase);
+    const writeIndex = startupPhaseIndex(store.firstPossibleWritePhase);
+    if (writeIndex < coordinatorIndex) {
+      if (store.affectedByEpochMigration) {
+        throw new Error(`store ${store.id} writes epoch-managed state before ${FUTURE_EPOCH_COORDINATOR_PHASE}`);
+      }
+      if (!store.bootstrapSafety) {
+        throw new Error(`store ${store.id} writes before ${FUTURE_EPOCH_COORDINATOR_PHASE} without bootstrapSafety`);
+      }
+    }
+    if (store.bootstrapSafety && store.affectedByEpochMigration) {
+      throw new Error(`store ${store.id} cannot be bootstrap-safe while affectedByEpochMigration is true`);
+    }
+    if (store.bootstrapSafety) {
+      const safePaths = store.bootstrapSafety.unstampedHomeSafePaths;
+      if (!Array.isArray(safePaths)) {
+        throw new Error(`store ${store.id} bootstrapSafety must declare unstampedHomeSafePaths`);
+      }
+      const seenSafePaths = new Set();
+      for (const safePath of safePaths) {
+        if (!safePath || typeof safePath.relativePath !== "string" || !safePath.relativePath
+          || !["file", "tree"].includes(safePath.kind)) {
+          throw new Error(`store ${store.id} has an invalid unstamped-home safe path`);
+        }
+        if (safePath.relativePath.includes("{") || safePath.relativePath.includes("}")) {
+          throw new Error(`store ${store.id} unstamped-home safe path must be exact: ${safePath.relativePath}`);
+        }
+        if (!store.pathPatterns.includes(safePath.relativePath)) {
+          throw new Error(`store ${store.id} unstamped-home safe path is not registered: ${safePath.relativePath}`);
+        }
+        if (seenSafePaths.has(safePath.relativePath)) {
+          throw new Error(`store ${store.id} has duplicate unstamped-home safe path: ${safePath.relativePath}`);
+        }
+        seenSafePaths.add(safePath.relativePath);
+      }
+      if (safePaths.length > 0 && store.firstPossibleWritePhase !== "desktop_bootstrap") {
+        throw new Error(`store ${store.id} may prove new-home safety only from desktop_bootstrap`);
+      }
+    }
+    if (openIndex < coordinatorIndex && store.affectedByEpochMigration && !store.preCoordinatorReadProjection) {
+      throw new Error(`store ${store.id} opens before ${FUTURE_EPOCH_COORDINATOR_PHASE} without a read projection`);
+    }
+    if (store.preCoordinatorReadProjection) {
+      const fields = store.preCoordinatorReadProjection.fields;
+      if (!Array.isArray(fields) || fields.length === 0 || fields.some((field) => typeof field !== "string" || !field)) {
+        throw new Error(`store ${store.id} has an invalid preCoordinatorReadProjection`);
+      }
+      if (new Set(fields).size !== fields.length) {
+        throw new Error(`store ${store.id} has duplicate preCoordinatorReadProjection fields`);
+      }
     }
     if (store.exemption) validateDate(store.exemption.expiresOn, `store ${store.id} exemption`, today);
     if (store.schemaSource.kind === "narrow-exemption") {
@@ -446,7 +536,7 @@ function publicStoreDescriptor(store) {
 export function buildStartupReceipt(stores) {
   const coordinatorIndex = startupPhaseIndex(FUTURE_EPOCH_COORDINATOR_PHASE);
   return {
-    version: 1,
+    version: 2,
     generatedBy: "scripts/scan-persistent-stores.mjs",
     canonicalPhases: [...STARTUP_PHASES],
     futureCoordinatorPhase: FUTURE_EPOCH_COORDINATOR_PHASE,
@@ -463,6 +553,8 @@ export function buildStartupReceipt(stores) {
           firstPossibleWritePhase: store.firstPossibleWritePhase,
           opensBeforeFutureCoordinator,
           writesBeforeFutureCoordinator,
+          bootstrapSafety: store.bootstrapSafety,
+          preCoordinatorReadProjection: store.preCoordinatorReadProjection,
           breakingMigrationRequiresAccessMove: store.affectedByEpochMigration
             && (openIndex <= coordinatorIndex || writeIndex <= coordinatorIndex),
         };
@@ -481,9 +573,10 @@ export function scanPersistentStores({
   validateRuleCoverage(discoveredSites, stores, exemptions);
   const sites = classifySites(discoveredSites, stores, exemptions);
   const inventory = {
-    version: 1,
+    version: 2,
     generatedBy: "scripts/scan-persistent-stores.mjs",
     sourceRoots: [...PRODUCTION_ROOTS],
+    sourceExclusions: SOURCE_EXCLUSIONS.map(({ id, reason }) => ({ id, reason })),
     stores: [...stores].sort((a, b) => a.id.localeCompare(b.id)).map(publicStoreDescriptor),
     discoveredSites: sites,
     exemptions: [...exemptions].sort((a, b) => a.id.localeCompare(b.id)),

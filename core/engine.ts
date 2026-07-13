@@ -1483,6 +1483,9 @@ export class HanaEngine {
   }
   getHardwareAcceleration() { return this._prefs.getHardwareAcceleration(); }
   setHardwareAcceleration(v) { this._prefs.setHardwareAcceleration(v); }
+  compareAndDeleteLegacyHardwareAccelerationPreference() {
+    return this._prefs.compareAndDeleteLegacyHardwareAccelerationPreference();
+  }
   getFileBackup() { return this._prefs.getFileBackup(); }
   setFileBackup(p) { this._prefs.setFileBackup(p); }
   listCheckpoints() { return this._checkpointStore.list(); }

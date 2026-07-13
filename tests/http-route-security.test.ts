@@ -115,6 +115,17 @@ describe("HTTP route security policy", () => {
     }
   });
 
+  it("keeps legacy GPU preference cleanup local-owner only", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const path = "/api/preferences/legacy-gpu-safe-mode/hardware-acceleration";
+
+    expect(classifyHttpRoute({ method: "POST", path })).toMatchObject({ kind: "local_only" });
+    expect(authorizeHttpRoute({ method: "POST", path, principal: desktopOwnerPrincipal() }))
+      .toMatchObject({ allowed: false, error: "local_only_route" });
+    expect(authorizeHttpRoute({ method: "POST", path, principal: localPrincipal }))
+      .toMatchObject({ allowed: true });
+  });
+
   it("separates remote settings writes, provider management, bridge management, and secret mutation scopes", async () => {
     const { authorizeHttpRoute } = await import("../server/http/route-security.ts");
     const settingsWriter = devicePrincipal(["settings.write"]);

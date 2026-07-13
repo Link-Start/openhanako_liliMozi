@@ -16,6 +16,8 @@ const ALL_SITE_KINDS: readonly PersistenceSiteKind[] = [
   "rename",
   "copy-file",
   "mkdir",
+  "remove-path",
+  "truncate-file",
   "atomic-write",
   "persistent-store-constructor",
 ];
@@ -30,12 +32,15 @@ type StoreInput = {
   schemaSource: PersistenceSchemaSource;
   openEntry: string[];
   migrationEntry?: string[];
+  protocolModules?: string[];
   firstPossibleOpenPhase?: StartupPhase;
   firstPossibleWritePhase?: StartupPhase;
   epochPolicy?: StoreDescriptor["epochPolicy"];
   checkpointPolicy?: string;
   restorePolicy?: string;
   affectedByEpochMigration?: boolean;
+  bootstrapSafety?: StoreDescriptor["bootstrapSafety"];
+  preCoordinatorReadProjection?: StoreDescriptor["preCoordinatorReadProjection"];
   identityContract: string;
   exemption?: StoreDescriptor["exemption"];
   compatibility?: string;
@@ -96,12 +101,15 @@ function defineStore(input: StoreInput): StoreDescriptor {
     schemaContract,
     openEntry: [...input.openEntry],
     migrationEntry: [...(input.migrationEntry ?? [])],
+    protocolModules: [...(input.protocolModules ?? [])],
     firstPossibleOpenPhase: input.firstPossibleOpenPhase ?? "engine_construct",
     firstPossibleWritePhase: input.firstPossibleWritePhase ?? "runtime_ready",
     epochPolicy: input.epochPolicy ?? "epoch-managed",
     checkpointPolicy: input.checkpointPolicy ?? "Included in a future epoch checkpoint unless the coordinator explicitly classifies it otherwise.",
     restorePolicy: input.restorePolicy ?? "Restore only through the owning module after reader compatibility is established.",
     affectedByEpochMigration: input.affectedByEpochMigration ?? true,
+    bootstrapSafety: input.bootstrapSafety ?? null,
+    preCoordinatorReadProjection: input.preCoordinatorReadProjection ?? null,
     identityContract: input.identityContract,
     exemption: input.exemption ?? null,
     siteRules: [...(input.siteRules ?? [])],
@@ -115,14 +123,20 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     pathPatterns: ["data-epoch.json"],
     format: "json",
     schemaSource: runtimeSource("shared/data-epoch.cjs", "DATA_EPOCH stamp parser and atomic writer"),
-    openEntry: ["assertAndStampDataEpoch"],
-    firstPossibleOpenPhase: "epoch_preflight",
-    firstPossibleWritePhase: "epoch_preflight",
+    openEntry: ["coordinateDataEpochStartup", "inspectDataEpochMaintenance"],
+    firstPossibleOpenPhase: "epoch_read_preflight",
+    firstPossibleWritePhase: "epoch_transition",
     epochPolicy: "compatible",
     checkpointPolicy: "Never restore this stamp independently of the data tree it describes.",
     restorePolicy: "Recreate only as the final commit record of a coordinated epoch transition.",
     affectedByEpochMigration: false,
+    bootstrapSafety: {
+      compatibility: "epoch-independent",
+      reason: "The epoch stamp is coordinator metadata and is never interpreted as an epoch-managed business store.",
+      unstampedHomeSafePaths: [],
+    },
     identityContract: "One high-water stamp belongs to one canonical HANA_HOME.",
+    siteRules: rules(["shared/data-epoch.cjs"], "Atomically writes the DATA_EPOCH coordinator stamp.", ["atomic-write"], "stampPath"),
   }),
   defineStore({
     id: "server-runtime-info",
@@ -131,14 +145,22 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     format: "json",
     schemaSource: runtimeSource("server/index.ts", "server-info writer and desktop bootstrap reader"),
     openEntry: ["server/index.ts bootstrap"],
-    firstPossibleOpenPhase: "transport_bind",
-    firstPossibleWritePhase: "transport_bind",
+    firstPossibleOpenPhase: "home_guard",
+    firstPossibleWritePhase: "home_guard",
     epochPolicy: "regenerable",
     checkpointPolicy: "Excluded; it is live process discovery state.",
     restorePolicy: "Regenerate after transport binding.",
     affectedByEpochMigration: false,
+    bootstrapSafety: {
+      compatibility: "regenerable",
+      reason: "Server discovery state is deleted or regenerated from the live bound process and carries no durable user data.",
+      unstampedHomeSafePaths: [],
+    },
     identityContract: "At most one current server discovery record per HANA_HOME.",
-    siteRules: rules(["server/index.ts"], "Writes live server discovery state.", ["write-file"], "serverInfoPath"),
+    siteRules: [
+      ...rules(["server/index.ts"], "Writes or deletes live server discovery state.", ["write-file", "remove-path"], "serverInfoPath|server-info[.]json"),
+      ...rules(["desktop/main.cjs"], "Deletes stale desktop server discovery state before or after a server lifecycle.", ["remove-path"], "server-info[.]json|serverInfoPath"),
+    ],
   }),
   defineStore({
     id: "server-node-identity",
@@ -207,8 +229,8 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     format: "json",
     schemaSource: runtimeSource("core/server-network-config.ts", "server network mode/listen configuration validator"),
     openEntry: ["ensureServerNetworkConfig", "loadServerNetworkConfig"],
-    firstPossibleOpenPhase: "identity_seed",
-    firstPossibleWritePhase: "identity_seed",
+    firstPossibleOpenPhase: "post_epoch_pre_bind",
+    firstPossibleWritePhase: "post_epoch_pre_bind",
     checkpointPolicy: "Include as operator configuration.",
     restorePolicy: "Validate before binding; invalid restored values fail explicitly.",
     identityContract: "One network configuration belongs to one HANA_HOME server.",
@@ -316,10 +338,25 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     schemaSource: runtimeSource("core/preferences-manager.ts", "PreferencesManager defaults, coercion, and _dataVersion migration driver"),
     openEntry: ["new PreferencesManager"],
     migrationEntry: ["core/migrations.ts runMigrations"],
-    firstPossibleOpenPhase: "first_run_seed",
+    firstPossibleOpenPhase: "desktop_bootstrap",
     firstPossibleWritePhase: "first_run_seed",
     compatibility: "PreferencesManager is intentionally permissive; _dataVersion is the legacy migration cursor, not a strict schema validator.",
     identityContract: "One preferences document belongs to the local user in one HANA_HOME.",
+    preCoordinatorReadProjection: {
+      compatibility: "additive-only",
+      fields: [
+        "auto_check_updates",
+        "hardware_acceleration",
+        "keep_awake",
+        "locale",
+        "network_proxy",
+        "primaryAgent",
+        "quick_chat",
+        "setupComplete",
+        "update_channel",
+      ],
+      reason: "Desktop startup reads only these named optional fields before the epoch transition; removal or semantic reinterpretation requires moving the read behind the coordinator.",
+    },
     siteRules: [
       ...rules(["core/preferences-manager.ts"], "Reads and atomically writes user preferences."),
       ...rules(["core/engine.ts"], "Constructs the preferences owner.", ["persistent-store-constructor"], "PreferencesManager"),
@@ -377,8 +414,8 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     firstPossibleWritePhase: "first_run_seed",
     identityContract: "agentId owns the profile; each filename has a fixed semantic role.",
     siteRules: [
-      ...rules(["core/agent-manager.ts"], "Creates or edits agent profile material.", ["write-file", "copy-file", "mkdir"]),
-      ...rules(["lib/agent-appearance-summary.ts", "lib/compat/checks/config-yaml.ts", "server/routes/agents.ts", "server/routes/avatar.ts", "server/routes/config.ts"], "Reads, repairs, or edits agent/user profile material.", ["write-file", "copy-file", "rename", "mkdir", "atomic-write"]),
+      ...rules(["core/agent-manager.ts"], "Creates, rolls back, or edits agent profile material.", ["write-file", "copy-file", "mkdir", "remove-path"]),
+      ...rules(["lib/agent-appearance-summary.ts", "lib/compat/checks/config-yaml.ts", "server/routes/agents.ts", "server/routes/avatar.ts", "server/routes/config.ts"], "Reads, repairs, removes, or edits agent/user profile material.", ["write-file", "copy-file", "rename", "mkdir", "remove-path", "atomic-write"]),
     ],
   }),
   defineStore({
@@ -457,6 +494,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
       "agents/{agentId}/sessions/archived/{sessionId}.jsonl",
       "agents/{agentId}/activity/{sessionId}.jsonl",
       "agents/{agentId}/subagent-sessions/{sessionId}.jsonl",
+      "agents/{agentId}/.ephemeral/{sessionId}.jsonl",
     ],
     format: "jsonl",
     schemaSource: {
@@ -477,7 +515,8 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
         "core/slash-commands/session-ops.ts",
         "hub/agent-executor.ts",
       ], "Creates, repairs, archives, restores, or appends session JSONL locators."),
-      ...rules(["server/routes/sessions.ts"], "Archives or restores a session JSONL locator.", ["mkdir", "rename"]),
+      ...rules(["server/routes/sessions.ts"], "Archives, restores, or deletes a session JSONL locator.", ["mkdir", "rename", "remove-path"]),
+      ...rules(["core/engine.ts"], "Deletes an expired legacy ephemeral session JSONL locator.", ["remove-path"], "filePath"),
     ],
   }),
   defineStore({
@@ -740,7 +779,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     identityContract: "pluginId from manifest is identity; versions and directories are locators/generations.",
     siteRules: [
       ...rules(["lib/plugin-install-backups.ts", "lib/plugin-install-records.ts"], "Backs up or records an installed plugin package."),
-      ...rules(["server/routes/plugins.ts"], "Creates or promotes an installed plugin directory.", ["mkdir", "copy-file", "rename"], "(?:userPluginsDir|pluginSrc|stagedDir)"),
+      ...rules(["server/routes/plugins.ts"], "Creates, promotes, rolls back, or removes an installed plugin directory.", ["mkdir", "copy-file", "rename", "remove-path"], "(?:userPluginsDir|pluginSrc|stagedDir|targetDir|pluginDir)"),
     ],
   }),
   defineStore({
@@ -807,7 +846,8 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     siteRules: [
       ...rules(["lib/skill-bundles/package-service.ts", "lib/skill-bundles/store.ts", "lib/skills/skill-package-installer.ts", "server/utils/uploaded-skill-package.ts"], "Installs, exports, uploads, or records skill packages."),
       ...rules(["core/engine.ts"], "Creates the user skill root.", ["mkdir"], "skillsDir"),
-      ...rules(["lib/character-cards/service.ts"], "Installs or renames a skill imported from a character card.", ["mkdir", "write-file"], "(?:engine[.]userSkillsDir|skillMdPath)"),
+      ...rules(["lib/character-cards/service.ts"], "Installs, rolls back, or renames a skill imported from a character card.", ["mkdir", "write-file", "remove-path"], "(?:engine[.]userSkillsDir|skillMdPath|item[.]dir)"),
+      ...rules(["server/routes/skills.ts"], "Removes an installed user skill through the skill owner route.", ["remove-path"], "rmSync\\(dir"),
     ],
   }),
   defineStore({
@@ -848,6 +888,87 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
       ...rules(["lib/debug-log.ts", "lib/browser/browser-manager.ts", "lib/bridge/wechat-adapter.ts"], "Writes runtime diagnostics or recoverable cold state."),
       ...rules(["server/index.ts"], "Appends the browser worker log.", ["append-file"], "_bwsLogPath"),
       ...rules(["server/routes/sessions.ts"], "Appends switch failure diagnostics.", ["append-file"], "switch-error[.]log"),
+      ...rules(["desktop/auto-updater.cjs"], "Appends desktop auto-update diagnostics.", ["mkdir", "append-file"], "(?:logDir|auto-update[.]log)"),
+    ],
+  }),
+  defineStore({
+    id: "desktop-diagnostics",
+    ownerModule: "desktop/src/shared/desktop-launch-diagnostics.cjs",
+    pathPatterns: [
+      "diagnostics/desktop-launch",
+      "crash.log",
+      "browser-cmd.log",
+    ],
+    pathKind: "tree",
+    format: "mixed-directory",
+    schemaSource: directorySource("desktop/src/shared/desktop-launch-diagnostics.cjs", "desktop launch, renderer, server-crash, and browser-command diagnostic logs"),
+    openEntry: ["desktop/bootstrap.cjs", "desktop main-process diagnostics"],
+    firstPossibleOpenPhase: "desktop_bootstrap",
+    firstPossibleWritePhase: "desktop_bootstrap",
+    epochPolicy: "compatible",
+    checkpointPolicy: "Exclude best-effort diagnostic logs from epoch checkpoints.",
+    restorePolicy: "Do not restore as application state; retain only as independent troubleshooting evidence.",
+    affectedByEpochMigration: false,
+    bootstrapSafety: {
+      compatibility: "epoch-independent",
+      reason: "Desktop diagnostics are append/replace troubleshooting evidence whose reader does not depend on the application data epoch.",
+      unstampedHomeSafePaths: [
+        { relativePath: "diagnostics/desktop-launch", kind: "tree" },
+        { relativePath: "crash.log", kind: "file" },
+        { relativePath: "browser-cmd.log", kind: "file" },
+      ],
+    },
+    identityContract: "Diagnostic filenames are fixed locators and never provide user, session, or epoch identity.",
+    siteRules: [
+      ...rules(["desktop/bootstrap.cjs", "desktop/src/shared/launch-integrity.cjs", "desktop/src/shared/desktop-launch-diagnostics.cjs"], "Writes epoch-independent desktop launch diagnostics."),
+      ...rules(["desktop/main.cjs"], "Writes desktop crash or browser-command diagnostics.", ["mkdir", "write-file", "append-file"], "(?:hanakoHome|crashLogPath|browser-cmd[.]log)"),
+    ],
+  }),
+  defineStore({
+    id: "desktop-gpu-startup-state",
+    ownerModule: "desktop/src/shared/gpu-startup-policy.cjs",
+    pathPatterns: ["user/gpu-startup.json"],
+    format: "json",
+    schemaSource: runtimeSource("desktop/src/shared/gpu-startup-policy.cjs", "GPU startup state version, crash evidence, recovery mode, and legacy migration markers"),
+    openEntry: ["resolveGpuStartupPolicy", "desktop GPU startup markers"],
+    firstPossibleOpenPhase: "desktop_bootstrap",
+    firstPossibleWritePhase: "desktop_bootstrap",
+    epochPolicy: "compatible",
+    checkpointPolicy: "Exclude or preserve independently as launch-recovery metadata; never use it as an epoch checkpoint.",
+    restorePolicy: "Load only through the GPU startup policy reader; corrupt exact-migration evidence fails explicitly.",
+    affectedByEpochMigration: false,
+    bootstrapSafety: {
+      compatibility: "epoch-independent",
+      reason: "GPU launch recovery is interpreted entirely by the versioned desktop policy before the server exists.",
+      unstampedHomeSafePaths: [
+        { relativePath: "user/gpu-startup.json", kind: "file" },
+      ],
+    },
+    identityContract: "One fixed GPU startup record belongs to one desktop installation data home.",
+    siteRules: rules(["desktop/src/shared/gpu-startup-policy.cjs"], "Atomically writes desktop GPU startup state.", ["atomic-write"], "writeJson\\(getGpuStartupStatePath"),
+  }),
+  defineStore({
+    id: "desktop-window-version-state",
+    ownerModule: "desktop/main.cjs",
+    pathPatterns: [
+      "user/window-state.json",
+      "user/quick-chat-window-state.json",
+      "user/last-seen-version.json",
+      "last-update-version",
+    ],
+    format: "mixed-directory",
+    schemaSource: directorySource("desktop/main.cjs", "desktop window bounds, release announcement bookmark, and update cache version marker readers"),
+    openEntry: ["desktop window creation", "post-update announcement", "desktop update cache cleanup"],
+    firstPossibleOpenPhase: "runtime_ready",
+    firstPossibleWritePhase: "runtime_ready",
+    epochPolicy: "compatible",
+    checkpointPolicy: "Optional compatible shell metadata; it is not required for restoring durable agent/session state.",
+    restorePolicy: "Read through each desktop owner; invalid or absent shell metadata is recreated from safe defaults.",
+    affectedByEpochMigration: false,
+    identityContract: "Each fixed path is shell-local presentation or update metadata, never durable application identity.",
+    siteRules: [
+      ...rules(["desktop/main.cjs"], "Writes desktop window bounds or the release-announcement version bookmark.", ["mkdir", "write-file"], "(?:lastSeenVersionPath|windowStatePath|quickChatWindowStatePath)"),
+      ...rules(["desktop/auto-updater.cjs"], "Migrates or writes the current desktop update-cache version marker.", ["mkdir", "rename", "write-file"], "(?:versionFile|wrongFile, versionFile)"),
     ],
   }),
   defineStore({
@@ -901,12 +1022,27 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     format: "mixed-directory",
     schemaSource: directorySource("shared/artifact-core/pointer-store.cjs", "signed artifact pointers, verified receipts, quarantine, lock, and OTA state protocol"),
     openEntry: ["artifact activation and OTA check"],
+    firstPossibleOpenPhase: "desktop_bootstrap",
+    firstPossibleWritePhase: "desktop_bootstrap",
     epochPolicy: "compatible",
     checkpointPolicy: "Exclude downloaded payload caches; preserve only if signature/pointer verification remains valid.",
     restorePolicy: "Re-verify every pointer and artifact before activation.",
     affectedByEpochMigration: false,
+    bootstrapSafety: {
+      compatibility: "epoch-independent",
+      reason: "Signed component activation is verified by artifact manifests and pointers before application data is opened.",
+      unstampedHomeSafePaths: [
+        { relativePath: "artifacts", kind: "tree" },
+      ],
+    },
     identityContract: "Signed digest/version identify artifacts; pointer and staging paths are locators.",
-    siteRules: rules(["shared/artifact-core/activation.cjs", "shared/artifact-core/ota-core.cjs", "shared/artifact-core/pointer-store.cjs"], "Writes signed artifact activation or OTA state."),
+    siteRules: rules([
+      "shared/artifact-core/activation.cjs",
+      "shared/artifact-core/ota-core.cjs",
+      "shared/artifact-core/pointer-store.cjs",
+      "desktop/src/shared/artifact-gc.cjs",
+      "desktop/src/shared/artifact-repair.cjs",
+    ], "Writes, deletes, or repairs signed artifact activation and OTA state."),
   }),
   defineStore({
     id: "legacy-upload-cache",
@@ -923,6 +1059,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     restorePolicy: "Discard and ask the caller to upload again; age cleanup removes stale entries.",
     affectedByEpochMigration: false,
     identityContract: "Generated uploadName is a cache locator, not a durable file or session identity.",
+    siteRules: rules(["server/routes/upload.ts"], "Expires a sessionless legacy upload cache entry.", ["remove-path"], "fullPath"),
   }),
   defineStore({
     id: "character-card-staging",
@@ -945,7 +1082,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     identityContract: "Random token owns one staging subtree; staged paths never become agent or skill identities.",
     siteRules: [
       ...rules(["server/routes/character-cards.ts"], "Writes a bounded character-card upload package."),
-      ...rules(["lib/character-cards/service.ts"], "Writes a token-scoped character-card import/export plan or package.", ["mkdir", "write-file", "copy-file", "atomic-write"], "(?:filePath, JSON[.]stringify|packageRoot|stageDir)"),
+      ...rules(["lib/character-cards/service.ts"], "Writes or removes a token-scoped character-card import/export plan or package.", ["mkdir", "write-file", "copy-file", "remove-path", "atomic-write"], "(?:filePath, JSON[.]stringify|packageRoot|stageDir|exportRoot)"),
     ],
   }),
   defineStore({
@@ -963,7 +1100,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     restorePolicy: "Delete the temporary directory and upload the cover again.",
     affectedByEpochMigration: false,
     identityContract: "Temporary directory token owns the upload bytes; the final Markdown attachment has separate workspace ownership.",
-    siteRules: rules(["server/routes/desk.ts"], "Writes a bounded temporary cover upload.", ["mkdir", "write-file"], "(?:uploadRoot|filePath, buffer)"),
+    siteRules: rules(["server/routes/desk.ts"], "Writes or removes a bounded temporary cover upload.", ["mkdir", "write-file", "remove-path"], "(?:uploadRoot|filePath, buffer|tempDir)"),
   }),
   defineStore({
     id: "office-render-jobs",
@@ -1022,6 +1159,92 @@ function exemption(
 }
 
 export const PERSISTENCE_EXEMPTIONS: readonly PersistenceExemption[] = Object.freeze([
+  exemption(
+    "desktop-gpu-json-primitive",
+    "desktop/src/shared/gpu-startup-policy.cjs",
+    "desktop/src/shared/gpu-startup-policy.cjs",
+    "Generic atomic JSON primitive has no independent store ownership; its writeJson call sites are assigned to the GPU state or preferences owner.",
+    "2026-10-31",
+    ["mkdir", "write-file", "rename"],
+    "(?:path[.]dirname\\(filePath\\)|tmpPath, JSON|stringify|tmpPath, filePath)",
+  ),
+  exemption(
+    "desktop-external-text-file",
+    "desktop/file-text-io.cjs",
+    "desktop/file-text-io.cjs",
+    "Writes an absolute artifact/editor path explicitly selected by the caller, outside any implied HANA_HOME store.",
+    "2027-01-31",
+  ),
+  exemption(
+    "desktop-legacy-update-path-cleanup",
+    "desktop/auto-updater.cjs",
+    "desktop/auto-updater.cjs",
+    "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
+    "2026-10-31",
+    ["remove-path"],
+    "(?:wrongFile|wrongDir)",
+  ),
+  exemption(
+    "desktop-electron-update-cache",
+    "desktop/auto-updater.cjs",
+    "desktop/auto-updater.cjs",
+    "Deletes Electron updater's regenerable pending cache under app.getPath(userData), not Hana application state.",
+    "2027-01-31",
+    ["remove-path"],
+    "cacheDir",
+  ),
+  exemption(
+    "desktop-screenshot-html-temp",
+    "desktop/main.cjs",
+    "desktop/main.cjs",
+    "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
+    "2027-01-31",
+    ["write-file", "remove-path"],
+    "tmpHtml",
+  ),
+  exemption(
+    "desktop-skill-preview-temp",
+    "desktop/main.cjs",
+    "desktop/main.cjs",
+    "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
+    "2027-01-31",
+    ["mkdir"],
+    "tmpDir",
+  ),
+  exemption(
+    "desktop-caller-selected-output",
+    "desktop/main.cjs",
+    "desktop/main.cjs",
+    "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+    "2027-01-31",
+    ["mkdir", "write-file", "copy-file"],
+    "(?:filePath, content|path[.]dirname\\(resolved\\)|resolved, Buffer|path[.]dirname\\(destinationPath\\)|sourcePath, destinationPath|mkdirSync\\(dir|filePath, pngBuffer)",
+  ),
+  exemption(
+    "desktop-office-render-output",
+    "desktop/src/office-pdf-helper.cjs",
+    "desktop/src/office-pdf-helper.cjs",
+    "Writes the output path supplied by a validated office render job; the owning plugin records the durable job/session state.",
+    "2027-01-31",
+  ),
+  exemption(
+    "workspace-skill-delete",
+    "server/routes/desk.ts",
+    "server/routes/desk.ts",
+    "Deletes a skill directory only after the route proves it belongs to the explicitly mounted workspace skill catalog, outside Hana-owned persistence.",
+    "2027-01-31",
+    ["remove-path"],
+    "skillDir",
+  ),
+  exemption(
+    "conditional-plugin-install-cleanup",
+    "server/routes/plugins.ts",
+    "server/routes/plugins.ts",
+    "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
+    "2026-10-31",
+    ["remove-path"],
+    "cleanupPath",
+  ),
   exemption(
     "in-memory-confirm-registry",
     "lib/confirm-store.ts",
