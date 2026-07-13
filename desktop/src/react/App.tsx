@@ -26,7 +26,6 @@ import { LeavesOverlay } from './components/LeavesOverlay';
 import { SelectionQuoteActionSurface } from './components/selection/SelectionQuoteActionSurface';
 import { MediaViewer } from './components/shared/MediaViewer/MediaViewer';
 import { SettingsModalShell } from './components/SettingsModalShell';
-import { PostUpdateAnnouncement } from './components/PostUpdateAnnouncement';
 import { initTheme, initDragPrevention } from './bootstrap';
 import { initApp } from './app-init';
 import { openSettingsModal } from './stores/settings-modal-actions';
@@ -159,8 +158,6 @@ function App() {
       {/* Toast notifications */}
       <ToastContainer />
 
-      {/* 升级后首启公告 */}
-      <PostUpdateAnnouncement />
     </ErrorBoundary>
   );
 }
