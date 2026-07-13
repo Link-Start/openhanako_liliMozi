@@ -1,130 +1,240 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.391.2",
-  "version": "0.391.2",
-  "previousTag": "v0.390.0",
-  "generatedAt": "2026-07-12T06:00:00.000Z",
+  "tag": "v0.397.1",
+  "version": "0.397.1",
+  "previousTag": "v0.391.2",
+  "generatedAt": "2026-07-13T03:03:00.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "本版把自动更新做得更稳、更可感知：Mac 上热更新后服务端不再因签名缺 JIT 权限而启动即崩；检查更新会并行比对产地与镜像并拒绝通道不符的清单；货架内容比本机更旧时不再当成可更新；连续启动失败回退时会明确提示；记忆提醒也只送达所属 Agent 的会话。",
-    "en": "This release makes updates more reliable and visible: macOS hot updates no longer crash the server at launch due to missing JIT entitlements; update checks compare the origin and mirror in parallel and reject channel-mismatched manifests; older shelf content is no longer offered as an update; crash fallbacks surface a clear notice; and memory reminders only reach sessions owned by the source Agent."
+    "zh": "本版带来会话与 Agent 的 @ 提及、群聊/私聊 Markdown 导出，并收回 Agent 可调用的 DM 工具；自托管可用 hana bundle 拉取网页前端；数据目录增加防旧内核误开与同目录双开互斥；会话停止更可靠，自动更新下载与激活也更稳；更新后启动不再弹出版本公告。",
+    "en": "This release adds session/Agent @mentions and Markdown export for the open group or DM chat, while retiring the Agent-callable DM tool; self-hosted setups can pull the web UI with hana bundle; the data directory gains an epoch gate and same-home mutual exclusion; Stop is more reliable, update download/activation is steadier; and startup no longer shows a post-update version popup."
   },
   "counts": {
-    "feature": 1,
-    "fix": 4,
-    "improvement": 0,
-    "migration": 0
+    "feature": 4,
+    "fix": 3,
+    "improvement": 2,
+    "migration": 1
   },
   "source": {
     "owner": "liliMozi",
     "repo": "openhanako",
-    "commitRange": "v0.390.0..v0.391.2",
-    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.391.2",
+    "commitRange": "v0.391.2..v0.397.1",
+    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.397.1",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "crash-fallback-user-notice",
+      "id": "session-agent-mentions",
       "kind": "feature",
       "importance": "high",
       "title": {
-        "zh": "崩溃回退后明确提示",
-        "en": "Clear notice after a crash fallback"
+        "zh": "会话与 Agent 的 @ 提及",
+        "en": "Session and Agent @mentions"
       },
       "summary": {
-        "zh": "连续启动失败触发自动回退时，侧栏会展示一次性提示，说明哪个版本出了问题、已退回哪个版本，以及问题版本已隔离不会自动重试。",
-        "en": "When repeated launch failures trigger an automatic rollback, the sidebar shows a one-time notice explaining which version failed, which version was restored, and that the bad version is quarantined from automatic retry."
+        "zh": "可复制稳定 Session ID，输入框支持分页式提及；@Agent 会先开只读评审会话，再把结果交回当前对话，评审回合不提供通用编辑或重新生成。",
+        "en": "Stable Session IDs are copyable, and the composer supports tabbed mentions. @Agent waits for a separate read-only review session before the current turn continues; review turns do not expose generic edit or regenerate actions."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "367dd3b22",
-          "title": "feat(update): 崩溃回退后向用户明确提示"
+          "ref": "f12af4271",
+          "title": "feat: add session and agent mentions"
         }
       ]
     },
     {
-      "id": "macos-server-jit-entitlement",
+      "id": "retire-dm-tool-export-chats",
+      "kind": "feature",
+      "importance": "high",
+      "title": {
+        "zh": "收回 Agent DM 工具，并支持导出当前对话",
+        "en": "Retire the Agent DM tool and export the open chat"
+      },
+      "summary": {
+        "zh": "Agent 不再能启用或调用 dm；既有私信历史与 Agent Phone 仍保留。群聊与私聊检视面板可把当前打开的那一段对话下载为 Markdown。",
+        "en": "Agents can no longer enable or call dm, while existing private-message history and Agent Phone remain. Group and DM inspectors can download only the currently open conversation as Markdown."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "7c77cdb55",
+          "title": "feat: retire Agent DM tool and export chats"
+        }
+      ]
+    },
+    {
+      "id": "cli-bundle-pull-web-ui",
+      "kind": "feature",
+      "importance": "medium",
+      "title": {
+        "zh": "CLI：hana bundle 拉取网页前端",
+        "en": "CLI: pull the web UI with hana bundle"
+      },
+      "summary": {
+        "zh": "自托管可用 hana bundle pull / status 从官方渠道手动拉取并激活网页前端内容包；走与桌面热更新同一套验签与契约门，拉取只在你执行命令时发生。",
+        "en": "Self-hosted installs can manually pull and activate the web UI content pack with hana bundle pull / status, using the same signed update pipeline as desktop hot updates. Pulls only happen when you run the command."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "b9c96d667",
+          "title": "feat(cli): hana bundle pull/status 手动拉取网页前端"
+        }
+      ]
+    },
+    {
+      "id": "web-client-activated-renderer",
+      "kind": "feature",
+      "importance": "medium",
+      "title": {
+        "zh": "网页客户端改供已激活的前端包",
+        "en": "Web clients serve the activated renderer pack"
+      },
+      "summary": {
+        "zh": "/mobile 与 /desktop 不再硬绑源码树：有注入的 renderer 目录就严格使用，没有则引导先跑 hana bundle pull；打包桌面远程页也会跟到热更新已激活的前端版本。",
+        "en": "/mobile and /desktop no longer hard-bind to the source tree: an injected renderer directory is required when provided, otherwise you are guided to run hana bundle pull. Packaged desktop remote pages now follow the hot-updated activated renderer."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "60e8ad9ce",
+          "title": "feat(server): 网页客户端入口按注入的 renderer 目录供货"
+        }
+      ]
+    },
+    {
+      "id": "data-directory-epoch-gate",
+      "kind": "migration",
+      "importance": "high",
+      "title": {
+        "zh": "数据目录 epoch：旧内核拒绝打开新格式数据",
+        "en": "Data-directory epoch blocks older kernels"
+      },
+      "summary": {
+        "zh": "数据目录落下只升不降的 epoch 印章。内核自身 epoch 更低时会明确拒启，并可在知情风险后用显式覆盖启动；普通版本回退不受影响。",
+        "en": "Each data directory now carries a monotonic epoch stamp. A lower-epoch kernel refuses to open it, with an explicit override available when you accept the risk. Ordinary version rollbacks are unaffected."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "9f94d1451",
+          "title": "feat(server): 数据目录 epoch 单调闸，拒止旧内核打开新格式数据"
+        }
+      ]
+    },
+    {
+      "id": "stop-full-session-tree",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "修复 Mac 热更新服务端启动即崩",
-        "en": "Fix macOS hot-update server crashing on launch"
+        "zh": "停止会真正取消整棵会话执行树",
+        "en": "Stop cancels the full session execution tree"
       },
       "summary": {
-        "zh": "箱内 Node 在正式签名时会附带 JIT 权限，并在装箱前做一次启动烟测，避免缺少可执行内存权限导致热更新后服务端立刻崩溃。",
-        "en": "The bundled Node binary now receives JIT entitlements during Developer ID signing, with a pre-pack launch smoke test so a missing executable-memory entitlement can no longer crash the server right after a hot update."
+        "zh": "点停止现在会可靠取消当前会话里的工具、子代理、工作流、终端与浏览器等工作，并解锁对话，避免表面上停了其实还在跑。",
+        "en": "Stop now reliably cancels tools, subagents, workflows, terminals, browsers, and related session work, then unlocks the chat instead of silently leaving work running."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "fc5d17360",
-          "title": "fix(build): macOS server 箱内 node 缺 JIT entitlement 导致启动即崩"
+          "ref": "56c6078da",
+          "title": "fix(session): stop the full session execution tree"
         }
       ]
     },
     {
-      "id": "dual-source-channel-manifest-checks",
+      "id": "update-download-and-pointer-reliability",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "更新清单双源比对与通道校验",
-        "en": "Dual-source update manifests with channel checks"
+        "zh": "更新下载熔断与指针写入串行化",
+        "en": "Update download stall fuse and pointer serialization"
       },
       "summary": {
-        "zh": "检查更新会并行请求 GitHub 与 AtomGit，两边独立验签后采信车号更新的一方；清单自述通道与请求通道不符时直接拒绝，避免镜像滞后或错通道清单被照单全收。",
-        "en": "Update checks now query GitHub and AtomGit in parallel, independently verify signatures, and prefer the newer train. Manifests whose declared channel does not match the requested channel are rejected instead of being accepted blindly."
+        "zh": "大文件下载在长时间几乎无进展或单次尝试超时后会熔断并换镜像重试；同进程内指针写入串行化，避免崩溃重试与激活交错把已确认更新抹掉。",
+        "en": "Large downloads abort and rotate mirrors after prolonged near-zero progress or a hard per-attempt timeout. In-process pointer writes are serialized so crash-retry and activation can no longer erase a confirmed update."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "7213d3494",
-          "title": "fix(update): 校验清单通道归属，清单获取改为双源并行、采信车号更新的一方"
+          "ref": "2262156e3",
+          "title": "fix(update): 下载水管增加最低进度熔断与单次尝试硬时限"
+        },
+        {
+          "type": "commit",
+          "ref": "27f7dcfe2",
+          "title": "fix(update): 指针写入进程内串行化，堵住崩溃重试与激活交错丢更新"
         }
       ]
     },
     {
-      "id": "reject-older-shelf-content",
+      "id": "memory-weekly-daily-dates",
       "kind": "fix",
       "importance": "medium",
       "title": {
-        "zh": "更旧的货架内容不再当成更新",
-        "en": "Older shelf content is no longer treated as an update"
+        "zh": "周记记忆保留每日日期标题",
+        "en": "Weekly memory keeps per-day date headings"
       },
       "summary": {
-        "zh": "当货架内容版本低于本机已激活版本时，检查与下载都会视为已是最新，避免把实际上更旧的列车当成可更新并造成误降级。",
-        "en": "If shelf content is older than the locally active version, both check and download now treat the install as current, preventing an older train from being offered as an update and applied as a downgrade."
+        "zh": "编译进提示词的周记条目会保留有效的每日 ISO 日期标题，不再把按日结构冲掉。",
+        "en": "Weekly memory compiled into the prompt keeps valid per-day ISO date headings instead of flattening away the daily structure."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "82330a386",
-          "title": "fix(update): 货架内容版本低于本机时不再被当作可用更新"
+          "ref": "db86b965a",
+          "title": "fix(memory): preserve daily dates in weekly prompt"
         }
       ]
     },
     {
-      "id": "memory-reminder-agent-scope",
-      "kind": "fix",
+      "id": "same-home-kernel-mutex",
+      "kind": "improvement",
       "importance": "medium",
       "title": {
-        "zh": "记忆提醒只送达所属 Agent",
-        "en": "Memory reminders stay on the owning Agent"
+        "zh": "同一数据目录只允许一个内核存活",
+        "en": "Only one kernel may own the same data directory"
       },
       "summary": {
-        "zh": "记忆事实变更现在只注入来源 Agent 自己的会话，不再广播到其它 Agent 的会话。",
-        "en": "Memory fact changes are now injected only into sessions owned by the source Agent, instead of being broadcast to every Agent's sessions."
+        "zh": "启动前会用 token 认证探测既有内核是否仍存活；仍在跑就拒启并指引退出对方，探测不通则自动清理残留锁，避免两个进程并发写同一批数据。",
+        "en": "Startup probes any recorded kernel with token auth. If it is still alive, launch is refused with guidance to quit the other process; if not, stale lock files are cleaned automatically so two processes do not share one data directory."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "33af92e1b",
-          "title": "fix(reminder): scope memory facts to owning agent"
+          "ref": "b1b0bdfc2",
+          "title": "feat(server): 同一数据目录的内核互斥（token 认证探测）"
+        }
+      ]
+    },
+    {
+      "id": "no-post-update-startup-popup",
+      "kind": "improvement",
+      "importance": "medium",
+      "title": {
+        "zh": "更新后启动不再弹出公告",
+        "en": "No post-update startup announcement popup"
+      },
+      "summary": {
+        "zh": "应用或组件更新后的启动会直接进入界面；更新历史仍可在关于页查看。",
+        "en": "After an application or component update, startup opens the UI directly. Update history remains available in About."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "8ff85934d",
+          "title": "fix(desktop): remove post-update startup popup"
         }
       ]
     }
