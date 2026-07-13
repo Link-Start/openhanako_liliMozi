@@ -136,6 +136,15 @@ function parseConfigValue(property: PluginConfigProperty, value: string): unknow
   return value;
 }
 
+function buildJsonTextDrafts(config: PluginConfigResponse): Record<string, string> {
+  const drafts: Record<string, string> = {};
+  for (const [key, property] of Object.entries(config.schema.properties || {})) {
+    if (property.type !== 'object' && property.type !== 'array') continue;
+    drafts[key] = formatConfigValue(property, config.values?.[key]);
+  }
+  return drafts;
+}
+
 function count(value: unknown[] | undefined): number {
   return Array.isArray(value) ? value.length : 0;
 }
@@ -159,6 +168,7 @@ export function PluginsTab() {
   const [configPlugin, setConfigPlugin] = useState<PluginInfo | null>(null);
   const [pluginConfig, setPluginConfig] = useState<PluginConfigResponse | null>(null);
   const [configDraft, setConfigDraft] = useState<Record<string, unknown>>({});
+  const [jsonTextDrafts, setJsonTextDrafts] = useState<Record<string, string>>({});
   const [dirtyConfigKeys, setDirtyConfigKeys] = useState<Set<string>>(new Set());
   const [configSaving, setConfigSaving] = useState(false);
   const [diagnostics, setDiagnostics] = useState<PluginDiagnosticsResponse | null>(null);
@@ -185,6 +195,7 @@ export function PluginsTab() {
       setConfigPlugin(plugin);
       setPluginConfig(data);
       setConfigDraft(data.values || {});
+      setJsonTextDrafts(buildJsonTextDrafts(data));
       setDirtyConfigKeys(new Set());
     } catch (err: unknown) {
       showToast(t('settings.plugins.configLoadError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
@@ -337,12 +348,39 @@ export function PluginsTab() {
     setDirtyConfigKeys(prev => new Set(prev).add(key));
   };
 
+  const updateJsonTextDraft = (key: string, value: string) => {
+    setJsonTextDrafts(prev => ({ ...prev, [key]: value }));
+    setDirtyConfigKeys(prev => new Set(prev).add(key));
+  };
+
+  const parseJsonTextDraft = (
+    key: string,
+    property: PluginConfigProperty,
+    text: string,
+  ): { ok: true; value: unknown } | { ok: false } => {
+    try {
+      const parsed = parseConfigValue(property, text);
+      setConfigDraft(prev => ({ ...prev, [key]: parsed }));
+      return { ok: true, value: parsed };
+    } catch {
+      showToast(t('settings.plugins.invalidJson'), 'error');
+      return { ok: false };
+    }
+  };
+
   const savePluginConfig = async () => {
     if (!configPlugin || !pluginConfig) return;
     const values: Record<string, unknown> = {};
     for (const key of dirtyConfigKeys) {
       const property = pluginConfig.schema.properties?.[key] || {};
-      const value = configDraft[key];
+      const isJsonProperty = property.type === 'object' || property.type === 'array';
+      let value = configDraft[key];
+      if (isJsonProperty) {
+        const text = jsonTextDrafts[key] ?? formatConfigValue(property, value);
+        const parsed = parseJsonTextDraft(key, property, text);
+        if (!parsed.ok) return;
+        value = parsed.value;
+      }
       if (property.sensitive && value === '********') continue;
       values[key] = value;
     }
@@ -357,6 +395,7 @@ export function PluginsTab() {
       if (data.error) throw new Error(data.fields?.[0]?.message || data.error);
       setPluginConfig(data);
       setConfigDraft(data.values || {});
+      setJsonTextDrafts(buildJsonTextDrafts(data));
       setDirtyConfigKeys(new Set());
       showToast(t('settings.autoSaved'), 'success');
     } catch (err: unknown) {
@@ -654,12 +693,9 @@ export function PluginsTab() {
               <textarea
                 className={styles['settings-input']}
                 rows={4}
-                value={formatConfigValue(property, value)}
-                onChange={(e) => updateConfigDraft(key, e.target.value)}
-                onBlur={(e) => {
-                  try { updateConfigDraft(key, parseConfigValue(property, e.target.value)); }
-                  catch { showToast(t('settings.plugins.invalidJson'), 'error'); }
-                }}
+                value={jsonTextDrafts[key] ?? formatConfigValue(property, value)}
+                onChange={(e) => updateJsonTextDraft(key, e.target.value)}
+                onBlur={(e) => { parseJsonTextDraft(key, property, e.target.value); }}
               />
             ) : (
               <input
