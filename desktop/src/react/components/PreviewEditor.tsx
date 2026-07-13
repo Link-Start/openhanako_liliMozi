@@ -30,6 +30,10 @@ import { markdownHighlight, codeHighlight } from '../editor/highlight';
 import { markdownTheme, codeTheme } from '../editor/theme';
 import { markdownBlockDecoField, markdownDecoPlugin, markdownImageContextFacet } from '../editor/md-decorations';
 import { markdownCoverField } from '../editor/cover-field';
+import {
+  markdownBlockHandlePlugin,
+  type MarkdownBlockMenuRequest,
+} from '../editor/markdown-block-handles';
 import { mermaidDecoField } from '../editor/mermaid-field';
 import { linkClickHandler } from '../editor/link-handler';
 import { tableDecoField } from '../editor/table-field';
@@ -382,6 +386,7 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
     const incomingFileVersionKey = fileVersionIdentity(fileVersion ?? null);
     const containerRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
+    const [blockMenuRequest, setBlockMenuRequest] = useState<MarkdownBlockMenuRequest | null>(null);
     const [editorHostReadySignal, setEditorHostReadySignal] = useState(0);
     const lastEditorHostReadyRef = useRef(false);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -825,6 +830,9 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
           markdownBlockDecoField,
           mermaidDecoField,
         ] : []),
+        ...(isMd && !readOnly ? [markdownBlockHandlePlugin({
+          onOpenMenu: setBlockMenuRequest,
+        })] : []),
         ...(isMd ? [tableDecoField] : []),
         ...(isCsv ? [csvTableField] : []),
         c.theme.of(isMd || isCsv ? markdownTheme : codeTheme),
@@ -971,11 +979,19 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
     }, [content, incomingFileVersionKey, applyIncomingContent]);
 
     const getViewForMenu = useCallback(() => viewRef.current, []);
+    const closeBlockMenu = useCallback(() => setBlockMenuRequest(null), []);
 
     return (
       <Fragment>
         <div className={`preview-editor mode-${mode}`} ref={containerRef} />
-        <EditorContextMenu getView={getViewForMenu} containerRef={containerRef} mode={mode} readOnly={readOnly} />
+        <EditorContextMenu
+          getView={getViewForMenu}
+          containerRef={containerRef}
+          mode={mode}
+          readOnly={readOnly}
+          blockMenuRequest={blockMenuRequest}
+          onBlockMenuClose={closeBlockMenu}
+        />
       </Fragment>
     );
   },

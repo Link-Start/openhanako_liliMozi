@@ -544,6 +544,79 @@
     outline: none;
 }
 
+:global(.preview-editor.mode-markdown .cm-markdown-block-rail) {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+:global(.preview-editor.mode-markdown .cm-markdown-block-rail-item) {
+    position: absolute;
+    width: 28px;
+    pointer-events: auto;
+}
+
+:global(.preview-editor.mode-markdown .cm-markdown-block-handle) {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: grab;
+    opacity: 0.55;
+    touch-action: none;
+    transition: opacity var(--duration-instant), background var(--duration-instant), color var(--duration-instant);
+}
+
+:global(.preview-editor.mode-markdown .cm-markdown-block-handle:hover),
+:global(.preview-editor.mode-markdown .cm-markdown-block-handle:focus-visible) {
+    background: var(--overlay-subtle);
+    color: var(--text);
+    opacity: 1;
+    outline: none;
+}
+
+:global(.preview-editor.mode-markdown .cm-markdown-block-handle.is-dragging) {
+    cursor: grabbing;
+    background: var(--overlay-medium);
+    color: var(--text);
+    opacity: 1;
+}
+
+:global(.preview-editor.mode-markdown .cm-markdown-block-handle svg) {
+    width: 14px;
+    height: 14px;
+}
+
+:global(.preview-editor.mode-markdown .cm-markdown-block-drop-indicator) {
+    position: absolute;
+    z-index: 11;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--accent);
+    pointer-events: none;
+    transform: translateY(-1px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    :global(.preview-editor.mode-markdown .cm-markdown-block-handle) {
+        opacity: 0;
+    }
+
+    :global(.preview-editor.mode-markdown .cm-markdown-block-rail-item:hover .cm-markdown-block-handle),
+    :global(.preview-editor.mode-markdown .cm-markdown-block-handle:focus-visible),
+    :global(.preview-editor.mode-markdown .cm-markdown-block-handle.is-dragging) {
+        opacity: 1;
+    }
+}
+
 :global(.preview-editor.mode-markdown .cm-editor.cm-markdown-cover-rail-active::before) {
     content: "";
     position: absolute;

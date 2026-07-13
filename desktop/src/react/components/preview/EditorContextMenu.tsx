@@ -13,25 +13,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { undo, redo } from '@codemirror/commands';
-import {
-  toggleBold,
-  toggleItalic,
-  toggleStrikethrough,
-  toggleInlineCode,
-  setHeading,
-  toggleBlockquote,
-  insertCodeBlock,
-  insertHorizontalRule,
-  toggleList,
-} from '../../editor/markdown-commands';
 import { useStore } from '../../stores';
 import type { EditorView } from '@codemirror/view';
+import type {
+  MarkdownBlockMenuRequest,
+  MarkdownBlockMenuTarget,
+} from '../../editor/markdown-block-handles';
+import { EditorFormatMenu } from './EditorFormatMenu';
 
 function label(key: string, fallback: string): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- viewer 窗口无 i18n，需安全降级
-    const fn = (window as any).t as ((k: string) => string) | undefined;
-    return fn ? fn(key) : fallback;
+    const translated = window.t?.(key);
+    return translated && translated !== key ? translated : fallback;
   } catch {
     return fallback;
   }
@@ -42,6 +35,7 @@ interface MenuState {
   hasSelection: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  blockTarget?: MarkdownBlockMenuTarget;
 }
 
 function editorHasSelection(view: EditorView): boolean {
@@ -61,9 +55,18 @@ interface Props {
   containerRef: React.RefObject<HTMLDivElement | null>;
   mode: 'markdown' | 'code' | 'csv' | 'text';
   readOnly?: boolean;
+  blockMenuRequest?: MarkdownBlockMenuRequest | null;
+  onBlockMenuClose?: () => void;
 }
 
-export function EditorContextMenu({ getView, containerRef, mode, readOnly = false }: Props) {
+export function EditorContextMenu({
+  getView,
+  containerRef,
+  mode,
+  readOnly = false,
+  blockMenuRequest,
+  onBlockMenuClose,
+}: Props) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -99,11 +102,31 @@ export function EditorContextMenu({ getView, containerRef, mode, readOnly = fals
         canUndo: !readOnly && editorCanUndo(view),
         canRedo: !readOnly && editorCanRedo(view),
       });
+      onBlockMenuClose?.();
     };
 
     container.addEventListener('contextmenu', handleContextMenu);
     return () => container.removeEventListener('contextmenu', handleContextMenu);
-  }, [getView, containerRef, readOnly]);
+  }, [getView, containerRef, onBlockMenuClose, readOnly]);
+
+  useEffect(() => {
+    if (!blockMenuRequest) return;
+    const view = getView();
+    if (!view) return;
+    const { target } = blockMenuRequest;
+    if (view.state.sliceDoc(target.from, target.to) !== target.source) {
+      onBlockMenuClose?.();
+      return;
+    }
+    useStore.getState().clearQuoteCandidate?.();
+    setMenu({
+      position: blockMenuRequest.position,
+      hasSelection: true,
+      canUndo: !readOnly && editorCanUndo(view),
+      canRedo: !readOnly && editorCanRedo(view),
+      blockTarget: target,
+    });
+  }, [blockMenuRequest, getView, onBlockMenuClose, readOnly]);
 
   useEffect(() => {
     if (!menu || !menuRef.current) return;
@@ -124,7 +147,10 @@ export function EditorContextMenu({ getView, containerRef, mode, readOnly = fals
     const doc = ownerDoc();
     const win = ownerWin();
 
-    const close = () => setMenu(null);
+    const close = () => {
+      setMenu(null);
+      if (menu.blockTarget) onBlockMenuClose?.();
+    };
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current?.contains(e.target as Node)) return;
       close();
@@ -152,20 +178,53 @@ export function EditorContextMenu({ getView, containerRef, mode, readOnly = fals
       doc.removeEventListener('keydown', handleKeyDown);
       win.removeEventListener('scroll', handleScroll, true);
     };
-  }, [menu, ownerDoc, ownerWin]);
+  }, [menu, onBlockMenuClose, ownerDoc, ownerWin]);
 
-  const close = useCallback(() => setMenu(null), []);
+  const close = useCallback(() => {
+    if (menu?.blockTarget) onBlockMenuClose?.();
+    setMenu(null);
+  }, [menu?.blockTarget, onBlockMenuClose]);
+
+  const selectBlockTarget = useCallback((
+    view: EditorView,
+    target: MarkdownBlockMenuTarget,
+    selection: 'block' | 'start' | 'end',
+  ): boolean => {
+    if (view.state.sliceDoc(target.from, target.to) !== target.source) return false;
+    if (selection === 'block') {
+      view.dispatch({ selection: { anchor: target.from, head: target.to } });
+    } else {
+      view.dispatch({ selection: { anchor: selection === 'start' ? target.from : target.to } });
+    }
+    return true;
+  }, []);
 
   const runEditCommand = useCallback(async (command: 'cut' | 'copy' | 'paste' | 'selectAll') => {
     const view = getView();
     if (!view) return;
+    const target = menu?.blockTarget;
+    if (target && command !== 'selectAll') {
+      const selection = command === 'paste' ? 'end' : 'block';
+      if (!selectBlockTarget(view, target, selection)) return;
+    }
     view.focus();
     try {
       await window.platform?.runEditCommand?.(command);
     } catch (err) {
       console.warn('[EditorContextMenu] edit command failed:', err);
     }
-  }, [getView]);
+  }, [getView, menu?.blockTarget, selectBlockTarget]);
+
+  const runBlockCommand = useCallback((
+    selection: 'block' | 'start',
+    command: (view: EditorView) => void,
+  ) => {
+    const view = getView();
+    if (!view) return;
+    const target = menu?.blockTarget;
+    if (target && !selectBlockTarget(view, target, selection)) return;
+    command(view);
+  }, [getView, menu?.blockTarget, selectBlockTarget]);
 
   const handleUndo = useCallback(() => {
     const view = getView();
@@ -235,61 +294,12 @@ export function EditorContextMenu({ getView, containerRef, mode, readOnly = fals
       )}
 
       {showFmt && (
-        <>
-          <div className="context-menu-divider" />
-          <div className="context-menu-fmt-row">
-            <FmtButton title={label('ctx.bold', '粗体')} onClick={() => { close(); const v = getView(); if (v) toggleBold(v); }}>
-              <span className="context-menu-fmt-text" style={{ fontWeight: 700 }}>B</span>
-            </FmtButton>
-            <FmtButton title={label('ctx.italic', '斜体')} onClick={() => { close(); const v = getView(); if (v) toggleItalic(v); }}>
-              <span className="context-menu-fmt-text" style={{ fontStyle: 'italic' }}>I</span>
-            </FmtButton>
-            <FmtButton title={label('ctx.strikethrough', '删除线')} onClick={() => { close(); const v = getView(); if (v) toggleStrikethrough(v); }}>
-              <span className="context-menu-fmt-text" style={{ textDecoration: 'line-through' }}>S</span>
-            </FmtButton>
-            <FmtButton title={label('ctx.inlineCode', '行内代码')} onClick={() => { close(); const v = getView(); if (v) toggleInlineCode(v); }}>
-              <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
-            </FmtButton>
-            <FmtButton title={label('ctx.heading1', '标题 1')} onClick={() => { close(); const v = getView(); if (v) setHeading(v, 1); }}>
-              <span className="context-menu-fmt-text" style={{ fontSize: '0.8em', fontWeight: 600 }}>H<sub>1</sub></span>
-            </FmtButton>
-            <FmtButton title={label('ctx.heading2', '标题 2')} onClick={() => { close(); const v = getView(); if (v) setHeading(v, 2); }}>
-              <span className="context-menu-fmt-text" style={{ fontSize: '0.75em', fontWeight: 500 }}>H<sub>2</sub></span>
-            </FmtButton>
-            <FmtButton title={label('ctx.heading3', '标题 3')} onClick={() => { close(); const v = getView(); if (v) setHeading(v, 3); }}>
-              <span className="context-menu-fmt-text" style={{ fontSize: '0.7em', fontWeight: 500 }}>H<sub>3</sub></span>
-            </FmtButton>
-          </div>
-          <div className="context-menu-fmt-row">
-            <FmtButton title={label('ctx.blockquote', '引用')} onClick={() => { close(); const v = getView(); if (v) toggleBlockquote(v); }}>
-              <svg viewBox="0 0 24 24" style={{ fill: 'currentColor', stroke: 'none' }}>
-                <path fillRule="evenodd" clipRule="evenodd" d="M20 5H4V19H20V5ZM4 3C2.89543 3 2 3.89543 2 5V19C2 20.1046 2.89543 21 4 21H20C21.1046 21 22 20.1046 22 19V5C22 3.89543 21.1046 3 20 3H4Z" />
-                <path d="M9.06723 9.19629H12.0672L9.93267 14.8038H6.93267L9.06723 9.19629Z" />
-                <path d="M14.0672 9.19629H17.0672L14.9327 14.8038H11.9327L14.0672 9.19629Z" />
-              </svg>
-            </FmtButton>
-            <FmtButton title={label('ctx.codeBlock', '代码块')} onClick={() => { close(); const v = getView(); if (v) insertCodeBlock(v); }}>
-              <svg viewBox="0 0 24 24">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <polyline points="9 8 7 12 9 16" />
-                <polyline points="15 8 17 12 15 16" />
-              </svg>
-            </FmtButton>
-            <FmtButton title={label('ctx.horizontalRule', '分隔线')} onClick={() => { close(); const v = getView(); if (v) insertHorizontalRule(v); }}>
-              <svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12" /></svg>
-            </FmtButton>
-            <FmtButton title={label('ctx.list', '列表')} onClick={() => { close(); const v = getView(); if (v) toggleList(v); }}>
-              <svg viewBox="0 0 24 24">
-                <line x1="9" y1="6" x2="20" y2="6" />
-                <line x1="9" y1="12" x2="20" y2="12" />
-                <line x1="9" y1="18" x2="20" y2="18" />
-                <circle cx="4.5" cy="6" r="1.2" />
-                <circle cx="4.5" cy="12" r="1.2" />
-                <circle cx="4.5" cy="18" r="1.2" />
-              </svg>
-            </FmtButton>
-          </div>
-        </>
+        <EditorFormatMenu
+          blockTarget={Boolean(menu.blockTarget)}
+          close={close}
+          getView={getView}
+          runBlockCommand={runBlockCommand}
+        />
       )}
     </div>,
     ownerDoc().body,
@@ -316,23 +326,6 @@ function MenuItem({ label: text, shortcut, disabled, onClick }: {
     >
       <span className="context-menu-label">{text}</span>
       {shortcut && <span className="context-menu-shortcut">{shortcut}</span>}
-    </div>
-  );
-}
-
-function FmtButton({ title, onClick, children }: {
-  title: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="context-menu-fmt-btn"
-      title={title}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-    >
-      {children}
     </div>
   );
 }

@@ -2472,7 +2472,8 @@
     "blockquote": "인용",
     "codeBlock": "코드 블록",
     "horizontalRule": "구분선",
-    "list": "목록"
+    "list": "목록",
+    "blockActions": "블록 작업"
   },
   "rightWorkspace": {
     "activity": {

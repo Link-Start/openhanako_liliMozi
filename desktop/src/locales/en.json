@@ -2472,7 +2472,8 @@
     "blockquote": "Blockquote",
     "codeBlock": "Code Block",
     "horizontalRule": "Horizontal Rule",
-    "list": "List"
+    "list": "List",
+    "blockActions": "Block actions"
   },
   "rightWorkspace": {
     "activity": {

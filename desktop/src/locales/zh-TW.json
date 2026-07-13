@@ -2472,7 +2472,8 @@
     "blockquote": "引用",
     "codeBlock": "程式碼區塊",
     "horizontalRule": "分隔線",
-    "list": "清單"
+    "list": "清單",
+    "blockActions": "區塊操作"
   },
   "rightWorkspace": {
     "activity": {
