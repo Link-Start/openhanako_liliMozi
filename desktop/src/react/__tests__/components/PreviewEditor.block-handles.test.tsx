@@ -8,7 +8,6 @@ import { history, undo } from '@codemirror/commands';
 import { fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  markdownBlockDragHighlightField,
   markdownBlockHandlePlugin,
   type MarkdownBlockMenuRequest,
 } from '../../editor/markdown-block-handles';
@@ -27,11 +26,12 @@ function elementRect(): DOMRect {
   } as DOMRect;
 }
 
-function pointerEvent(type: string, pointerId: number, clientY: number): Event {
+function pointerEvent(type: string, pointerId: number, clientY: number, clientX = 40): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     button: { value: 0 },
     pointerId: { value: pointerId },
+    clientX: { value: clientX },
     clientY: { value: clientY },
   });
   return event;
@@ -40,6 +40,9 @@ function pointerEvent(type: string, pointerId: number, clientY: number): Event {
 describe('markdown block handle rail', () => {
   let rectSpy: ReturnType<typeof vi.spyOn>;
   let coordsSpy: ReturnType<typeof vi.spyOn>;
+  let lineBlockSpy: ReturnType<typeof vi.spyOn>;
+  let documentTopSpy: ReturnType<typeof vi.spyOn>;
+  let scaleYSpy: ReturnType<typeof vi.spyOn>;
   let rafSpy: ReturnType<typeof vi.spyOn>;
   let cancelRafSpy: ReturnType<typeof vi.spyOn>;
 
@@ -56,6 +59,16 @@ describe('markdown block handle rail', () => {
       const top = line.number * 32;
       return { left: 200, right: 400, top, bottom: top + 24 };
     });
+    lineBlockSpy = vi.spyOn(EditorView.prototype, 'lineBlockAt').mockImplementation(function lineBlock(
+      this: EditorView,
+      pos: number,
+    ) {
+      const line = this.state.doc.lineAt(Math.min(pos, this.state.doc.length));
+      const top = line.number * 32;
+      return { top, height: 24 } as ReturnType<EditorView['lineBlockAt']>;
+    });
+    documentTopSpy = vi.spyOn(EditorView.prototype, 'documentTop', 'get').mockReturnValue(0);
+    scaleYSpy = vi.spyOn(EditorView.prototype, 'scaleY', 'get').mockReturnValue(1);
     rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => (
       window.setTimeout(() => callback(0), 0)
     ));
@@ -68,6 +81,9 @@ describe('markdown block handle rail', () => {
     document.body.innerHTML = '';
     rectSpy.mockRestore();
     coordsSpy.mockRestore();
+    lineBlockSpy.mockRestore();
+    documentTopSpy.mockRestore();
+    scaleYSpy.mockRestore();
     rafSpy.mockRestore();
     cancelRafSpy.mockRestore();
     vi.useRealTimers();
@@ -124,38 +140,53 @@ describe('markdown block handle rail', () => {
     view.destroy();
   });
 
-  it('highlights the full source and target blocks while dragging', () => {
+  it('moves a translucent text copy while leaving the original block untouched', () => {
     const { view } = createView();
     const firstHandle = view.dom.querySelectorAll<HTMLButtonElement>('.cm-markdown-block-handle')[0];
 
     fireEvent(firstHandle, pointerEvent('pointerdown', 11, 32));
     fireEvent(firstHandle, pointerEvent('pointermove', 11, 110));
 
-    expect(view.dom.querySelectorAll('.cm-markdown-block-drag-source')).toHaveLength(1);
-    const highlightClasses: string[] = [];
-    view.state.field(markdownBlockDragHighlightField).between(
-      0,
-      view.state.doc.length,
-      (_from, _to, decoration) => {
-        highlightClasses.push(String(decoration.spec.class ?? ''));
-      },
-    );
-    expect(highlightClasses.some(className => (
-      className.includes('cm-markdown-block-drop-target')
-    ))).toBe(true);
-
-    fireEvent(firstHandle, pointerEvent('pointercancel', 11, 110));
     expect(view.dom.querySelector('.cm-markdown-block-drag-source')).toBeNull();
     expect(view.dom.querySelector('.cm-markdown-block-drop-target')).toBeNull();
+    const preview = view.dom.querySelector<HTMLElement>('.cm-markdown-block-drag-preview');
+    expect(preview).toBeInstanceOf(HTMLElement);
+    expect(preview?.textContent).toContain('Alpha');
+    expect(preview?.style.transform).toBe('translate3d(0px, 78px, 0)');
+
+    fireEvent(firstHandle, pointerEvent('pointermove', 11, 130, 52));
+    expect(preview?.style.transform).toBe('translate3d(12px, 98px, 0)');
+
+    fireEvent(firstHandle, pointerEvent('pointercancel', 11, 110));
+    expect(view.dom.querySelector('.cm-markdown-block-drag-preview')).toBeNull();
     view.destroy();
   });
 
   it('centers the handle against the first visible text line', () => {
-    coordsSpy.mockImplementation(() => ({ left: 200, right: 400, top: 32, bottom: 72 }));
+    coordsSpy.mockImplementation(() => ({ left: 200, right: 400, top: 96, bottom: 120 }));
+    lineBlockSpy.mockImplementation(() => ({ top: 32, height: 40 }) as ReturnType<EditorView['lineBlockAt']>);
     const { view } = createView();
     const firstHandle = view.dom.querySelector<HTMLButtonElement>('.cm-markdown-block-handle');
 
     expect(firstHandle?.style.top).toBe('8px');
+    view.destroy();
+  });
+
+  it('positions the drop indicator from line-block geometry rather than cursor rectangles', () => {
+    coordsSpy.mockImplementation(function coords(this: EditorView, pos: number) {
+      const line = this.state.doc.lineAt(Math.min(pos, this.state.doc.length));
+      const top = (line.number * 32) + 13;
+      return { left: 200, right: 400, top, bottom: top + 24 };
+    });
+    const { view } = createView();
+    const firstHandle = view.dom.querySelectorAll<HTMLButtonElement>('.cm-markdown-block-handle')[0];
+
+    fireEvent(firstHandle, pointerEvent('pointerdown', 13, 32));
+    fireEvent(firstHandle, pointerEvent('pointermove', 13, 100));
+
+    const indicator = view.dom.querySelector<HTMLElement>('.cm-markdown-block-drop-indicator');
+    expect(indicator?.style.top).toBe('96px');
+    fireEvent(firstHandle, pointerEvent('pointercancel', 13, 100));
     view.destroy();
   });
 
@@ -177,17 +208,9 @@ describe('markdown block handle rail', () => {
 
     fireEvent(handles[1], pointerEvent('pointerdown', 12, 160));
     fireEvent(handles[1], pointerEvent('pointermove', 12, 50));
-    const highlightClasses: string[] = [];
-    view.state.field(markdownBlockDragHighlightField).between(
-      0,
-      view.state.doc.length,
-      (_from, _to, decoration) => {
-        highlightClasses.push(String(decoration.spec.class ?? ''));
-      },
-    );
-    expect(highlightClasses.some(className => (
-      className.includes('cm-markdown-block-drop-target')
-    ))).toBe(true);
+    expect(
+      view.dom.querySelector<HTMLElement>('.cm-markdown-block-drop-indicator')?.classList.contains('is-visible'),
+    ).toBe(true);
     fireEvent(handles[1], pointerEvent('pointercancel', 12, 50));
     view.destroy();
   });

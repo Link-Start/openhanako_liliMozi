@@ -562,7 +562,7 @@
 :global(.preview-editor.mode-markdown .cm-markdown-block-handle) {
     position: absolute;
     left: 0;
-    width: 24px;
+    width: 20px;
     height: 24px;
     display: flex;
     align-items: center;
@@ -578,27 +578,19 @@
     transition: opacity var(--duration-instant), background var(--duration-instant), color var(--duration-instant);
 }
 
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drag-source) {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
+:global(.preview-editor.mode-markdown .cm-markdown-block-drag-preview) {
+    position: absolute;
+    z-index: 12;
+    overflow: visible;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.55;
+    will-change: transform;
 }
 
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drop-target) {
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
-}
-
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drag-source-first),
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drop-target-first) {
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drag-source-last),
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drop-target-last) {
-    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-}
-
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drag-source-first.cm-markdown-block-drag-source-last),
-:global(.preview-editor.mode-markdown .cm-line.cm-markdown-block-drop-target-first.cm-markdown-block-drop-target-last) {
-    border-radius: var(--radius-sm);
+:global(.preview-editor.mode-markdown .cm-markdown-block-drag-preview .cm-line) {
+    background: transparent;
+    box-shadow: none;
 }
 
 :global(.preview-editor.mode-markdown .cm-markdown-block-handle:hover),
@@ -628,7 +620,18 @@
     border-radius: 999px;
     background: var(--accent);
     pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
     transform: translateY(-1px);
+    transition:
+        opacity var(--duration-instant) var(--ease-out),
+        visibility 0s linear var(--duration-instant);
+}
+
+:global(.preview-editor.mode-markdown .cm-markdown-block-drop-indicator.is-visible) {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
 }
 
 @media (hover: hover) and (pointer: fine) {
