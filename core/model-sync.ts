@@ -26,7 +26,7 @@ import { normalizeThinkingLevelForModel } from "./session-thinking-level.ts";
 import { buildXaiOauthCliModelHeaders } from "../lib/providers/xai-oauth-cli-headers.ts";
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
-const PI_BUILTIN_PROVIDER_REUSE = new Set(["kimi-coding"]);
+const PI_BUILTIN_PROVIDER_REUSE = new Set(["kimi-coding", "opencode-go"]);
 const KIMI_CODING_PROVIDER = "kimi-coding";
 const KIMI_CODING_MODEL_ID = "kimi-for-coding";
 const CHAT_CREDENTIAL_SOURCES = new Set(["provider-catalog", "auth-storage", "none"]);
@@ -79,6 +79,14 @@ function buildPiInputModalities({ image = false } = {}) {
   ];
 }
 
+function normalizePiBuiltinCompat(piBuiltin) {
+  if (!piBuiltin?.compat || typeof piBuiltin.compat !== "object") return null;
+  return normalizeModelProtocolCompat({
+    ...piBuiltin.compat,
+    outputCapField: piBuiltin.compat.outputCapField || piBuiltin.compat.maxTokensField,
+  });
+}
+
 function getPiBuiltinModel(provider, modelId) {
   if (!PI_BUILTIN_PROVIDER_REUSE.has(provider) || !modelId) return null;
   try {
@@ -86,6 +94,10 @@ function getPiBuiltinModel(provider, modelId) {
   } catch {
     return null;
   }
+}
+
+function getPiProtocolBaseline(provider, modelId) {
+  return provider === "opencode-go" ? getPiBuiltinModel(provider, modelId) : null;
 }
 
 function shouldReusePiBuiltinModel(provider, modelId, api) {
@@ -219,12 +231,16 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
   const known = lookupKnown(provider, id);
   const providerKnown = lookupKnownProvider(provider, id);
   const piBuiltin = getPiBuiltinModel(provider, id);
-  const modelApi = resolveModelApi(modelEntry, provider, api);
+  const piProtocolBaseline = getPiProtocolBaseline(provider, id);
+  const modelApi = (isObj && modelEntry.api)
+    || providerKnown?.api
+    || piProtocolBaseline?.api
+    || api;
 
   // 输入模态能力：用户设置 > known-models 词典 > 默认 false
   // 兼容读：migration #7 之前的旧数据用 vision 字段；两个版本后移除 vision fallback
   const userImage = isObj ? (modelEntry.image ?? modelEntry.vision) : undefined;
-  const knownImage = known?.image ?? known?.vision;
+  const knownImage = known?.image ?? known?.vision ?? piProtocolBaseline?.input?.includes?.("image");
   const inferredImage = inferOllamaModelMetadata(provider, id)?.image;
   const image = userImage !== undefined ? userImage : (knownImage === true || inferredImage === true);
   const userVideo = isObj ? modelEntry.video : undefined;
@@ -237,25 +253,28 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
   const xhigh = userXhigh !== undefined ? userXhigh : (known?.xhigh === true);
   const entry: Record<string, any> = {
     id,
-    name: (isObj && modelEntry.name) || known?.name || humanizeName(id),
+    name: (isObj && modelEntry.name) || piProtocolBaseline?.name || known?.name || humanizeName(id),
     input: buildPiInputModalities({ image: image === true }),
     contextWindow: (isObj ? (modelEntry.context ?? modelEntry.contextWindow) : undefined)
+      ?? piProtocolBaseline?.contextWindow
       ?? known?.context
       ?? DEFAULT_CONTEXT_WINDOW,
-    reasoning: (isObj && modelEntry.reasoning !== undefined) ? modelEntry.reasoning : (known?.reasoning === true),
+    reasoning: (isObj && modelEntry.reasoning !== undefined)
+      ? modelEntry.reasoning
+      : (piProtocolBaseline?.reasoning === true || known?.reasoning === true),
   };
   if (xhigh === true) entry.xhigh = true;
 
   const rawThinkingLevelMap = isObj && modelEntry.thinkingLevelMap !== undefined
     ? modelEntry.thinkingLevelMap
-    : providerKnown?.thinkingLevelMap;
+    : (piProtocolBaseline?.thinkingLevelMap ?? providerKnown?.thinkingLevelMap);
   const thinkingLevelMap = normalizeThinkingLevelMap(rawThinkingLevelMap);
   if (thinkingLevelMap) entry.thinkingLevelMap = thinkingLevelMap;
   if ((isObj && modelEntry.api) || providerKnown?.api || modelApi !== api) entry.api = modelApi;
 
   const maxOutput = (isObj
     ? (modelEntry.maxOutput ?? modelEntry.maxTokens ?? modelEntry.maxOutputTokens)
-    : undefined) ?? known?.maxOutput;
+    : undefined) ?? piProtocolBaseline?.maxTokens ?? known?.maxOutput;
   if (maxOutput) entry.maxTokens = maxOutput;
   const configuredDefaultThinkingLevel = getProviderModelDefaultThinkingLevel(modelDefaults, id);
   const defaultThinkingLevel = isObj
@@ -301,11 +320,17 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
   // 3. Gemini OpenAI 兼容层（/v1beta/openai）严格校验，不识别 store 字段会 400。
   //    Native google-generative-ai 不走 Chat Completions，不需要这组 OpenAI 字段兼容。
   if (provider !== "openai") {
+    const piBuiltinCompat = normalizePiBuiltinCompat(piProtocolBaseline) || {};
     const knownCompat = normalizeModelProtocolCompat(known?.compat) || {};
     const explicitCompat = isObj
       ? (normalizeModelProtocolCompat(modelEntry.compat) || {})
       : {};
-    const compat: Record<string, unknown> = { ...knownCompat, ...explicitCompat, supportsDeveloperRole: false };
+    const compat: Record<string, unknown> = {
+      ...piBuiltinCompat,
+      ...knownCompat,
+      ...explicitCompat,
+      supportsDeveloperRole: false,
+    };
     if (modelApi === "openai-completions" && (
       provider === "gemini"
       || baseUrl.includes("generativelanguage.googleapis.com")

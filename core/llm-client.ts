@@ -17,6 +17,12 @@ const DEFAULT_CODEX_UTILITY_INSTRUCTIONS = [
   "You are Hana's utility model.",
   "Follow the user request exactly and return only the requested content.",
 ].join("\n");
+const SUPPORTED_BUFFERED_APIS = new Set([
+  "anthropic-messages",
+  "openai-completions",
+  "openai-responses",
+  "openai-codex-responses",
+]);
 
 export type CallTextMessage = {
   role?: string;
@@ -48,6 +54,7 @@ export type CallTextOptions = {
   temperature?: number;
   maxTokens?: unknown;
   outputBudgetSource?: unknown;
+  outputPolicy?: "provider-default" | "bounded";
   callPurpose?: unknown;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -175,6 +182,44 @@ function extractAnthropicText(content) {
       .join("\n")
       .trim(),
     removedThinking: content.some(isThinkingBlock),
+  };
+}
+
+function reasoningTextFromValue(value) {
+  if (typeof value === "string") return value.trim();
+  if (!Array.isArray(value)) return "";
+  return value.map((block) => {
+    if (!block || typeof block !== "object") return "";
+    return block.reasoning || block.reasoning_content || block.reasoning_text || block.thinking || "";
+  }).filter((text) => typeof text === "string" && text.trim()).join("\n").trim();
+}
+
+function openAICompatibleContentText(content) {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((block) => block && typeof block === "object" && (block.type === "text" || block.type === "output_text"))
+    .map((block) => typeof block.text === "string" ? block.text : "")
+    .join("")
+    .trim();
+}
+
+function extractOpenAICompatibleCompletion(data) {
+  const choice = data?.choices?.[0];
+  const message = choice?.message;
+  const reasoning = reasoningTextFromValue(
+    message?.reasoning_content
+      ?? message?.reasoning
+      ?? message?.reasoning_text
+      ?? message?.thinking
+      ?? message?.content,
+  );
+  return {
+    text: openAICompatibleContentText(message?.content),
+    reasoning,
+    stopReason: typeof choice?.finish_reason === "string"
+      ? choice.finish_reason
+      : (typeof choice?.stop_reason === "string" ? choice.stop_reason : null),
   };
 }
 
@@ -365,6 +410,7 @@ export async function callText({
   temperature,
   maxTokens,
   outputBudgetSource = "system",
+  outputPolicy,
   callPurpose,
   timeoutMs = 60_000,
   signal,
@@ -377,6 +423,19 @@ export async function callText({
   const modelId = modelObj ? String(modelObj.id || "") : String(model || "");
   const provider = typeof modelObj?.provider === "string" ? modelObj.provider : "custom";
   const explicitMaxTokens = positiveInteger(maxTokens);
+  const effectiveOutputPolicy = outputPolicy || (explicitMaxTokens === null ? "provider-default" : "bounded");
+  if (effectiveOutputPolicy !== "provider-default" && effectiveOutputPolicy !== "bounded") {
+    throw new Error(`Unknown output policy: ${String(effectiveOutputPolicy)}`);
+  }
+  if (effectiveOutputPolicy === "bounded" && explicitMaxTokens === null) {
+    throw new Error("bounded output policy requires a positive maxTokens value");
+  }
+  if (effectiveOutputPolicy === "provider-default" && explicitMaxTokens !== null) {
+    throw new Error("provider-default output policy cannot include maxTokens");
+  }
+  if (!SUPPORTED_BUFFERED_APIS.has(api)) {
+    throw new Error(`No Hana buffered adapter is registered for API "${api || "unknown"}"`);
+  }
   // ── 1. 消息归一化：提取 system 消息合并到 systemPrompt ──
   let mergedSystem = systemPrompt || "";
   const normalizedMessages = [];
@@ -572,22 +631,26 @@ export async function callText({
 
   // ── 6. 提取文本 ──
   let text = "";
+  let reasoning = "";
+  let stopReason = null;
   let removedStructuredThinking = false;
   if (api === "anthropic-messages") {
     const extracted = extractAnthropicText(data?.content || []);
     text = extracted.text;
     removedStructuredThinking = extracted.removedThinking;
+    reasoning = reasoningTextFromValue(data?.content);
+    stopReason = typeof data?.stop_reason === "string" ? data.stop_reason : null;
   } else if (api === "openai-responses" || api === "openai-codex-responses") {
     const extracted = extractResponsesText(data);
     text = extracted.text;
     removedStructuredThinking = extracted.removedThinking;
+    stopReason = typeof data?.status === "string" ? data.status : null;
   } else {
-    const message = data?.choices?.[0]?.message;
-    text = (typeof message?.content === "string")
-      ? message.content.trim()
-      : "";
-    removedStructuredThinking = typeof message?.reasoning_content === "string"
-      || typeof message?.thinking === "string";
+    const extracted = extractOpenAICompatibleCompletion(data);
+    text = extracted.text;
+    reasoning = extracted.reasoning;
+    stopReason = extracted.stopReason;
+    removedStructuredThinking = reasoning.length > 0;
   }
 
   // 清理 <think> 标签（部分 provider 用标签而非 content block 包裹思考内容）
@@ -613,6 +676,7 @@ export async function callText({
       context: {
         model: modelId,
         ...(emptyAfterThinking ? { reason: "empty_after_thinking" } : {}),
+        ...(stopReason ? { stopReason } : {}),
       },
     });
   }

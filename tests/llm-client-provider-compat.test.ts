@@ -103,6 +103,86 @@ describe("callText provider-compat routing", () => {
     expect(body.messages[0]).not.toHaveProperty("reasoning_content");
   });
 
+  it("uses the exact OpenCode Go DeepSeek buffered contract without exposing reasoning as text", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        choices: [{
+          finish_reason: "stop",
+          message: {
+            content: [{ type: "text", text: "memory compiled" }],
+            reasoning: "private chain",
+          },
+        }],
+        usage: { prompt_tokens: 20, completion_tokens: 8 },
+      }),
+    } as any);
+
+    await expect(callText({
+      api: "openai-completions",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      model: {
+        id: "deepseek-v4-flash",
+        provider: "opencode-go",
+        api: "openai-completions",
+        reasoning: true,
+        compat: { thinkingFormat: "deepseek", outputCapField: "max_tokens" },
+      },
+      messages: [{ role: "user", content: "compile memory" }],
+      maxTokens: 128,
+      outputPolicy: "bounded",
+      timeoutMs: 5_000,
+    } as any)).resolves.toBe("memory compiled");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://opencode.ai/zen/go/v1/chat/completions");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "deepseek-v4-flash",
+      max_tokens: 128,
+      thinking: { type: "disabled" },
+    });
+  });
+
+  it("keeps provider-default output unbounded at Hana's request layer", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+    } as any);
+
+    await callText({
+      api: "openai-completions",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      model: {
+        id: "deepseek-v4-flash",
+        provider: "opencode-go",
+        reasoning: true,
+        compat: { thinkingFormat: "deepseek", outputCapField: "max_tokens" },
+      },
+      messages: [{ role: "user", content: "compile memory" }],
+      outputPolicy: "provider-default",
+      timeoutMs: 5_000,
+    } as any);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body).not.toHaveProperty("max_tokens");
+    expect(body).not.toHaveProperty("max_completion_tokens");
+    expect(body.thinking).toEqual({ type: "disabled" });
+  });
+
+  it("fails closed for native APIs without a Hana buffered adapter", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    await expect(callText({
+      api: "google-generative-ai",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      model: { id: "gemini-native", provider: "google", api: "google-generative-ai" },
+      messages: [{ role: "user", content: "hi" }],
+    } as any)).rejects.toThrow(/buffered adapter.*google-generative-ai/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("omits temperature from utility requests unless the caller sets it explicitly", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -711,6 +791,32 @@ describe("callText provider-compat routing", () => {
       code: "LLM_EMPTY_RESPONSE",
       message: "模型未回复正文，请检查思考内容或稍后重试。",
       context: expect.objectContaining({ reason: "empty_after_thinking" }),
+    });
+  });
+
+  it("classifies OpenAI-compatible message.reasoning without using it as utility text", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        choices: [{ finish_reason: "stop", message: { content: null, reasoning: "private chain" } }],
+      }),
+    } as any);
+
+    await expect(callText({
+      api: "openai-completions",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      model: {
+        id: "deepseek-v4-flash",
+        provider: "opencode-go",
+        reasoning: true,
+        compat: { thinkingFormat: "deepseek" },
+      },
+      messages: [{ role: "user", content: "compile memory" }],
+      timeoutMs: 5_000,
+    } as any)).rejects.toMatchObject({
+      code: "LLM_EMPTY_RESPONSE",
+      context: expect.objectContaining({ reason: "empty_after_thinking", stopReason: "stop" }),
     });
   });
 

@@ -1879,6 +1879,39 @@ describe("syncModels", () => {
     });
   });
 
+  it("hydrates exact OpenCode Go DeepSeek wire metadata from the Pi catalog", async () => {
+    const syncModels = await loadSync();
+
+    syncModels({
+      "opencode-go": {
+        base_url: "https://opencode.ai/zen/go/v1",
+        api: "openai-completions",
+        api_key: "sk-test",
+        models: ["deepseek-v4-flash"],
+      },
+    }, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    expect(result.providers["opencode-go"].models[0]).toMatchObject({
+      id: "deepseek-v4-flash",
+      contextWindow: 1_000_000,
+      maxTokens: 384_000,
+      reasoning: true,
+      thinkingLevelMap: {
+        minimal: null,
+        low: null,
+        medium: null,
+        high: "high",
+        xhigh: "max",
+      },
+      compat: {
+        supportsDeveloperRole: false,
+        thinkingFormat: "deepseek",
+        outputCapField: "max_tokens",
+      },
+    });
+  });
+
   it("skips models with type: image from models.json output", async () => {
     const syncModels = await loadSync();
 
