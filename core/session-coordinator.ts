@@ -1014,7 +1014,7 @@ export class SessionCoordinator {
       error.status = 400;
       throw error;
     }
-    if (lifecycle !== "active" && lifecycle !== "archived") {
+    if (lifecycle !== "active" && lifecycle !== "archived" && lifecycle !== "deleted") {
       const error: any = new Error(`moveSessionLifecycle: unsupported lifecycle ${lifecycle || "(empty)"}`);
       error.code = "session_lifecycle_invalid";
       error.status = 400;
@@ -1047,12 +1047,24 @@ export class SessionCoordinator {
       throw error;
     }
 
-    const updated = this._sessionManifestStore.updateLocatorLifecycle(
-      manifest.sessionId,
-      toPath,
-      lifecycle,
-      reason,
-    );
+    const classification = {
+      domain: manifestDefaults?.domain,
+      kind: manifestDefaults?.kind,
+    };
+    const updated = classification.domain || classification.kind
+      ? this._sessionManifestStore.updateLocatorLifecycle(
+        manifest.sessionId,
+        toPath,
+        lifecycle,
+        reason,
+        classification,
+      )
+      : this._sessionManifestStore.updateLocatorLifecycle(
+        manifest.sessionId,
+        toPath,
+        lifecycle,
+        reason,
+      );
     if (!updated?.currentLocator?.path || path.resolve(updated.currentLocator.path) !== path.resolve(toPath) || updated.lifecycle !== lifecycle) {
       const error: any = new Error("moveSessionLifecycle: manifest transition verification failed");
       error.code = "session_lifecycle_transition_failed";
@@ -4223,6 +4235,14 @@ export class SessionCoordinator {
           const sessKey = path.basename(s.path);
           const metaEntry = meta[sessKey];
           const manifest = this._resolveSessionManifestForPathQuiet(s.path);
+          if (manifest && (
+            manifest.lifecycle !== "active"
+            || manifest.domain !== "desktop"
+            || !manifest.currentLocator?.path
+            || path.resolve(manifest.currentLocator.path) !== path.resolve(s.path)
+          )) {
+            continue;
+          }
           const runtimeEntry = this._sessionFolderEntry(s.path);
           if (hasSessionPermissionModeFields(runtimeEntry)) {
             s.permissionMode = normalizeSessionPermissionMode(runtimeEntry);
@@ -5082,6 +5102,25 @@ export class SessionCoordinator {
     try {
       fs.mkdirSync(agent.sessionDir, { recursive: true });
       fs.renameSync(oldPath, newPath);
+      if (this._sessionManifestStore) {
+        try {
+          await this.moveSessionLifecycle({
+            fromPath: oldPath,
+            toPath: newPath,
+            lifecycle: "active",
+            reason: "activity_session_promoted",
+            manifestDefaults: {
+              ownerAgentId: agent.id,
+              domain: "desktop",
+              kind: "chat",
+              provenance: { createdBy: "activity_session_promoted" },
+            },
+          });
+        } catch (err) {
+          fs.renameSync(newPath, oldPath);
+          throw err;
+        }
+      }
       try {
         await this._ensurePromotedActivitySessionToolMeta(agent, newPath);
       } catch (err) {

@@ -43,6 +43,7 @@ import { createUsageLedger } from "../lib/llm/usage-ledger.ts";
 import { BrowserManager } from "../lib/browser/browser-manager.ts";
 import { DEEPSEEK_ROLEPLAY_REASONING_PATCH_EXPERIMENT_ID } from "../lib/experiments/registry.ts";
 import { SessionManager } from "../lib/pi-sdk/index.js";
+import { SessionManifestStore } from "../core/session-manifest/store.ts";
 
 const PNG_BASE64 = "iVBORw0KGgo=";
 
@@ -4314,6 +4315,18 @@ describe("SessionCoordinator", () => {
     fs.mkdirSync(activityDir, { recursive: true });
     fs.mkdirSync(sessionDir, { recursive: true });
     fs.writeFileSync(activityFile, "", "utf-8");
+    const manifestStore = new SessionManifestStore({
+      dbPath: path.join(tempDir, "promotion-manifest.db"),
+      idGenerator: () => "sess_activity_promoted",
+      now: () => "2026-07-14T01:00:00.000Z",
+    });
+    const activityManifest = manifestStore.createForPath({
+      sessionPath: activityFile,
+      ownerAgentId: "hana",
+      domain: "activity",
+      kind: "activity",
+      lifecycle: "active",
+    });
 
     const agent = {
       id: "hana",
@@ -4356,14 +4369,28 @@ describe("SessionCoordinator", () => {
       getAgentById: () => agent,
       ensureAgentRuntime: async () => agent,
       listAgents: () => [],
+      sessionManifestStore: manifestStore,
     });
 
-    const promotedPath = await coordinator.promoteActivitySession("legacy-activity.jsonl", "hana");
+    try {
+      const promotedPath = await coordinator.promoteActivitySession("legacy-activity.jsonl", "hana");
 
-    expect(promotedPath).toBe(path.join(sessionDir, "legacy-activity.jsonl"));
-    expect(fs.existsSync(promotedPath)).toBe(true);
-    const meta = JSON.parse(fs.readFileSync(path.join(sessionDir, "session-meta.json"), "utf-8"));
-    expect(meta["legacy-activity.jsonl"].toolNames).toEqual(["read", "mcp_github_search"]);
+      expect(promotedPath).toBe(path.join(sessionDir, "legacy-activity.jsonl"));
+      expect(fs.existsSync(promotedPath)).toBe(true);
+      const promotedManifest = manifestStore.getBySessionId(activityManifest.sessionId);
+      expect(promotedManifest).toMatchObject({
+        sessionId: "sess_activity_promoted",
+        domain: "desktop",
+        kind: "chat",
+        lifecycle: "active",
+        currentLocator: { path: path.resolve(promotedPath) },
+      });
+      expect(manifestStore.resolveByLocatorPath(activityFile)?.sessionId).toBe(activityManifest.sessionId);
+      const meta = JSON.parse(fs.readFileSync(path.join(sessionDir, "session-meta.json"), "utf-8"));
+      expect(meta["legacy-activity.jsonl"].toolNames).toEqual(["read", "mcp_github_search"]);
+    } finally {
+      manifestStore.close();
+    }
   });
 
   it("executeIsolated builds sandboxed tools against the inherited execution cwd", async () => {

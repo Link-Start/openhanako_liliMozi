@@ -659,6 +659,25 @@ describe("POST /api/sessions/archived/delete", () => {
     expect(engine.clearSessionTitle).toHaveBeenCalledWith(activeKey);
   });
 
+  it("restores the archived file when the manifest tombstone cannot be written", async () => {
+    engine.moveSessionLifecycle = vi.fn(async () => {
+      const error: any = new Error("manifest database is unavailable");
+      error.code = "session_manifest_unavailable";
+      error.status = 503;
+      throw error;
+    });
+
+    const res = await app.request("/api/sessions/archived/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: archPath }),
+    });
+
+    expect(res.status).toBe(503);
+    expect(fs.existsSync(archPath)).toBe(true);
+    expect(fs.existsSync(`${archPath}.deleting`)).toBe(false);
+  });
+
   it("deletes archived sessions by sessionId and validates stale paths", async () => {
     const store = new SessionManifestStore({
       dbPath: path.join(tmpDir, "session-manifest.db"),
@@ -699,6 +718,11 @@ describe("POST /api/sessions/archived/delete", () => {
       expect(res.status).toBe(200);
       expect(body).toMatchObject({ ok: true, sessionId: "sess_delete_by_id" });
       expect(fs.existsSync(archPath)).toBe(false);
+      expect(store.getBySessionId("sess_delete_by_id")).toMatchObject({
+        lifecycle: "deleted",
+        currentLocator: { path: path.resolve(archPath) },
+      });
+      expect(store.resolveByLocatorPath(archPath)?.sessionId).toBe("sess_delete_by_id");
     } finally {
       store.close();
     }
@@ -859,6 +883,39 @@ describe("POST /api/sessions/cleanup (titles orphan cleanup)", () => {
 
     expect(res.status).toBe(200);
     expect(fs.existsSync(oldFile)).toBe(false);
+  });
+
+  it("tombstones the manifest when cleanup permanently removes an archived session", async () => {
+    const oldFile = path.join(tmpDir, "agents", "a", "sessions", "archived", "old.jsonl");
+    const store = new SessionManifestStore({
+      dbPath: path.join(tmpDir, "session-manifest.db"),
+      idGenerator: () => "sess_cleanup_deleted",
+      now: () => "2026-07-14T01:00:00.000Z",
+    });
+    try {
+      store.createForPath({
+        sessionPath: oldFile,
+        ownerAgentId: "a",
+        domain: "desktop",
+        kind: "chat",
+        lifecycle: "archived",
+      });
+      attachManifestStore(engine, store);
+
+      const res = await app.request("/api/sessions/cleanup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ maxAgeDays: 90 }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(store.getBySessionId("sess_cleanup_deleted")).toMatchObject({
+        lifecycle: "deleted",
+        currentLocator: { path: path.resolve(oldFile) },
+      });
+    } finally {
+      store.close();
+    }
   });
 
   it("also invalidates stale rc state that still points at the deleted active path", async () => {

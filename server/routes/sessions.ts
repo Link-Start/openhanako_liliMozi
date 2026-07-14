@@ -623,6 +623,55 @@ export function createSessionsRoute(engine, hub = null) {
     return manifest;
   }
 
+  async function permanentlyDeleteArchivedFile(sessionPath, reason) {
+    const stagedPath = `${sessionPath}.deleting`;
+    if (await pathExists(stagedPath) || await pathExists(sessionFileSidecarPath(stagedPath))) {
+      throw routeError("Archived session deletion is already staged", "session_delete_staged_conflict", 409);
+    }
+
+    await fs.rename(sessionPath, stagedPath);
+    try {
+      moveSessionFileSidecarSync(sessionPath, stagedPath);
+    } catch (err) {
+      await fs.rename(stagedPath, sessionPath).catch(() => {});
+      throw err;
+    }
+
+    let manifest;
+    try {
+      manifest = await moveSessionLifecycleOrThrow({
+        fromPath: sessionPath,
+        toPath: sessionPath,
+        lifecycle: "deleted",
+        reason,
+      });
+    } catch (err) {
+      moveSessionFileSidecarSync(stagedPath, sessionPath);
+      await fs.rename(stagedPath, sessionPath).catch(() => {});
+      throw err;
+    }
+
+    try {
+      await fs.unlink(stagedPath);
+      deleteSessionFileSidecarSync(stagedPath);
+    } catch (err) {
+      try {
+        await moveSessionLifecycleOrThrow({
+          fromPath: sessionPath,
+          toPath: sessionPath,
+          lifecycle: "archived",
+          reason: "session_delete_rollback",
+        });
+        await fs.rename(stagedPath, sessionPath);
+        moveSessionFileSidecarSync(stagedPath, sessionPath);
+      } catch (rollbackErr) {
+        lifecycleLog.error(`delete rollback failed for ${sessionPath}: ${rollbackErr.message}`);
+      }
+      throw err;
+    }
+    return manifest;
+  }
+
   async function sessionFileHasMessages(sessionPath) {
     const raw = await fs.readFile(sessionPath, "utf-8");
     for (const line of raw.split("\n")) {
@@ -2188,8 +2237,7 @@ export function createSessionsRoute(engine, hub = null) {
             if (stat.mtime.getTime() < cutoff) {
               const activeKey = path.join(agentsDir, agentId, "sessions", f);
               await cleanupSessionLifecycle([activeKey, fp], "parent session deleted");
-              await fs.unlink(fp);
-              deleteSessionFileSidecarSync(fp);
+              await permanentlyDeleteArchivedFile(fp, "session_cleanup");
               deleted++;
               // 清理 titles.json 孤儿（key = 对应的活跃路径）
               try { await engine.clearSessionTitle(activeKey); } catch {}
@@ -2370,9 +2418,9 @@ export function createSessionsRoute(engine, hub = null) {
       return await withSessionLifecycleLock([activeKey, sessionPath], async () => {
         const draftSessionId = sessionId || engine.getSessionIdForPath?.(activeKey) || null;
         await cleanupSessionLifecycle([activeKey, sessionPath], "parent session deleted");
+        let deletedManifest;
         try {
-          await fs.unlink(sessionPath);
-          deleteSessionFileSidecarSync(sessionPath);
+          deletedManifest = await permanentlyDeleteArchivedFile(sessionPath, "archived_session_deleted");
         } catch (err) {
           if (err.code === "ENOENT") {
             return c.json({ error: t("error.sessionNotFound") }, 404);
@@ -2384,7 +2432,7 @@ export function createSessionsRoute(engine, hub = null) {
         }
         // 清理 titles.json 孤儿（key = 对应的活跃路径）
         try { await engine.clearSessionTitle(activeKey); } catch {}
-        return c.json({ ok: true, sessionId: sessionId || engine.getSessionIdForPath?.(sessionPath) || null });
+        return c.json({ ok: true, sessionId: deletedManifest?.sessionId || sessionId || null });
       });
     } catch (err) {
       return c.json(bodyFromRouteError(err), statusFromRouteError(err));

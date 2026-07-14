@@ -401,13 +401,16 @@ export class SessionManifestStore {
       updateLocatorLifecycle: this.db.prepare(`
         UPDATE session_manifests
         SET
+          domain = @domain,
+          kind = @kind,
           lifecycle = @lifecycle,
           current_locator_type = @currentLocatorType,
           current_locator_path = @currentLocatorPath,
           current_locator_key = @currentLocatorKey,
           current_locator_reason = @currentLocatorReason,
           locator_updated_at = @locatorUpdatedAt,
-          updated_at = @updatedAt
+          updated_at = @updatedAt,
+          deleted_at = @deletedAt
         WHERE session_id = @sessionId
       `),
       setPinnedAt: this.db.prepare(`
@@ -620,7 +623,13 @@ export class SessionManifestStore {
     })();
   }
 
-  updateLocatorLifecycle(sessionId, nextSessionPath, lifecycle, reason = "update") {
+  updateLocatorLifecycle(
+    sessionId,
+    nextSessionPath,
+    lifecycle,
+    reason = "update",
+    classification: { domain?: string; kind?: string } = {},
+  ) {
     const nextLifecycle = pickString(lifecycle);
     if (!nextLifecycle) {
       throw new SessionManifestError(
@@ -640,6 +649,9 @@ export class SessionManifestStore {
         );
       }
 
+      const domain = pickString(classification?.domain) || manifest.domain;
+      const kind = pickString(classification?.kind) || manifest.kind;
+
       if (manifest.currentLocator.key !== nextLocator.key) {
         this._assertLocatorAvailable(nextLocator.key, sessionId);
         const changedAt = this._now();
@@ -654,6 +666,8 @@ export class SessionManifestStore {
         this._stmts.deleteHistoryForLocator.run(sessionId, nextLocator.key);
         this._stmts.updateLocatorLifecycle.run({
           sessionId,
+          domain,
+          kind,
           lifecycle: nextLifecycle,
           currentLocatorType: nextLocator.type,
           currentLocatorPath: nextLocator.path,
@@ -661,6 +675,7 @@ export class SessionManifestStore {
           currentLocatorReason: reason,
           locatorUpdatedAt: changedAt,
           updatedAt: changedAt,
+          deletedAt: nextLifecycle === "deleted" ? (manifest.deletedAt || changedAt) : null,
         });
         return this.getBySessionId(sessionId);
       }
@@ -668,6 +683,8 @@ export class SessionManifestStore {
       const updatedAt = this._now();
       this._stmts.updateLocatorLifecycle.run({
         sessionId,
+        domain,
+        kind,
         lifecycle: nextLifecycle,
         currentLocatorType: nextLocator.type,
         currentLocatorPath: nextLocator.path,
@@ -675,6 +692,7 @@ export class SessionManifestStore {
         currentLocatorReason: reason,
         locatorUpdatedAt: updatedAt,
         updatedAt,
+        deletedAt: nextLifecycle === "deleted" ? (manifest.deletedAt || updatedAt) : null,
       });
       return this.getBySessionId(sessionId);
     })();

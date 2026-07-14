@@ -44,6 +44,7 @@ vi.mock("../lib/debug-log.js", () => ({
 
 import { SessionCoordinator } from "../core/session-coordinator.ts";
 import { SessionListProjectionCache } from "../core/session-list-projection-cache.ts";
+import { SessionManifestStore } from "../core/session-manifest/store.ts";
 import { migrateLegacySessions } from "../core/session-manifest/legacy-migration.ts";
 
 describe("T1: listSessions manifest query guard (session-coordinator)", () => {
@@ -100,6 +101,34 @@ describe("T1: listSessions manifest query guard (session-coordinator)", () => {
     const found = sessions.find((s) => s.path === sessionPath);
     expect(found).toBeDefined();
     expect(found.sessionId == null).toBe(true);
+  });
+
+  it("does not publish a stale physical file whose manifest points at an archived locator", async () => {
+    const healthyPath = path.join(sessionDir, "healthy.jsonl");
+    fs.copyFileSync(sessionPath, healthyPath);
+    const archivePath = path.join(sessionDir, "archived", "alpha.jsonl");
+    const store = new SessionManifestStore({
+      dbPath: path.join(tempDir, "session-manifest.db"),
+      idGenerator: () => "sess_archived_alpha",
+      now: () => "2026-07-08T00:02:00.000Z",
+    });
+    try {
+      const manifest = store.createForPath({
+        sessionPath,
+        ownerAgentId: "hana",
+        domain: "desktop",
+        kind: "chat",
+        lifecycle: "active",
+      });
+      store.updateLocatorLifecycle(manifest.sessionId, archivePath, "archived", "session_archive");
+
+      const sessions = await createCoordinator(store).listSessions();
+
+      expect(sessions.some((session) => session.path === sessionPath)).toBe(false);
+      expect(sessions.some((session) => session.path === healthyPath)).toBe(true);
+    } finally {
+      store.close();
+    }
   });
 });
 

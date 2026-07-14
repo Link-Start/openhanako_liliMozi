@@ -83,6 +83,42 @@ describe("SessionManifestStore", () => {
     ]);
   });
 
+  it("changes lifecycle classification atomically and preserves deleted locator history", () => {
+    const activityPath = createSessionFile("activity-before-promotion");
+    const desktopPath = path.join(tmpDir, "agents", "hana", "sessions", "promoted.jsonl");
+    const manifest = store.createForPath({
+      sessionPath: activityPath,
+      domain: "activity",
+      kind: "activity",
+      lifecycle: "active",
+    });
+
+    const promoted = store.updateLocatorLifecycle(
+      manifest.sessionId,
+      desktopPath,
+      "active",
+      "activity_session_promoted",
+      { domain: "desktop", kind: "chat" },
+    );
+    const deleted = store.updateLocatorLifecycle(
+      manifest.sessionId,
+      desktopPath,
+      "deleted",
+      "archived_session_deleted",
+    );
+
+    expect(promoted).toMatchObject({ domain: "desktop", kind: "chat", lifecycle: "active" });
+    expect(deleted).toMatchObject({
+      domain: "desktop",
+      kind: "chat",
+      lifecycle: "deleted",
+      currentLocator: { path: path.resolve(desktopPath) },
+    });
+    expect(deleted.deletedAt).toMatch(/^2026-06-18T/);
+    expect(store.resolveByLocatorPath(activityPath)?.sessionId).toBe(manifest.sessionId);
+    expect(store.resolveByLocatorPath(desktopPath)?.sessionId).toBe(manifest.sessionId);
+  });
+
   it("updates manifest-owned policy, workspace, plugin, and thinking fields by session id", () => {
     const sessionPath = createSessionFile("fields");
     const manifest = store.createForPath({ sessionPath, domain: "home", kind: "chat" });
