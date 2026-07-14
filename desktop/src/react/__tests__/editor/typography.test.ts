@@ -329,13 +329,14 @@ describe('editor typography settings', () => {
     expect(css).not.toMatch(/:global\(\.preview-editor \.cm-content\)\s*\{/);
   });
 
-  it('insets quote surfaces and rounds only the outer edges of block surfaces', () => {
+  it('uses the original quote geometry while rounding code block outer edges', () => {
     const css = readPreviewStyles();
 
-    expect(css).toMatch(/:global\(\.cm-blockquote-line\)\s*\{[^}]*padding-left:\s*calc\(1em \+ var\(--space-12\)\)[^}]*background:\s*transparent/);
-    expect(css).toMatch(/:global\(\.cm-blockquote-line\)::before\s*\{[^}]*inset:\s*0 var\(--space-12\)[^}]*border-left:\s*3px solid var\(--accent\)[^}]*background:\s*var\(--overlay-subtle\)/);
-    expect(css).toMatch(/:global\(\.cm-blockquote-line-first\)::before\s*\{[^}]*border-radius:\s*2px 2px 0 0/);
-    expect(css).toMatch(/:global\(\.cm-blockquote-line-last\)::before\s*\{[^}]*border-radius:\s*0 0 2px 2px/);
+    expect(css).toMatch(/:global\(\.cm-blockquote-line\)\s*\{[^}]*border-left:\s*3px solid var\(--accent\)[^}]*padding-left:\s*1em[^}]*background:\s*var\(--overlay-subtle\)/);
+    expect(css).not.toMatch(/:global\(\.cm-blockquote-line\)::before/);
+    expect(css).not.toMatch(/:global\(\.cm-blockquote-line-(?:first|last)\)::before/);
+    expect(css).toMatch(/:global\(\.cm-blockquote-line-first\)\s*\{[^}]*border-radius:\s*2px 2px 0 0/);
+    expect(css).toMatch(/:global\(\.cm-blockquote-line-last\)\s*\{[^}]*border-radius:\s*0 0 2px 2px/);
     expect(css).toMatch(/:global\(\.cm-codeblock-line-first\)\s*\{[^}]*border-radius:\s*2px 2px 0 0/);
     expect(css).toMatch(/:global\(\.cm-codeblock-line-last\)\s*\{[^}]*border-radius:\s*0 0 2px 2px/);
   });

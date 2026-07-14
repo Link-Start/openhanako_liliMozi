@@ -771,32 +771,20 @@
 }
 
 :global(.cm-blockquote-line) {
-    position: relative;
-    z-index: 0;
-    isolation: isolate;
-    padding-left: calc(1em + var(--space-12));
-    background: transparent;
-}
-
-:global(.cm-blockquote-line)::before {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    inset: 0 var(--space-12);
     border-left: 3px solid var(--accent);
+    padding-left: 1em;
     background: var(--overlay-subtle);
-    pointer-events: none;
 }
 
-:global(.cm-blockquote-line-first)::before {
+:global(.cm-blockquote-line-first) {
     border-radius: 2px 2px 0 0;
 }
 
-:global(.cm-blockquote-line-last)::before {
+:global(.cm-blockquote-line-last) {
     border-radius: 0 0 2px 2px;
 }
 
-:global(.cm-blockquote-line-first.cm-blockquote-line-last)::before {
+:global(.cm-blockquote-line-first.cm-blockquote-line-last) {
     border-radius: 2px;
 }
 
