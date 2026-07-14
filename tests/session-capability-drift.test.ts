@@ -374,12 +374,19 @@ describe("buildSessionCapabilityDrift", () => {
 });
 
 describe("repairRestoredToolSnapshotDetailed", () => {
-  it("maps legacy command tools while still reporting truly dropped names", () => {
+  it("maps legacy command tools while retaining unavailable names in the frozen contract", () => {
     const snapshot = ["read", "retired_tool", "bash", "terminal", "another_dead"];
     const all = ["read", "exec_command", "write_stdin", "edit"];
     const detailed = repairRestoredToolSnapshotDetailed(snapshot, all, { coreToolNames: [] });
     expect(detailed.toolNames).toEqual(repairRestoredToolSnapshot(snapshot, all, { coreToolNames: [] }));
     expect(detailed.toolNames).toEqual(["read", "exec_command", "write_stdin"]);
+    expect(detailed.contractToolNames).toEqual([
+      "read",
+      "retired_tool",
+      "exec_command",
+      "write_stdin",
+      "another_dead",
+    ]);
     expect(detailed.droppedToolNames).toEqual(["retired_tool", "another_dead"]);
   });
 

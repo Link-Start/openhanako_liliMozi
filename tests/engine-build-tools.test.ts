@@ -343,7 +343,7 @@ describe("HanaEngine.buildTools", () => {
     );
   });
 
-  it("passes the explicit buildTools session path into plugin tool runtime context", async () => {
+  it("passes the explicit buildTools SessionRef into plugin tool runtime context", async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-build-tools-plugin-session-"));
     const agentDir = path.join(tmpDir, "agents", "focus");
     const workspace = path.join(tmpDir, "workspace");
@@ -381,6 +381,10 @@ describe("HanaEngine.buildTools", () => {
       agentDir,
       workspace,
       getSessionPath: () => bridgeSessionPath,
+      getSessionRef: () => ({
+        sessionId: "sess_bridge_owner",
+        sessionPath: bridgeSessionPath,
+      }),
       getPermissionMode: () => "operate",
     });
     const pluginTool = customTools.find((tool) => tool.name === "plugin_tool");
@@ -393,7 +397,55 @@ describe("HanaEngine.buildTools", () => {
       {},
       undefined,
       expect.objectContaining({
+        sessionId: "sess_bridge_owner",
         sessionPath: bridgeSessionPath,
+        sessionRef: {
+          sessionId: "sess_bridge_owner",
+          sessionPath: bridgeSessionPath,
+        },
+      }),
+    );
+  });
+
+  it("passes the explicit buildTools SessionRef into agent tool runtime context", async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-build-tools-agent-session-"));
+    const agentDir = path.join(tmpDir, "agents", "focus");
+    const workspace = path.join(tmpDir, "workspace");
+    const sessionPath = path.join(agentDir, "sessions", "phone", "chat.jsonl");
+    const execute = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const agent = { id: "focus", agentDir, config: {}, tools: [] };
+
+    const engine = Object.create(HanaEngine.prototype);
+    engine.hanakoHome = tmpDir;
+    engine.getAgent = vi.fn(() => agent);
+    engine._pluginManager = null;
+    engine._prefs = { getFileBackup: () => ({ enabled: false }) };
+    engine._readPreferences = () => ({ sandbox: true });
+    engine._confirmStore = null;
+    engine._emitEvent = vi.fn();
+    engine.getSessionPermissionMode = vi.fn(() => "operate");
+    engine._agentMgr = { agent };
+
+    const sessionRef = { sessionId: "sess_phone", sessionPath };
+    const { customTools } = engine.buildTools(workspace, [{ name: "stage_files", execute }], {
+      agentDir,
+      workspace,
+      getSessionPath: () => sessionPath,
+      getSessionRef: () => sessionRef,
+      getPermissionMode: () => "operate",
+    });
+
+    await customTools.find((tool) => tool.name === "stage_files").execute("call-1", {}, {});
+
+    expect(execute).toHaveBeenCalledWith(
+      "call-1",
+      {},
+      {},
+      undefined,
+      expect.objectContaining({
+        sessionId: "sess_phone",
+        sessionPath,
+        sessionRef,
       }),
     );
   });

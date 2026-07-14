@@ -83,7 +83,142 @@ describe("SessionExecutionRegistry", () => {
       {},
       expect.objectContaining({ aborted: false }),
       undefined,
-      runtimeCtx,
+      expect.objectContaining({
+        sessionManager: runtimeCtx.sessionManager,
+        sessionId: "session-1",
+        sessionPath: "/tmp/session.jsonl",
+        sessionRef: {
+          sessionId: "session-1",
+          sessionPath: "/tmp/session.jsonl",
+        },
+      }),
     );
+  });
+
+  it("uses an explicit SessionRef without deriving identity from a locator", async () => {
+    const registry = new SessionExecutionRegistry();
+    const execute = vi.fn(async () => "done");
+    const getSessionIdForPath = vi.fn();
+    const [wrapped] = wrapWithSessionExecutionCancellation([{ name: "explicit_tool", execute }], {
+      registry,
+      getSessionRef: () => ({
+        sessionId: "session-explicit",
+        sessionPath: "/tmp/explicit.jsonl",
+      }),
+      getSessionIdForPath,
+    });
+
+    await wrapped.execute("call-1", {}, undefined, undefined, {});
+
+    expect(getSessionIdForPath).toHaveBeenCalledWith("/tmp/explicit.jsonl");
+    expect(execute).toHaveBeenCalledWith(
+      "call-1",
+      {},
+      expect.objectContaining({ aborted: false }),
+      undefined,
+      expect.objectContaining({
+        sessionId: "session-explicit",
+        sessionRef: {
+          sessionId: "session-explicit",
+          sessionPath: "/tmp/explicit.jsonl",
+        },
+      }),
+    );
+  });
+
+  it("fails closed when explicit identity conflicts with the locator owner", async () => {
+    const registry = new SessionExecutionRegistry();
+    const execute = vi.fn(async () => "done");
+    const [wrapped] = wrapWithSessionExecutionCancellation([{ name: "conflicted_tool", execute }], {
+      registry,
+      getSessionRef: () => ({
+        sessionId: "session-explicit",
+        sessionPath: "/tmp/conflicted.jsonl",
+      }),
+      getSessionIdForPath: () => "session-from-locator",
+    });
+
+    await expect(
+      wrapped.execute("call-1", {}, undefined, undefined, {}),
+    ).rejects.toMatchObject({ code: "session_identity_conflict" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when any explicit runtime or host locator disagrees", async () => {
+    const registry = new SessionExecutionRegistry();
+    const execute = vi.fn(async () => "done");
+    const [wrapped] = wrapWithSessionExecutionCancellation([{ name: "locator_conflict", execute }], {
+      registry,
+      getSessionRef: () => ({
+        sessionId: "session-one",
+        sessionPath: "/tmp/host.jsonl",
+      }),
+      getSessionId: () => "session-one",
+      getSessionPath: () => "/tmp/dependency.jsonl",
+      getSessionIdForPath: () => "session-one",
+    });
+
+    await expect(
+      wrapped.execute("call-1", {}, undefined, undefined, {
+        sessionId: "session-one",
+        sessionPath: "/tmp/context.jsonl",
+        sessionRef: {
+          sessionId: "session-one",
+          sessionPath: "/tmp/runtime.jsonl",
+        },
+        sessionManager: { getSessionFile: () => "/tmp/pi.jsonl" },
+      }),
+    ).rejects.toMatchObject({ code: "session_identity_conflict" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("treats normalized forms of the same locator as one identity", async () => {
+    const registry = new SessionExecutionRegistry();
+    const execute = vi.fn(async () => "done");
+    const [wrapped] = wrapWithSessionExecutionCancellation([{ name: "normalized_locator", execute }], {
+      registry,
+      getSessionRef: () => ({
+        sessionId: "session-one",
+        sessionPath: "/tmp/folder/../same.jsonl",
+      }),
+      getSessionPath: () => "/tmp/./same.jsonl",
+      getSessionIdForPath: () => "session-one",
+    });
+
+    await expect(
+      wrapped.execute("call-1", {}, undefined, undefined, {
+        sessionId: "session-one",
+        sessionPath: "/tmp/same.jsonl",
+        sessionManager: { getSessionFile: () => "/tmp/other/../same.jsonl" },
+      }),
+    ).resolves.toBe("done");
+    expect(execute).toHaveBeenCalledWith(
+      "call-1",
+      {},
+      expect.objectContaining({ aborted: false }),
+      undefined,
+      expect.objectContaining({
+        sessionPath: "/tmp/same.jsonl",
+        sessionRef: {
+          sessionId: "session-one",
+          sessionPath: "/tmp/same.jsonl",
+        },
+      }),
+    );
+  });
+
+  it("fails closed when a locator has no persistent identity", async () => {
+    const registry = new SessionExecutionRegistry();
+    const execute = vi.fn(async () => "done");
+    const [wrapped] = wrapWithSessionExecutionCancellation([{ name: "identity_required", execute }], {
+      registry,
+      getSessionPath: () => "/tmp/missing.jsonl",
+      getSessionIdForPath: () => null,
+    });
+
+    await expect(
+      wrapped.execute("call-1", {}, undefined, undefined, {}),
+    ).rejects.toThrow("Cannot execute identity_required: sessionId is unavailable");
+    expect(execute).not.toHaveBeenCalled();
   });
 });

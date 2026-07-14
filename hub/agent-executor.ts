@@ -56,6 +56,25 @@ function textOrNull(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function establishRuntimeSessionRef(engine, sessionPath, defaults, operation) {
+  if (!sessionPath) throw new Error(`${operation}: session locator unavailable before runtime assembly`);
+  if (typeof engine?.ensureSessionRefForPath !== "function") {
+    const error: any = new Error(`${operation}: session identity service is unavailable`);
+    error.code = "session_manifest_unavailable";
+    throw error;
+  }
+  const sessionRef = engine.ensureSessionRefForPath(sessionPath, defaults);
+  if (!sessionRef?.sessionId || !sessionRef?.sessionPath) {
+    throw new Error(`${operation}: SessionRef could not be established`);
+  }
+  if (path.resolve(sessionRef.sessionPath) !== path.resolve(sessionPath)) {
+    const error: any = new Error(`${operation}: runtime locator does not match SessionRef`);
+    error.code = "session_identity_conflict";
+    throw error;
+  }
+  return sessionRef;
+}
+
 function modelIdFromModel(model) {
   return textOrNull(model?.id ?? model?.modelId);
 }
@@ -206,90 +225,130 @@ export async function runAgentSession(agentId, rounds, { engine, signal, session
   const sessionDir = ephemeralDir || path.join(agentDir, "sessions", sessionSuffix);
   fs.mkdirSync(sessionDir, { recursive: true });
   const tempSessionMgr = SessionManager.create(cwd, sessionDir);
+  const tempSessionPath = tempSessionMgr?.getSessionFile?.() || null;
+  const sessionRef = establishRuntimeSessionRef(engine, tempSessionPath, {
+    ownerAgentId: agentId,
+    domain: "activity",
+    kind: keepSession ? "hub_kept" : "hub_temporary",
+    lifecycle: "active",
+    provenance: {
+      createdBy: "hub_agent_executor",
+      sessionSuffix,
+    },
+    locatorReason: "hub_session_create",
+  }, "runAgentSession");
 
-  // 工具模式：noTools = 无工具；readOnly 只影响执行权限，不裁剪 schema。
-  let tools, customTools;
-  if (noTools) {
-    tools = [];
-    customTools = [];
-  } else {
-    const agentToolsSnapshot = typeof agent.getToolsSnapshot === "function"
-      ? agent.getToolsSnapshot({
-        forceMemoryEnabled: agent.memoryMasterEnabled !== false,
-        ...(typeof agent.experienceEnabled === "boolean"
-          ? { forceExperienceEnabled: agent.experienceEnabled === true }
-          : {}),
-      })
-      : agent.tools;
-    const permissionMode = readOnly
-      ? SESSION_PERMISSION_MODES.READ_ONLY
-      : SESSION_PERMISSION_MODES.OPERATE;
-    const built = ctx.buildTools(cwd, agentToolsSnapshot, {
-      agentDir,
-      workspace: engine.getHomeCwd(agentId),
-      getSessionPath: () => tempSessionMgr?.getSessionFile?.() || null,
-      getPermissionMode: () => permissionMode,
-    });
-    tools = built.tools;
-    customTools = built.customTools;
-  }
-  const model = ctx.resolveModel(agent.config);
-  const { session } = await createAgentSession({
-    cwd,
-    sessionManager: tempSessionMgr,
-    settingsManager: createDefaultSettings(),
-    authStorage: ctx.authStorage,
-    modelRegistry: ctx.modelRegistry,
-    model,
-    thinkingLevel: "medium",
-    resourceLoader: tempResourceLoader,
-    tools,
-    customTools,
-  });
-
-  // 4. AbortSignal 连接
+  let session = null;
+  let unsub = null;
   let onAbort;
-  if (signal) {
-    onAbort = () => { try { session.abort(); } catch {} };
-    signal.addEventListener("abort", onAbort, { once: true });
-  }
-
-  // 5. 文本捕获
   let capturedText = "";
   let isCapturing = false;
-  const unsub = session.subscribe((event) => {
-    if (!isCapturing) return;
-    if (event.type === "message_update") {
-      const sub = event.assistantMessageEvent;
-      if (sub?.type === "text_delta") capturedText += sub.delta || "";
-    }
-  });
-
-  debugLog()?.log("agent-executor", `${agentId} session started (${rounds.length} rounds)`);
-
+  let executionError = null;
+  const cleanupErrors = [];
   try {
+    // 工具模式：noTools = 无工具；readOnly 只影响执行权限，不裁剪 schema。
+    let tools, customTools;
+    if (noTools) {
+      tools = [];
+      customTools = [];
+    } else {
+      const agentToolsSnapshot = typeof agent.getToolsSnapshot === "function"
+        ? agent.getToolsSnapshot({
+          forceMemoryEnabled: agent.memoryMasterEnabled !== false,
+          ...(typeof agent.experienceEnabled === "boolean"
+            ? { forceExperienceEnabled: agent.experienceEnabled === true }
+            : {}),
+        })
+        : agent.tools;
+      const permissionMode = readOnly
+        ? SESSION_PERMISSION_MODES.READ_ONLY
+        : SESSION_PERMISSION_MODES.OPERATE;
+      const built = ctx.buildTools(cwd, agentToolsSnapshot, {
+        agentDir,
+        workspace: engine.getHomeCwd(agentId),
+        getSessionPath: () => tempSessionMgr?.getSessionFile?.() || null,
+        getSessionRef: () => sessionRef,
+        getPermissionMode: () => permissionMode,
+      });
+      tools = built.tools;
+      customTools = built.customTools;
+    }
+    const model = ctx.resolveModel(agent.config);
+    const created = await createAgentSession({
+      cwd,
+      sessionManager: tempSessionMgr,
+      settingsManager: createDefaultSettings(),
+      authStorage: ctx.authStorage,
+      modelRegistry: ctx.modelRegistry,
+      model,
+      thinkingLevel: "medium",
+      resourceLoader: tempResourceLoader,
+      tools,
+      customTools,
+    });
+    session = created.session;
+    const activeSessionPath = session.sessionManager?.getSessionFile?.() || null;
+    if (!activeSessionPath || path.resolve(activeSessionPath) !== path.resolve(sessionRef.sessionPath)) {
+      const error: any = new Error("runAgentSession: runtime locator does not match SessionRef");
+      error.code = "session_identity_conflict";
+      throw error;
+    }
+
+    if (signal) {
+      onAbort = () => { try { session.abort(); } catch {} };
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+    unsub = session.subscribe((event) => {
+      if (!isCapturing) return;
+      if (event.type === "message_update") {
+        const sub = event.assistantMessageEvent;
+        if (sub?.type === "text_delta") capturedText += sub.delta || "";
+      }
+    });
+
+    debugLog()?.log("agent-executor", `${agentId} session started (${rounds.length} rounds)`);
     for (const round of rounds) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       isCapturing = !!round.capture;
       if (round.capture) capturedText = "";
       await session.prompt(round.text);
     }
+  } catch (err) {
+    executionError = err;
   } finally {
-    if (signal && onAbort) signal.removeEventListener("abort", onAbort);
-    await teardownSessionResources({
-      session,
-      unsub,
-      label: `hub.runAgentSession[${agentId}]`,
-      warn: (msg) => debugLog()?.warn("agent-executor", msg),
-    });
+    try {
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+    } catch (err) {
+      cleanupErrors.push(err);
+    }
+    try {
+      if (session) await teardownSessionResources({
+        session,
+        unsub,
+        label: `hub.runAgentSession[${agentId}]`,
+        warn: (msg) => debugLog()?.warn("agent-executor", msg),
+      });
+    } catch (err) {
+      cleanupErrors.push(err);
+    }
+    if (!keepSession) {
+      try {
+        engine.tombstoneSessionRef(sessionRef, "hub_temporary_cleanup");
+      } catch (err) {
+        cleanupErrors.push(err);
+      }
+      try {
+        fs.unlinkSync(sessionRef.sessionPath);
+      } catch (err) {
+        if (err?.code !== "ENOENT") cleanupErrors.push(err);
+      }
+    }
   }
 
-  // 6. 清理临时 session 文件（keepSession=true 时保留，供 DM 等场景存档）
-  if (!keepSession) {
-    const sessionPath = session.sessionManager?.getSessionFile?.();
-    if (sessionPath) {
-      try { fs.unlinkSync(sessionPath); } catch {}
-    }
+  const failures = [...(executionError ? [executionError] : []), ...cleanupErrors];
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, `hub.runAgentSession[${agentId}] cleanup failed`);
   }
 
   // 7. 去掉已闭合的内省块（backtick 和 XML 两种格式，一次过）。
@@ -362,6 +421,19 @@ export async function runAgentPhoneSession(agentId, rounds, {
   const sessionManager = openedExistingSession && existingSessionPath
     ? SessionManager.open(existingSessionPath, sessionDir)
     : SessionManager.create(cwd, sessionDir);
+  const identityPath = sessionManager?.getSessionFile?.() || null;
+  const sessionRef = establishRuntimeSessionRef(engine, identityPath, {
+    ownerAgentId: agentId,
+    domain: "phone",
+    kind: "phone_conversation",
+    lifecycle: "active",
+    provenance: {
+      createdBy: "agent_phone",
+      conversationId,
+      conversationType,
+    },
+    locatorReason: openedExistingSession ? "phone_session_restore" : "phone_session_create",
+  }, "runAgentPhoneSession");
 
   const agentToolsSnapshot = typeof agent.getToolsSnapshot === "function"
     ? agent.getToolsSnapshot({
@@ -376,6 +448,7 @@ export async function runAgentPhoneSession(agentId, rounds, {
     agentDir,
     workspace: engine.getHomeCwd(agentId),
     getSessionPath: () => sessionManager?.getSessionFile?.() || null,
+    getSessionRef: () => sessionRef,
     getPermissionMode: () => phonePermissionMode,
     // 拦截分层（#1614）：标记 conversation surface，read_only 拦截时错误提示
     // 指向"会话设置面板可切换"而非通用 plan 模式提示。
@@ -417,17 +490,39 @@ export async function runAgentPhoneSession(agentId, rounds, {
     tools,
     customTools: sessionCustomTools,
   });
-  session.setActiveToolsByName?.(activeToolNames);
+  let sessionPath = null;
+  let usageLedger = null;
+  let unregisterPhoneAbort = () => {};
+  let onAbort;
+  let capturedText = "";
+  let isCapturing = false;
+  let lastLiveActivity = null;
+  let toolCallCount = 0;
+  const toolCallNames = [];
+  let lastPromptResult = null;
+  const recordLiveActivity = (key, state, summary, details = {}) => {
+    if (!isCapturing || lastLiveActivity === key) return;
+    lastLiveActivity = key;
+    Promise.resolve(onActivity?.(state, summary, details)).catch(() => {});
+  };
+  let unsub = null;
 
-  const sessionPath = session.sessionManager?.getSessionFile?.();
-  const usageLedger = engine.usageLedger || engine.getUsageLedger?.() || null;
-  const unregisterPhoneAbort = engine.registerAgentPhoneAbortHandler?.(
-    () => {
-      try { session.abort?.(); } catch {}
-    },
-    { agentId, conversationId, conversationType, sessionPath: sessionPath || null },
-  ) || (() => {});
-  if (sessionPath) {
+  try {
+    session.setActiveToolsByName?.(activeToolNames);
+    sessionPath = session.sessionManager?.getSessionFile?.() || null;
+    if (!sessionPath || path.resolve(sessionPath) !== path.resolve(sessionRef.sessionPath)) {
+      const error: any = new Error("runAgentPhoneSession: runtime locator does not match SessionRef");
+      error.code = "session_identity_conflict";
+      throw error;
+    }
+    usageLedger = engine.usageLedger || engine.getUsageLedger?.() || null;
+    unregisterPhoneAbort = engine.registerAgentPhoneAbortHandler?.(
+      () => {
+        try { session.abort?.(); } catch {}
+      },
+      { agentId, conversationId, conversationType, sessionPath },
+    ) || (() => {});
+
     await updateAgentPhoneRuntime({
       agentDir,
       agentId,
@@ -460,62 +555,47 @@ export async function runAgentPhoneSession(agentId, rounds, {
       timestamp: refreshNow.toISOString(),
     });
     try { await onSessionReady?.(sessionPath); } catch {}
-  }
 
-  let onAbort;
-  if (signal) {
-    onAbort = () => { try { session.abort(); } catch {} };
-    signal.addEventListener("abort", onAbort, { once: true });
-  }
+    if (signal) {
+      onAbort = () => { try { session.abort(); } catch {} };
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
 
-  let capturedText = "";
-  let isCapturing = false;
-  let lastLiveActivity = null;
-  let toolCallCount = 0;
-  const toolCallNames = [];
-  let lastPromptResult = null;
-  const recordLiveActivity = (key, state, summary, details = {}) => {
-    if (!isCapturing || lastLiveActivity === key) return;
-    lastLiveActivity = key;
-    Promise.resolve(onActivity?.(state, summary, details)).catch(() => {});
-  };
-  const unsub = session.subscribe((event) => {
-    recordAgentPhoneAssistantUsage({
-      ledger: usageLedger,
-      event,
-      sessionPath,
-      agentId,
-      conversationId,
-      conversationType,
-      model,
+    unsub = session.subscribe((event) => {
+      recordAgentPhoneAssistantUsage({
+        ledger: usageLedger,
+        event,
+        sessionPath,
+        agentId,
+        conversationId,
+        conversationType,
+        model,
+      });
+      if (emitEvents && sessionPath && isCapturing) {
+        engine.emitEvent?.({ ...event, isolated: true }, sessionPath);
+      }
+      if (!isCapturing) return;
+      if (event.type === "message_update") {
+        const sub = event.assistantMessageEvent;
+        if (sub?.type === "thinking_delta") {
+          recordLiveActivity("thinking", "thinking", "正在思考");
+        }
+        if (sub?.type === "text_delta") {
+          recordLiveActivity("composing", "replying", "正在准备回复");
+        }
+        if (sub?.type === "text_delta") capturedText += sub.delta || "";
+      } else if (event.type === "tool_execution_start") {
+        toolCallCount++;
+        if (event.toolName) toolCallNames.push(event.toolName);
+        if (event.toolName === "channel_reply") {
+          recordLiveActivity("channel_reply", "replying", "正在发送频道消息");
+        } else if (event.toolName === "channel_pass") {
+          recordLiveActivity("channel_pass", "no_reply", "正在选择本轮不发言");
+        }
+      }
     });
-    if (emitEvents && sessionPath && isCapturing) {
-      engine.emitEvent?.({ ...event, isolated: true }, sessionPath);
-    }
-    if (!isCapturing) return;
-    if (event.type === "message_update") {
-      const sub = event.assistantMessageEvent;
-      if (sub?.type === "thinking_delta") {
-        recordLiveActivity("thinking", "thinking", "正在思考");
-      }
-      if (sub?.type === "text_delta") {
-        recordLiveActivity("composing", "replying", "正在准备回复");
-      }
-      if (sub?.type === "text_delta") capturedText += sub.delta || "";
-    } else if (event.type === "tool_execution_start") {
-      toolCallCount++;
-      if (event.toolName) toolCallNames.push(event.toolName);
-      if (event.toolName === "channel_reply") {
-        recordLiveActivity("channel_reply", "replying", "正在发送频道消息");
-      } else if (event.toolName === "channel_pass") {
-        recordLiveActivity("channel_pass", "no_reply", "正在选择本轮不发言");
-      }
-    }
-  });
 
-  debugLog()?.log("agent-executor", `${agentId} phone session started (${conversationType}:${conversationId}, ${rounds.length} rounds)`);
-
-  try {
+    debugLog()?.log("agent-executor", `${agentId} phone session started (${conversationType}:${conversationId}, ${rounds.length} rounds)`);
     for (const round of rounds) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       isCapturing = !!round.capture;

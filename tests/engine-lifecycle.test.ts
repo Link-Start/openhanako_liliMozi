@@ -170,11 +170,15 @@ describe("HanaEngine extension factories", () => {
     });
     engine._sessionCoord = {
       reloadExtensionRunners: vi.fn().mockResolvedValue({ reloaded: 1, skipped: 0, failed: 0 }),
+      markCapabilitySnapshotsStale: vi.fn(),
     };
 
     await engine.syncPluginExtensions();
 
     expect(engine._sessionCoord.reloadExtensionRunners).not.toHaveBeenCalled();
+    expect(engine._sessionCoord.markCapabilitySnapshotsStale).toHaveBeenCalledWith({
+      reason: "plugin.lifecycle.changed",
+    });
   });
 });
 

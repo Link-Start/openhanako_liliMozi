@@ -1,4 +1,4 @@
-import { getToolSessionPath } from "./tools/tool-session.ts";
+import { getToolSessionPath, resolveToolSessionRef } from "./tools/tool-session.ts";
 
 function nonEmptyText(value: any): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -92,22 +92,30 @@ export function wrapWithSessionExecutionCancellation(tools: any[] = [], deps: an
         const upstreamSignal = isAbortSignalLike(signal) ? signal : null;
         const sessionPath = getToolSessionPath(runtimeCtx)
           || runtimeCtx?.sessionPath
+          || deps.getSessionRef?.()?.sessionPath
           || deps.getSessionPath?.()
           || null;
-        if (!sessionPath) return tool.execute(toolCallId, params, signal, onUpdate, ctx);
-
-        const sessionId = deps.getSessionIdForPath?.(sessionPath);
-        if (!nonEmptyText(sessionId)) {
+        const sessionRef = resolveToolSessionRef(runtimeCtx, deps);
+        if (!sessionRef && !sessionPath) {
+          return tool.execute(toolCallId, params, signal, onUpdate, ctx);
+        }
+        if (!nonEmptyText(sessionRef?.sessionId)) {
           throw new Error(`Cannot execute ${tool.name || "tool"}: sessionId is unavailable`);
         }
+        const enrichedRuntimeCtx = {
+          ...(runtimeCtx || {}),
+          sessionId: sessionRef.sessionId,
+          sessionRef,
+          ...(sessionRef.sessionPath ? { sessionPath: sessionRef.sessionPath } : {}),
+        };
         const execution = deps.registry.begin({
-          sessionId,
+          sessionId: sessionRef.sessionId,
           toolName: tool.name,
           toolCallId,
           signal: upstreamSignal,
         });
         try {
-          return await tool.execute(toolCallId, params, execution.signal, onUpdate, runtimeCtx);
+          return await tool.execute(toolCallId, params, execution.signal, onUpdate, enrichedRuntimeCtx);
         } finally {
           execution.release();
         }

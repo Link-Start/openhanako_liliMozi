@@ -44,6 +44,46 @@ describe("HanaEngine session manifest facade", () => {
     expect(engine.getSessionIdForPath(sessionPath)).toBe(manifest.sessionId);
   });
 
+  it("establishes one explicit SessionRef before non-desktop runtimes start", () => {
+    const sessionPath = path.join(tmpDir, "agents", "hana", "sessions", "bridge", "owner", "alpha.jsonl");
+    fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+    fs.writeFileSync(sessionPath, "");
+
+    const first = engine.ensureSessionRefForPath(sessionPath, {
+      ownerAgentId: "hana",
+      domain: "bridge",
+      kind: "bridge_owner",
+      provenance: { createdBy: "bridge" },
+    });
+    const second = engine.ensureSessionRefForPath(sessionPath, {
+      ownerAgentId: "hana",
+      domain: "bridge",
+      kind: "bridge_owner",
+    });
+
+    expect(second).toEqual(first);
+    expect(store.getBySessionId(first.sessionId)).toMatchObject({
+      ownerAgentId: "hana",
+      domain: "bridge",
+      kind: "bridge_owner",
+      currentLocator: { path: path.resolve(sessionPath) },
+    });
+  });
+
+  it("tombstones short-lived runtime identity before its locator is removed", () => {
+    const sessionPath = path.join(tmpDir, "agents", "hana", "sessions", "temp", "alpha.jsonl");
+    fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+    fs.writeFileSync(sessionPath, "");
+    const sessionRef = engine.ensureSessionRefForPath(sessionPath, {
+      ownerAgentId: "hana",
+      domain: "activity",
+      kind: "hub_temporary",
+    });
+
+    expect(engine.tombstoneSessionRef(sessionRef, "test_cleanup")).toEqual(sessionRef);
+    expect(store.getBySessionId(sessionRef.sessionId)).toMatchObject({ lifecycle: "deleted" });
+  });
+
   it("treats conflicted path lookups as unavailable instead of throwing through nullable facades", () => {
     const firstPath = path.join(tmpDir, "agents", "hana", "sessions", "first.jsonl");
     const secondPath = path.join(tmpDir, "agents", "hana", "sessions", "second.jsonl");

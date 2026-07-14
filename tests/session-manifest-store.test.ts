@@ -245,6 +245,173 @@ describe("SessionManifestStore", () => {
     expect(store.backfillOwnerAgentId(a.sessionId, "").ownerAgentId).toBe("carol");     // 空值 no-op
   });
 
+  it("repairs only known legacy metadata without changing identity or user-owned state", () => {
+    const sessionPath = createSessionFile("legacy-subagent");
+    const manifest = store.createForPath({
+      sessionPath,
+      ownerAgentId: null,
+      domain: "desktop",
+      kind: "chat",
+      lifecycle: "active",
+      pinnedAt: "2026-06-18T00:10:00.000Z",
+      workspaceScope: { primaryCwd: tmpDir, workspaceFolders: [tmpDir] },
+      provenance: { legacyAgentId: "hana" },
+      migration: {
+        source: "legacy_scan",
+        legacySessionPath: sessionPath,
+        migratedAt: "2026-06-18T00:00:00.000Z",
+      },
+    });
+
+    const repaired = store.repairLegacyScanMetadata(manifest.sessionId, {
+      ownerAgentId: "butter",
+      domain: "subagent",
+      kind: "subagent_child",
+      provenance: {
+        createdBy: "subagent",
+        threadId: "thread-1",
+        threadKind: "direct",
+      },
+      migration: {
+        source: "legacy_scan",
+        legacySessionFileName: path.basename(sessionPath),
+        legacySources: ["subagent_thread_store", "subagent_session_layout"],
+      },
+    });
+    const repeated = store.repairLegacyScanMetadata(manifest.sessionId, {
+      ownerAgentId: "butter",
+      domain: "subagent",
+      kind: "subagent_child",
+      provenance: {
+        createdBy: "subagent",
+        threadId: "thread-1",
+        threadKind: "direct",
+      },
+      migration: {
+        source: "legacy_scan",
+        legacySessionFileName: path.basename(sessionPath),
+        legacySources: ["subagent_session_layout", "subagent_thread_store"],
+      },
+    });
+
+    expect(repaired).toMatchObject({
+      sessionId: manifest.sessionId,
+      ownerAgentId: "butter",
+      domain: "subagent",
+      kind: "subagent_child",
+      lifecycle: "active",
+      pinnedAt: "2026-06-18T00:10:00.000Z",
+      workspaceScope: { primaryCwd: tmpDir, workspaceFolders: [tmpDir] },
+      currentLocator: { path: path.resolve(sessionPath) },
+      provenance: {
+        legacyAgentId: "hana",
+        createdBy: "subagent",
+        threadId: "thread-1",
+        threadKind: "direct",
+      },
+      migration: {
+        source: "legacy_scan",
+        legacySessionPath: sessionPath,
+        legacySessionFileName: path.basename(sessionPath),
+        legacySources: ["subagent_session_layout", "subagent_thread_store"],
+      },
+    });
+    expect(repeated).toEqual(repaired);
+    expect(store.list()).toHaveLength(1);
+    expect(store.getLocatorHistory(manifest.sessionId)).toEqual([]);
+  });
+
+  it("legacy metadata repair does not overwrite fresh or already-specific data", () => {
+    const freshPath = createSessionFile("fresh-phone");
+    const fresh = store.createForPath({
+      sessionPath: freshPath,
+      ownerAgentId: "hana",
+      domain: "phone",
+      kind: "phone_conversation",
+      provenance: { createdBy: "agent_phone", conversationId: "dm_yui" },
+      migration: {},
+    });
+    const legacySpecificPath = createSessionFile("legacy-specific");
+    const legacySpecific = store.createForPath({
+      sessionPath: legacySpecificPath,
+      ownerAgentId: "hana",
+      domain: "activity",
+      kind: "activity",
+      provenance: { createdBy: "activity", activityId: "hb_1" },
+      migration: { source: "legacy_scan", legacySessionPath: legacySpecificPath },
+    });
+
+    expect(store.repairLegacyScanMetadata(fresh.sessionId, {
+      ownerAgentId: "mallory",
+      domain: "bridge",
+      kind: "bridge_owner",
+      provenance: { createdBy: "bridge", bridgeSessionKey: "tg_dm_x" },
+      migration: { source: "legacy_scan", legacySources: ["bridge_index"] },
+    })).toEqual(fresh);
+
+    const kept = store.repairLegacyScanMetadata(legacySpecific.sessionId, {
+      ownerAgentId: "mallory",
+      domain: "subagent",
+      kind: "subagent_child",
+      provenance: { createdBy: "subagent", activityId: "wrong", threadId: "thread-x" },
+      migration: { source: "legacy_scan", legacySources: ["subagent_thread_store"] },
+    });
+    expect(kept).toMatchObject({
+      ownerAgentId: "hana",
+      domain: "activity",
+      kind: "activity",
+      provenance: {
+        createdBy: "activity",
+        activityId: "hb_1",
+      },
+      migration: {
+        source: "legacy_scan",
+        legacySessionPath: legacySpecificPath,
+      },
+    });
+  });
+
+  it("repairs resolver-on-demand defaults but preserves its receipt", () => {
+    const sessionPath = createSessionFile("resolver-bridge");
+    const manifest = store.createForPath({
+      sessionPath,
+      domain: "home",
+      kind: "chat",
+      provenance: {},
+      migration: {
+        legacySessionPath: sessionPath,
+        createdBy: "resolver_on_demand",
+      },
+    });
+
+    const repaired = store.repairLegacyScanMetadata(manifest.sessionId, {
+      ownerAgentId: "hana",
+      domain: "bridge",
+      kind: "bridge_owner",
+      provenance: { createdBy: "bridge", bridgeSessionKey: "tg_dm_owner@hana" },
+      migration: {
+        source: "legacy_scan",
+        legacySessionFileName: path.basename(sessionPath),
+        legacySources: ["legacy_bridge_index"],
+      },
+    });
+
+    expect(repaired).toMatchObject({
+      sessionId: manifest.sessionId,
+      ownerAgentId: "hana",
+      domain: "bridge",
+      kind: "bridge_owner",
+      provenance: { createdBy: "bridge", bridgeSessionKey: "tg_dm_owner@hana" },
+      migration: {
+        createdBy: "resolver_on_demand",
+        source: "legacy_scan",
+        legacySessionPath: sessionPath,
+        legacySessionFileName: path.basename(sessionPath),
+        legacySources: ["legacy_bridge_index"],
+      },
+    });
+  });
+
   it("persists migration state in the manifest database", () => {
     expect(store.getState("legacy-session-manifest-scan-v1")).toBeNull();
 

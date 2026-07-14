@@ -48,6 +48,15 @@ describe("session manifest legacy migration", () => {
     return { sessionDir, sessionPath };
   }
 
+  function writeJsonl(sessionPath) {
+    fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+    fs.writeFileSync(sessionPath, [
+      JSON.stringify({ type: "session", version: 3, id: path.basename(sessionPath), timestamp: "2026-06-18T03:00:00.000Z", cwd: hanaHome }),
+      "",
+    ].join("\n"));
+    return sessionPath;
+  }
+
   function linkDirectory(target, linkPath) {
     fs.symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
   }
@@ -237,6 +246,175 @@ describe("session manifest legacy migration", () => {
       executorMetaVersion: 1,
       source: "legacy_session_meta",
     });
+  });
+
+  it("migrates bridge, activity, phone, direct-subagent, and workflow-node sources with explicit classification", () => {
+    const agentDir = path.join(hanaHome, "agents", "hana");
+    const bridgeDir = path.join(agentDir, "sessions", "bridge");
+    const bridgeOwner = writeJsonl(path.join(bridgeDir, "owner", "owner.jsonl"));
+    const bridgeGuest = writeJsonl(path.join(bridgeDir, "guests", "guest.jsonl"));
+    fs.writeFileSync(path.join(bridgeDir, "bridge-sessions.json"), JSON.stringify({
+      "tg_dm_owner@hana": {
+        file: "owner/owner.jsonl",
+        role: "owner",
+        platform: "telegram",
+        chatType: "dm",
+        promptSnapshot: { version: 1, systemPrompt: "bridge prompt" },
+        toolNames: ["read", "media_generate-image"],
+      },
+      "tg_group_guest@hana": {
+        file: "guests/guest.jsonl",
+        role: "guest",
+        platform: "telegram",
+        chatType: "group",
+      },
+    }, null, 2));
+
+    const activityPath = writeJsonl(path.join(agentDir, "activity", "heartbeat.jsonl"));
+    fs.mkdirSync(path.join(agentDir, "desk"), { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "desk", "activities.json"), JSON.stringify([{
+      id: "hb_1",
+      type: "heartbeat",
+      sessionFile: "heartbeat.jsonl",
+    }], null, 2));
+
+    const phonePath = writeJsonl(path.join(agentDir, "phone", "sessions", "dm_yui-a1b2c3d4", "phone.jsonl"));
+    fs.mkdirSync(path.join(agentDir, "phone", "session-runtime"), { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "phone", "session-runtime", "dm_yui-a1b2c3d4.json"), JSON.stringify({
+      agentId: "hana",
+      conversationId: "dm_yui",
+      conversationType: "dm",
+      phoneSessionFile: "phone/sessions/dm_yui-a1b2c3d4/phone.jsonl",
+      promptSnapshot: { version: 1, systemPrompt: "phone prompt" },
+    }, null, 2));
+
+    const directPath = writeJsonl(path.join(agentDir, "subagent-sessions", "direct", "child.jsonl"));
+    const workflowPath = writeJsonl(path.join(agentDir, "workflow-sessions", "workflow-1", "node.jsonl"));
+    fs.writeFileSync(path.join(hanaHome, "subagent-threads.json"), JSON.stringify({
+      schemaVersion: 1,
+      threads: {
+        "thread-direct": {
+          kind: "direct",
+          agentId: "butter",
+          parentSessionId: "sess_parent_direct",
+          childSessionPath: directPath,
+          childSessionId: null,
+        },
+        "workflow-1::node-1": {
+          kind: "workflow_node",
+          agentId: "hana",
+          parentSessionId: "sess_parent_workflow",
+          parentTaskId: "workflow-1",
+          childSessionPath: workflowPath,
+          childSessionId: null,
+        },
+      },
+    }, null, 2));
+
+    const result = migrateLegacySessions({
+      hanaHome,
+      store,
+      migratedAt: "2026-06-18T03:02:00.000Z",
+    });
+
+    expect(result).toEqual({ scanned: 6, created: 6, existing: 0, skipped: 0, skippedDetails: [] });
+    expect(store.resolveByLocatorPath(bridgeOwner)).toMatchObject({
+      ownerAgentId: "hana",
+      domain: "bridge",
+      kind: "bridge_owner",
+      provenance: {
+        createdBy: "bridge",
+        bridgeSessionKey: "tg_dm_owner@hana",
+        bridgeRole: "owner",
+        platform: "telegram",
+      },
+    });
+    expect(store.resolveByLocatorPath(bridgeGuest)).toMatchObject({
+      ownerAgentId: "hana",
+      domain: "bridge",
+      kind: "bridge_guest",
+      provenance: {
+        createdBy: "bridge",
+        bridgeSessionKey: "tg_group_guest@hana",
+        bridgeRole: "guest",
+      },
+    });
+    expect(store.getCapabilitySnapshot(store.resolveByLocatorPath(bridgeOwner).sessionId)).toMatchObject({
+      toolNames: ["read", "media_generate-image"],
+      promptSnapshot: { systemPrompt: "bridge prompt" },
+      source: "legacy_bridge_index",
+    });
+    expect(store.resolveByLocatorPath(activityPath)).toMatchObject({
+      ownerAgentId: "hana",
+      domain: "activity",
+      kind: "activity",
+      provenance: { createdBy: "activity", activityId: "hb_1", activityType: "heartbeat" },
+    });
+    expect(store.resolveByLocatorPath(phonePath)).toMatchObject({
+      ownerAgentId: "hana",
+      domain: "phone",
+      kind: "phone_conversation",
+      provenance: { createdBy: "agent_phone", conversationId: "dm_yui", conversationType: "dm" },
+    });
+    expect(store.resolveByLocatorPath(directPath)).toMatchObject({
+      ownerAgentId: "butter",
+      domain: "subagent",
+      kind: "subagent_child",
+      provenance: {
+        createdBy: "subagent",
+        parentSessionId: "sess_parent_direct",
+        threadId: "thread-direct",
+        threadKind: "direct",
+      },
+    });
+    expect(store.resolveByLocatorPath(workflowPath)).toMatchObject({
+      ownerAgentId: "hana",
+      domain: "subagent",
+      kind: "subagent_child",
+      provenance: {
+        createdBy: "subagent",
+        parentSessionId: "sess_parent_workflow",
+        parentRunId: "workflow-1",
+        threadId: "workflow-1::node-1",
+        threadKind: "workflow_node",
+      },
+    });
+  });
+
+  it("preserves sessionId while repairing manifests misclassified by the previous legacy scan", () => {
+    const directPath = writeJsonl(path.join(hanaHome, "agents", "hana", "subagent-sessions", "direct", "legacy-child.jsonl"));
+    fs.writeFileSync(path.join(hanaHome, "subagent-threads.json"), JSON.stringify({
+      schemaVersion: 1,
+      threads: {
+        "legacy-thread": {
+          kind: "direct",
+          agentId: "butter",
+          childSessionPath: directPath,
+        },
+      },
+    }, null, 2));
+    const existing = store.createForPath({
+      sessionPath: directPath,
+      ownerAgentId: "hana",
+      domain: "desktop",
+      kind: "chat",
+      provenance: { legacyAgentId: "hana" },
+      migration: { source: "legacy_scan", legacySessionPath: directPath },
+    });
+
+    const first = migrateLegacySessions({ hanaHome, store, migratedAt: "2026-06-18T03:02:00.000Z" });
+    const second = migrateLegacySessions({ hanaHome, store, migratedAt: "2026-06-18T03:03:00.000Z" });
+
+    expect(first).toEqual({ scanned: 1, created: 0, existing: 1, skipped: 0, skippedDetails: [] });
+    expect(second).toEqual({ scanned: 1, created: 0, existing: 1, skipped: 0, skippedDetails: [] });
+    expect(store.resolveByLocatorPath(directPath)).toMatchObject({
+      sessionId: existing.sessionId,
+      ownerAgentId: "butter",
+      domain: "subagent",
+      kind: "subagent_child",
+      provenance: { legacyAgentId: "hana", createdBy: "subagent" },
+    });
+    expect(store.list()).toHaveLength(1);
   });
 
   it("is idempotent when rerun over the same legacy files", () => {

@@ -43,7 +43,11 @@ import { DefaultResourceLoader, SettingsManager } from "../lib/pi-sdk/index.ts";
 import { compactSessionWithCachePreservationRecoveringRuntime } from "./session-compactor.ts";
 import { getFreshCompactNoopReason } from "../lib/fresh-compact/policy.ts";
 import { DeferredResultCoordinator } from "../lib/deferred-result-coordinator.ts";
-import { getToolSessionPath, normalizeToolRuntimeContext } from "../lib/tools/tool-session.ts";
+import {
+  getToolSessionPath,
+  normalizeToolRuntimeContext,
+  resolveToolSessionRef,
+} from "../lib/tools/tool-session.ts";
 import { loadLocale } from "../lib/i18n.ts";
 import { createApprovalGateway, createModelApprovalReviewer } from "../lib/approval-gateway.ts";
 import { callText } from "./llm-client.ts";
@@ -119,6 +123,7 @@ import { VisionBridge } from "./vision-bridge.ts";
 import { SessionCoordinator } from "./session-coordinator.ts";
 import { SessionManifestResolver } from "./session-manifest/resolver.ts";
 import { SessionManifestStore } from "./session-manifest/store.ts";
+import { ensureSessionRefForPath as establishSessionRefForPath } from "./session-manifest/ref.ts";
 import { ensureLegacySessionManifestMigration } from "./session-manifest/startup-migration.ts";
 import {
   moveSessionManifestDbFilesAside,
@@ -508,6 +513,7 @@ export class HanaEngine {
       getSessionFile: (fileId, options) => this.getSessionFile(fileId, options),
       getSessionFileByPath: (filePath, options) => this.getSessionFileByPath(filePath, options),
       getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath),
+      ensureSessionRefForPath: (sessionPath, defaults) => this.ensureSessionRefForPath(sessionPath, defaults),
       beginCurrentTurnNativeMedia: (sessionPath, opts) => this.beginCurrentTurnNativeMedia(sessionPath, opts),
       endCurrentTurnNativeMedia: (token) => this.endCurrentTurnNativeMedia(token),
       emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
@@ -1014,6 +1020,48 @@ export class HanaEngine {
       throw error;
     }
     return this._sessionManifestResolver.resolve(ref, opts);
+  }
+  ensureSessionRefForPath(sessionPath, defaults: any = {}) {
+    return establishSessionRefForPath(this._sessionManifestStore, sessionPath, defaults);
+  }
+  tombstoneSessionRef(sessionRef, reason = "session_cleanup") {
+    const sessionId = typeof sessionRef?.sessionId === "string" && sessionRef.sessionId.trim()
+      ? sessionRef.sessionId.trim()
+      : null;
+    if (!this._sessionManifestStore) {
+      const error: any = new Error("Session manifest store is unavailable.");
+      error.code = "session_manifest_unavailable";
+      throw error;
+    }
+    if (!sessionId) {
+      const error: any = new Error("tombstoneSessionRef requires sessionId");
+      error.code = "session_manifest_ref_required";
+      throw error;
+    }
+    const manifest = this._sessionManifestStore.getBySessionId(sessionId);
+    if (!manifest) {
+      const error: any = new Error(`Session manifest not found for sessionId=${sessionId}`);
+      error.code = "session_manifest_not_found";
+      throw error;
+    }
+    if (manifest.lifecycle === "deleted") {
+      return {
+        sessionId,
+        sessionPath: manifest.currentLocator?.path || sessionRef?.sessionPath || null,
+      };
+    }
+    const sessionPath = manifest.currentLocator?.path || sessionRef?.sessionPath || null;
+    if (!sessionPath) throw new Error(`tombstoneSessionRef: locator unavailable for ${sessionId}`);
+    const updated = this._sessionManifestStore.updateLocatorLifecycle(
+      sessionId,
+      sessionPath,
+      "deleted",
+      reason,
+    );
+    return {
+      sessionId,
+      sessionPath: updated?.currentLocator?.path || sessionPath,
+    };
   }
   getSessionManifest(sessionId) {
     return this._sessionManifestStore?.getBySessionId(sessionId) || null;
@@ -2265,6 +2313,7 @@ export class HanaEngine {
   async syncPluginExtensions() {
     this._syncExtensionFactories();
     await this._reloadResourceLoaderForExtensionFactories();
+    this._sessionCoord?.markCapabilitySnapshotsStale?.({ reason: "plugin.lifecycle.changed" });
   }
 
   // ════════════════════════════
@@ -2296,6 +2345,18 @@ export class HanaEngine {
     const getSessionPath = typeof opts.getSessionPath === "function"
       ? opts.getSessionPath
       : (() => null);
+    const getSessionRef = typeof opts.getSessionRef === "function"
+      ? opts.getSessionRef
+      : (() => null);
+    const getSessionId = typeof opts.getSessionId === "function"
+      ? opts.getSessionId
+      : (() => null);
+    const resolveRuntimeSessionRef = (runtimeCtx) => resolveToolSessionRef(runtimeCtx, {
+      getSessionRef,
+      getSessionId,
+      getSessionPath,
+      getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath),
+    });
     const allowHumanApproval = opts.allowHumanApproval !== false;
     const approvalPolicy = opts.approvalPolicy
       || (allowHumanApproval ? SESSION_APPROVAL_POLICIES.INTERACTIVE : SESSION_APPROVAL_POLICIES.DENY_ON_PROMPT);
@@ -2314,12 +2375,15 @@ export class HanaEngine {
         ...tool,
         execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx) => {
           const { ctx: runtimeCtx } = normalizeToolRuntimeContext(signalOrRuntimeCtx, piCtx);
-          const sessionPath = runtimeCtx?.sessionPath
+          const runtimeSessionPath = runtimeCtx?.sessionPath
             || getToolSessionPath(runtimeCtx)
             || getSessionPath()
             || null;
+          const sessionRef = resolveRuntimeSessionRef(runtimeCtx);
+          const sessionPath = runtimeSessionPath || sessionRef?.sessionPath || null;
           const mergedCtx = {
             ...runtimeCtx,
+            ...(sessionRef ? { sessionId: sessionRef.sessionId, sessionRef } : {}),
             ...(sessionPath ? { sessionPath } : {}),
             ...(opts.bridgeContext ? { bridgeContext: opts.bridgeContext } : {}),
             ...(opts.notificationContext ? { notificationContext: opts.notificationContext } : {}),
@@ -2337,12 +2401,15 @@ export class HanaEngine {
       ...t,
       execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx) => {
         const { ctx: runtimeCtx } = normalizeToolRuntimeContext(signalOrRuntimeCtx, piCtx);
-        const sessionPath = runtimeCtx?.sessionPath
+        const runtimeSessionPath = runtimeCtx?.sessionPath
           || getToolSessionPath(runtimeCtx)
           || getSessionPath()
           || null;
+        const sessionRef = resolveRuntimeSessionRef(runtimeCtx);
+        const sessionPath = runtimeSessionPath || sessionRef?.sessionPath || null;
         const mergedCtx = {
           ...runtimeCtx,
+          ...(sessionRef ? { sessionId: sessionRef.sessionId, sessionRef } : {}),
           ...(sessionPath ? { sessionPath } : {}),
           ...(opts.bridgeContext ? { bridgeContext: opts.bridgeContext } : {}),
           ...(opts.notificationContext ? { notificationContext: opts.notificationContext } : {}),
@@ -2509,11 +2576,15 @@ export class HanaEngine {
         ...result,
         tools: wrapWithSessionExecutionCancellation(result.tools, {
           registry: this._sessionExecutions,
+          getSessionRef,
+          getSessionId,
           getSessionPath,
           getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath),
         }),
         customTools: wrapWithSessionExecutionCancellation(result.customTools, {
           registry: this._sessionExecutions,
+          getSessionRef,
+          getSessionId,
           getSessionPath,
           getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath),
         }),

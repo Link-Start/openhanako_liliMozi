@@ -387,6 +387,42 @@ export class BridgeSessionManager {
     return null;
   }
 
+  _ensureBridgeSessionRef(sessionPath, {
+    agent,
+    sessionKey,
+    role = "owner",
+    locatorReason = "bridge_session_open",
+  }: any = {}) {
+    if (typeof this._deps.ensureSessionRefForPath !== "function") {
+      const error: any = new Error("Bridge session identity service is unavailable");
+      error.code = "session_manifest_unavailable";
+      throw error;
+    }
+    return this._deps.ensureSessionRefForPath(sessionPath, {
+      ownerAgentId: agent?.id || null,
+      domain: "bridge",
+      kind: role === "guest" ? "bridge_guest" : "bridge_owner",
+      lifecycle: "active",
+      provenance: {
+        createdBy: "bridge",
+        bridgeSessionKey: sessionKey || null,
+        bridgeRole: role,
+      },
+      locatorReason,
+    });
+  }
+
+  _assertBridgeSessionRefLocator(sessionRef, sessionPath, operation) {
+    if (!sessionRef?.sessionId || !sessionRef?.sessionPath || !sessionPath) {
+      throw new Error(`${operation}: SessionRef is incomplete`);
+    }
+    if (path.resolve(sessionRef.sessionPath) !== path.resolve(sessionPath)) {
+      const error: any = new Error(`${operation}: runtime locator does not match SessionRef`);
+      error.code = "session_identity_conflict";
+      throw error;
+    }
+  }
+
   _bridgeContextLegacyPathKeys(sessionPath) {
     const keys = [];
     if (!sessionPath) return keys;
@@ -814,6 +850,13 @@ export class BridgeSessionManager {
     if (!customType) throw new Error("recordCustomEntryForSessionPath: customType is required");
     const context = this.getBridgeContextForSessionPath(sessionPath, opts);
     if (context?.isBridgeSession !== true) return null;
+    const agent = this._resolveAgent({ agentId: context.agentId || opts.agentId }, "recordCustomEntryForSessionPath");
+    this._ensureBridgeSessionRef(sessionPath, {
+      agent,
+      sessionKey: context.sessionKey,
+      role: context.role,
+      locatorReason: "bridge_custom_entry",
+    });
 
     const resolved = path.resolve(sessionPath);
     for (const session of this._activeSessions.values()) {
@@ -950,12 +993,22 @@ export class BridgeSessionManager {
         }
       }
       const homeCwd = this._deps.getHomeCwd(agent.id) || process.cwd();
+      const restoredExistingSession = !!mgr;
       if (!mgr) {
         mgr = SessionManager.create(homeCwd, sessionDir);
       }
 
       let sessionOpts;
-      const sessionPathRef = { current: null };
+      const identityPath = mgr.getSessionFile?.() || null;
+      if (!identityPath) throw new Error("bridge session locator unavailable before runtime assembly");
+      const sessionRef = this._ensureBridgeSessionRef(identityPath, {
+        agent,
+        sessionKey,
+        role: currentRole,
+        locatorReason: restoredExistingSession ? "bridge_session_restore" : "bridge_session_create",
+      });
+      const sessionPathRef = { current: identityPath };
+      const sessionRefRef = { current: sessionRef };
       const targetModelRef = { current: null };
 
       if (isGuest) {
@@ -1007,6 +1060,7 @@ export class BridgeSessionManager {
         sessionOpts = this._buildOwnerSessionOpts(agent, mm, homeCwd, sessionPathRef, targetModelRef, {
           bridgeContext,
           promptSnapshot,
+          sessionRefRef,
         });
       }
       const activeToolNames = this._normalizeToolNames(sessionOpts.activeToolNames);
@@ -1021,6 +1075,7 @@ export class BridgeSessionManager {
       });
 
       const activeSessionPath = session.sessionManager?.getSessionFile?.() || null;
+      this._assertBridgeSessionRefLocator(sessionRefRef.current, activeSessionPath, "bridge executeExternalMessage");
       sessionPathRef.current = activeSessionPath;
       targetModelRef.current = session.model || sessionOpts.model || targetModelRef.current || null;
       if (activeToolNames.length) {
@@ -1035,10 +1090,9 @@ export class BridgeSessionManager {
         throw new Error("bridge inbound files require a resolved sessionPath");
       }
       if (opts.inboundFiles?.length && activeSessionPath) {
-        const activeSessionId = this._deps.getSessionIdForPath?.(activeSessionPath) || null;
         const materialized = await materializeBridgeInboundFiles({
           hanakoHome: this._deps.getHanakoHome?.(),
-          sessionId: activeSessionId,
+          sessionId: sessionRefRef.current.sessionId,
           sessionPath: activeSessionPath,
           files: opts.inboundFiles,
           registerSessionFile: this._deps.registerSessionFile,
@@ -1264,6 +1318,7 @@ export class BridgeSessionManager {
         return false;
       }
 
+      const restoredExistingSession = !!mgr;
       if (!mgr) {
         const homeCwd = this._deps.getHomeCwd(agent.id) || process.cwd();
         mgr = SessionManager.create(homeCwd, sessionDir);
@@ -1273,6 +1328,15 @@ export class BridgeSessionManager {
           return false;
         }
       }
+
+      this._ensureBridgeSessionRef(sessionPath, {
+        agent,
+        sessionKey,
+        role: "owner",
+        locatorReason: restoredExistingSession
+          ? "bridge_assistant_record_restore"
+          : "bridge_assistant_record_create",
+      });
 
       mgr.appendMessage(this._buildRecordedAssistantMessage(agent, text));
 
@@ -1353,6 +1417,7 @@ export class BridgeSessionManager {
         workspace: homeCwd,
         agentDir: agent.agentDir,
         getSessionPath: () => sessionPathRef.current,
+        getSessionRef: () => opts.sessionRefRef?.current || null,
         getPermissionMode: () => bridgePermissionMode,
         allowHumanApproval: false,
         bridgeContext: opts.bridgeContext || null,
@@ -1476,6 +1541,12 @@ export class BridgeSessionManager {
     }
     this._repairInlineMediaHistory(sessionFilePath, "bridge compact reopen");
     const mgr = SessionManager.open(sessionFilePath, sessionDir);
+    const sessionRef = this._ensureBridgeSessionRef(sessionFilePath, {
+      agent,
+      sessionKey,
+      role: "owner",
+      locatorReason: "bridge_compact_restore",
+    });
     const bridgeContext = this.getBridgeContextForSessionPath(sessionFilePath, { agentId: agent.id })
       || this._buildBridgeContext(sessionKey, entry, { guest: false }, agent);
     const freshContext = opts.fresh === true
@@ -1488,6 +1559,7 @@ export class BridgeSessionManager {
     const sessionOpts = this._buildOwnerSessionOpts(agent, mm, homeCwd, { current: sessionFilePath }, { current: null }, {
       bridgeContext,
       promptSnapshot,
+      sessionRefRef: { current: sessionRef },
     });
     const activeToolNames = this._normalizeToolNames(sessionOpts.activeToolNames);
     delete sessionOpts.activeToolNames;
@@ -1499,11 +1571,14 @@ export class BridgeSessionManager {
       modelRegistry: mm.modelRegistry,
       ...sessionOpts,
     });
-    if (activeToolNames.length) {
-      session.setActiveToolsByName?.(activeToolNames);
-    }
 
     try {
+      const activeSessionPath = session.sessionManager?.getSessionFile?.() || null;
+      this._assertBridgeSessionRefLocator(sessionRef, activeSessionPath, "bridge compactSession");
+      if (activeToolNames.length) {
+        session.setActiveToolsByName?.(activeToolNames);
+      }
+
       // 5. 读 usage → compact → 读 usage
       const before = session.getContextUsage?.() ?? null;
       if (session.isCompacting) {

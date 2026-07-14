@@ -1769,6 +1769,8 @@ export class SessionCoordinator {
       ...runtimeDisabledToolNames,
     ];
     let snapshotToolNames = null;  // null signals "do not call setActiveToolsByName"
+    let runtimeToolNames = null;
+    let unavailableToolNames: string[] = [];
     let shouldPersistRestoredToolNames = false;
     // #1624：dismissed fingerprint 仍从 session-meta 读出，保留未来手动提示链路。
     let restoredDriftDismissedFingerprint: string | null = null;
@@ -1801,22 +1803,33 @@ export class SessionCoordinator {
           snapshotToolNames = computeToolSnapshot(allToolNames, disabled, {
             extraDisabled: extraDisabledToolNames,
           });
+          runtimeToolNames = snapshotToolNames;
           shouldPersistRestoredToolNames = true;
           restoredDriftDismissedFingerprint = null;
         } else if (restoredCapabilityToolNames) {
-          const gatedRestoredToolNames = computeToolSnapshot(restoredCapabilityToolNames, [], {
-            extraDisabled: stableFeatureDisabledToolNames,
+          const runtimeAvailableToolNames = computeToolSnapshot(allToolNames, [], {
+            extraDisabled: extraDisabledToolNames,
           });
-          const repair = repairRestoredToolSnapshotDetailed(gatedRestoredToolNames, allToolNames);
-          snapshotToolNames = repair.toolNames;
+          const repair = repairRestoredToolSnapshotDetailed(
+            restoredCapabilityToolNames,
+            runtimeAvailableToolNames,
+          );
+          snapshotToolNames = repair.contractToolNames;
+          runtimeToolNames = repair.toolNames;
+          unavailableToolNames = repair.droppedToolNames;
           shouldPersistRestoredToolNames = !sameToolNames(snapshotToolNames, restoredCapabilityToolNames);
         } else if (metaEntry && Array.isArray(metaEntry.toolNames)) {
           const restoredToolNames = uniqueToolNames(metaEntry.toolNames);
-          const gatedRestoredToolNames = computeToolSnapshot(restoredToolNames, [], {
-            extraDisabled: stableFeatureDisabledToolNames,
-          });  // Case A, with current global feature gates enforced
-          const repair = repairRestoredToolSnapshotDetailed(gatedRestoredToolNames, allToolNames);
-          snapshotToolNames = repair.toolNames;
+          const runtimeAvailableToolNames = computeToolSnapshot(allToolNames, [], {
+            extraDisabled: extraDisabledToolNames,
+          });
+          const repair = repairRestoredToolSnapshotDetailed(
+            restoredToolNames,
+            runtimeAvailableToolNames,
+          );
+          snapshotToolNames = repair.contractToolNames;
+          runtimeToolNames = repair.toolNames;
+          unavailableToolNames = repair.droppedToolNames;
           shouldPersistRestoredToolNames = !sameToolNames(snapshotToolNames, metaEntry.toolNames);
         } else {
           // Legacy sessions created before tool snapshots had no stable tool
@@ -1826,6 +1839,7 @@ export class SessionCoordinator {
           snapshotToolNames = computeToolSnapshot(stableRestoreToolNames, disabled, {
             extraDisabled: extraDisabledToolNames,
           });
+          runtimeToolNames = snapshotToolNames;
           shouldPersistRestoredToolNames = true;
         }
       }
@@ -1838,11 +1852,22 @@ export class SessionCoordinator {
       snapshotToolNames = computeToolSnapshot(allToolNames, disabled, {
         extraDisabled: extraDisabledToolNames,
       });
+      runtimeToolNames = snapshotToolNames;
     }
 
-    // #1624 的能力漂移提示模板保留，但 restore 不再主动计算/唤醒。
-    // 这里刻意不构造 live prompt / tool diff，避免切换旧会话时为隐藏提醒付出额外成本。
-    let capabilityDrift = null;
+    // A missing runtime handler is availability state, not permission to
+    // rewrite the frozen contract. Surface the outage while keeping restore
+    // otherwise free of live prompt-diff work.
+    const unavailableDrift = unavailableToolNames.length > 0
+      ? buildSessionCapabilityDrift({
+          frozenToolNames: runtimeToolNames || [],
+          liveToolNames: runtimeToolNames || [],
+          invalidToolNames: unavailableToolNames,
+          frozenSystemPrompt: "",
+          liveSystemPrompt: "",
+        })
+      : null;
+    let capabilityDrift = unavailableDrift?.hasDrift ? unavailableDrift : null;
 
     const reminderBaselineSeq = this._envChangeLedger?.maxSeq?.() ?? 0;
     const hasPreviousReminderState = reminderState && typeof reminderState === "object";
@@ -1883,7 +1908,9 @@ export class SessionCoordinator {
       thinkingLevel: initialThinkingLevel,
       experiments: frozenExperimentFlags,
       toolNames: snapshotToolNames,  // null for legacy sessions (Case B), array otherwise
-      activeToolDefinitions: activeToolDefinitionsFromSnapshot(allToolObjects, snapshotToolNames),
+      runtimeToolNames,
+      unavailableToolNames,
+      activeToolDefinitions: activeToolDefinitionsFromSnapshot(allToolObjects, runtimeToolNames),
       ownerPluginId: pluginSessionMeta?.ownerPluginId || null,
       sessionKind: pluginSessionMeta?.kind || null,
       sessionVisibility: pluginSessionMeta?.visibility || "public",
@@ -1940,8 +1967,8 @@ export class SessionCoordinator {
 
     // Apply tool snapshot (Case A / Case C). Permission mode is a runtime
     // policy and does not change the stable tool schema.
-    if (snapshotToolNames !== null) {
-      session.setActiveToolsByName(snapshotToolNames);
+    if (runtimeToolNames !== null) {
+      session.setActiveToolsByName(runtimeToolNames);
     }
 
     if (restoredPromptSnapshot?.finalSystemPrompt) {
@@ -4026,14 +4053,18 @@ export class SessionCoordinator {
       if (!entry?.sessionPath || !entry?.session) continue;
       if (targetAgentId && entry.agentId !== targetAgentId) continue;
       scanned += 1;
-      const frozenToolNames = Array.isArray(entry.toolNames)
-        ? entry.toolNames
+      const frozenToolNames = Array.isArray(entry.runtimeToolNames)
+        ? entry.runtimeToolNames
         : (entry.activeToolDefinitions || []).map((tool) => tool?.name).filter(Boolean);
       const liveToolNames = this._computeLiveToolSnapshotForEntry(entry, entry.sessionPath);
       if (!liveToolNames) continue;
+      const liveToolNameSet = new Set(liveToolNames);
       const drift = buildSessionCapabilityDrift({
         frozenToolNames,
         liveToolNames,
+        invalidToolNames: Array.isArray(entry.unavailableToolNames)
+          ? entry.unavailableToolNames.filter((name) => !liveToolNameSet.has(name))
+          : [],
         frozenSystemPrompt: "",
         liveSystemPrompt: "",
       });

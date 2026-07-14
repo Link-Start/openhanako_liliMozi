@@ -68,6 +68,13 @@ function makeAgent(rootDir, id = "agent-a") {
 }
 
 function makeDeps(agent) {
+  const sessionIdsByPath = new Map<string, string>();
+  const ensureSessionRefForPath = vi.fn((sessionPath) => {
+    const sessionId = sessionIdsByPath.get(sessionPath)
+      || `sess_${path.basename(sessionPath, path.extname(sessionPath))}`;
+    sessionIdsByPath.set(sessionPath, sessionId);
+    return { sessionId, sessionPath };
+  });
   return {
     getHanakoHome: () => rootDir,
     getAgent: () => agent,
@@ -83,6 +90,8 @@ function makeDeps(agent) {
     getPreferences: () => ({ thinking_level: "medium" }),
     buildTools: () => ({ tools: [], customTools: [] }),
     getHomeCwd: () => rootCwd,
+    ensureSessionRefForPath,
+    getSessionIdForPath: vi.fn((sessionPath) => sessionIdsByPath.get(sessionPath) || null),
     registerSessionFile: vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
       id: "sf_bridge_inbound",
       fileId: "sf_bridge_inbound",
@@ -602,11 +611,11 @@ describe("BridgeSessionManager teardown", () => {
     const session = {
       isCompacting: false,
       compact: vi.fn(async () => {}),
+      sessionManager: { getSessionFile: () => sessionFile },
       getContextUsage: vi.fn()
         .mockReturnValueOnce({ tokens: 900, contextWindow: 128000 })
         .mockReturnValueOnce({ tokens: 300, contextWindow: 128000 }),
       dispose: vi.fn(),
-      sessionManager: { getSessionFile: () => sessionFile },
       extensionRunner: {
         assertActive: vi.fn(),
         hasHandlers: vi.fn((event) => event === "session_before_compact"),
@@ -617,6 +626,15 @@ describe("BridgeSessionManager teardown", () => {
     createAgentSessionMock.mockResolvedValue({ session });
 
     await manager.compactSession("tg_dm_compact_tools@agent-a", { agentId: "agent-a" });
+
+    expect(manager._deps.ensureSessionRefForPath).toHaveBeenCalledWith(
+      sessionFile,
+      expect.objectContaining({
+        ownerAgentId: "agent-a",
+        domain: "bridge",
+        kind: "bridge_owner",
+      }),
+    );
 
     const expected = bridgeLiveToolSnapshot(liveToolNames);
     expect(setActiveToolsByName).toHaveBeenCalledWith(expected);
@@ -899,6 +917,7 @@ describe("BridgeSessionManager teardown", () => {
     });
 
     expect(deps.registerSessionFile).toHaveBeenCalledWith({
+      sessionId: "sess_s-inbound",
       sessionPath: mgrPath,
       filePath: expect.stringContaining(path.join(rootDir, "session-files")),
       label: "photo.png",
@@ -1069,7 +1088,8 @@ describe("BridgeSessionManager teardown", () => {
     const mgrPath = path.join(agent.sessionDir, "bridge", "guests", "guest-snapshot.jsonl");
     fs.mkdirSync(path.dirname(mgrPath), { recursive: true });
     fs.writeFileSync(mgrPath, "", "utf-8");
-    const manager = new BridgeSessionManager(makeDeps(agent));
+    const deps = makeDeps(agent);
+    const manager = new BridgeSessionManager(deps);
     sessionManagerCreateMock.mockReturnValue({ getSessionFile: () => mgrPath });
     sessionManagerOpenMock.mockReturnValue({ getSessionFile: () => mgrPath });
 
@@ -1089,6 +1109,14 @@ describe("BridgeSessionManager teardown", () => {
       userId: "guest-user",
       chatId: "guest-chat",
     }, { agentId: "agent-a", guest: true, contextTag: "group v1" });
+    expect(deps.ensureSessionRefForPath).toHaveBeenCalledWith(
+      mgrPath,
+      expect.objectContaining({
+        ownerAgentId: "agent-a",
+        domain: "bridge",
+        kind: "bridge_guest",
+      }),
+    );
     const snapshot = manager.readIndex(agent)["fs_group_guest-snapshot@agent-a"].promptSnapshot;
     expect(snapshot?.systemPrompt).toContain("public-ishiki");
     expect(snapshot?.systemPrompt).toContain("group v1");
@@ -1412,6 +1440,10 @@ describe("BridgeSessionManager teardown", () => {
     expect(buildTools).toHaveBeenCalledOnce();
     const buildOpts = (buildTools.mock.calls[0] as any)[2];
     expect(buildOpts!.getSessionPath()).toBe(mgrPath);
+    expect(buildOpts!.getSessionRef()).toEqual({
+      sessionId: "sess_s-owner-tools",
+      sessionPath: mgrPath,
+    });
   });
 
   it("guest bridge sessions pass canonical off thinking level to the SDK", async () => {
@@ -1668,6 +1700,7 @@ describe("BridgeSessionManager teardown", () => {
     const session = {
       isCompacting: false,
       compact: vi.fn(async () => {}),
+      sessionManager: { getSessionFile: () => sessionFile },
       getContextUsage: vi.fn()
         .mockReturnValueOnce({ tokens: 900, contextWindow: 128000 })
         .mockReturnValueOnce({ tokens: 300, contextWindow: 128000 }),
@@ -1684,6 +1717,31 @@ describe("BridgeSessionManager teardown", () => {
     expect(result).toEqual({ tokensBefore: 900, tokensAfter: 300, contextWindow: 128000 });
     expect(callOrder).toEqual(["emit", "dispose"]);
     expect(emitSessionShutdownMock).toHaveBeenCalledWith(session);
+    expect(session.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("compactSession 创建后的实际 locator 与 SessionRef 不一致时显式失败并释放 session", async () => {
+    const agent = makeAgent(rootDir);
+    const manager = new BridgeSessionManager(makeDeps(agent));
+    const bridgeDir = path.join(agent.sessionDir, "bridge");
+    const sessionFile = path.join(bridgeDir, "owner", "identity.jsonl");
+    const runtimeFile = path.join(bridgeDir, "owner", "runtime.jsonl");
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.writeFileSync(sessionFile, "", "utf-8");
+    manager.writeIndex({ "bridge-locator-conflict": { file: "owner/identity.jsonl" } }, agent);
+    sessionManagerOpenMock.mockReturnValue({ getSessionFile: () => sessionFile });
+
+    const session = {
+      sessionManager: { getSessionFile: () => runtimeFile },
+      dispose: vi.fn(),
+      extensionRunner: { hasHandlers: vi.fn(() => false) },
+    };
+    createAgentSessionMock.mockResolvedValue({ session });
+
+    await expect(
+      manager.compactSession("bridge-locator-conflict", { agentId: "agent-a" }),
+    ).rejects.toMatchObject({ code: "session_identity_conflict" });
+
     expect(session.dispose).toHaveBeenCalledOnce();
   });
 
@@ -1752,7 +1810,8 @@ describe("BridgeSessionManager teardown", () => {
 
   it("recordAssistantMessage creates an owner bridge session when requested", () => {
     const agent = makeAgent(rootDir);
-    const manager = new BridgeSessionManager(makeDeps(agent));
+    const deps = makeDeps(agent);
+    const manager = new BridgeSessionManager(deps);
     const sessionPath = path.join(agent.sessionDir, "bridge", "owner", "proactive.jsonl");
     const appendMessage = vi.fn();
     sessionManagerCreateMock.mockReturnValue({
@@ -1774,6 +1833,14 @@ describe("BridgeSessionManager teardown", () => {
     expect(sessionManagerCreateMock).toHaveBeenCalledWith(
       rootCwd,
       path.join(agent.sessionDir, "bridge", "owner"),
+    );
+    expect(deps.ensureSessionRefForPath).toHaveBeenCalledWith(
+      sessionPath,
+      expect.objectContaining({
+        ownerAgentId: "agent-a",
+        domain: "bridge",
+        kind: "bridge_owner",
+      }),
     );
     expect(appendMessage).toHaveBeenCalledWith(expect.objectContaining({
       role: "assistant",

@@ -5,10 +5,16 @@ import {
   readFileLikePathsSync,
 } from "../../shared/link-aware-fs.ts";
 import { isSessionJsonlFilename } from "../../lib/session-jsonl.ts";
+import {
+  listAgentPhoneProjectionFiles,
+  readAgentPhoneProjection,
+  resolveAgentPhoneStoredSessionPath,
+} from "../../lib/conversations/agent-phone-projection.ts";
 import { normalizeSessionPermissionMode } from "../session-permission-mode.ts";
-import { normalizeSessionLocatorPath } from "./path-normalizer.ts";
+import { normalizeSessionLocatorPath, sessionLocatorKey } from "./path-normalizer.ts";
 
 const MAX_SKIPPED_DETAILS = 20;
+const LOCATOR_REQUIRED_LIFECYCLES = new Set(["active", "archived", "promoted"]);
 
 function readJsonFile(filePath, fallback = {}) {
   try {
@@ -88,7 +94,7 @@ function readSessionMetaSources(sessionDir) {
 
 function listDirectories(directory) {
   try {
-    return readDirectoryLikeDirentsSync(directory).map((entry) => entry.name);
+    return readDirectoryLikeDirentsSync(directory).map((entry) => entry.name).sort();
   } catch {
     return [];
   }
@@ -97,10 +103,404 @@ function listDirectories(directory) {
 function listJsonlFiles(directory) {
   try {
     return readFileLikePathsSync(directory, { extension: ".jsonl" })
-      .filter((filePath) => isSessionJsonlFilename(path.basename(filePath)));
+      .filter((filePath) => isSessionJsonlFilename(path.basename(filePath)))
+      .sort();
   } catch {
     return [];
   }
+}
+
+function text(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function record(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function pathIsInside(root, candidate) {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+function storedPathWithin(root, stored, containmentRoot = root) {
+  const value = text(stored);
+  if (!value) return null;
+  const candidate = path.isAbsolute(value)
+    ? path.resolve(value)
+    : path.resolve(root, ...value.split(/[\\/]+/).filter(Boolean));
+  if (!pathIsInside(containmentRoot, candidate)) return null;
+  return candidate;
+}
+
+function jsonFiles(directory) {
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .map((entry) => path.join(directory, entry.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function capabilityEntry(value) {
+  const source = record(value) || {};
+  const entry: any = {};
+  if (Array.isArray(source.toolNames)) entry.toolNames = source.toolNames;
+  if (record(source.promptSnapshot)) entry.promptSnapshot = source.promptSnapshot;
+  if (Object.prototype.hasOwnProperty.call(source, "capabilityDriftDismissedFingerprint")) {
+    entry.capabilityDriftDismissedFingerprint = source.capabilityDriftDismissedFingerprint;
+  }
+  return entry;
+}
+
+function ownerAgentIdForPath(agentsDir, sessionPath) {
+  const relative = path.relative(path.resolve(agentsDir), path.resolve(sessionPath));
+  if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) return null;
+  return relative.split(path.sep).filter(Boolean)[0] || null;
+}
+
+function isEphemeralSessionPath(sessionPath) {
+  return path.resolve(sessionPath).split(path.sep).includes(".ephemeral");
+}
+
+function sourceMetaCandidate(source, sourcePath, entry) {
+  return record(entry) ? { source, sourcePath, entry: { ...entry } } : null;
+}
+
+function discoverSessionRows({ hanaHome, agentsDir }) {
+  const rowsByKey = new Map();
+  const diagnostics: any[] = [];
+
+  const add = (input: any) => {
+    const sessionPath = text(input.sessionPath);
+    if (!sessionPath || !isSessionJsonlFilename(path.basename(sessionPath))) return;
+    const normalizedPath = normalizeSessionLocatorPath(sessionPath);
+    if (!fs.existsSync(normalizedPath)) {
+      if (input.indexed === true) {
+        diagnostics.push({
+          type: "missing_source_locator",
+          source: input.source,
+          sessionPath: normalizedPath,
+          sourcePath: input.sourcePath || null,
+        });
+      }
+      return;
+    }
+    const key = sessionLocatorKey(normalizedPath);
+    const source = text(input.source) || "legacy_layout";
+    const priority = Number.isFinite(input.priority) ? input.priority : 10;
+    const candidate = sourceMetaCandidate(source, input.sourcePath || normalizedPath, input.metaEntry);
+    const previous = rowsByKey.get(key);
+    if (!previous) {
+      rowsByKey.set(key, {
+        sessionPath: normalizedPath,
+        ownerAgentId: text(input.ownerAgentId),
+        ownerAgentIdSource: source,
+        sourceAgentId: text(input.sourceAgentId) || text(input.ownerAgentId),
+        domain: input.domain || "desktop",
+        kind: input.kind || "chat",
+        lifecycle: input.lifecycle || "active",
+        provenance: { ...(record(input.provenance) || {}) },
+        metaSessionDir: input.metaSessionDir || null,
+        titleSessionDir: input.titleSessionDir || null,
+        metaCandidates: candidate ? [candidate] : [],
+        sources: [source],
+        priority,
+      });
+      return;
+    }
+    previous.sources = [...new Set([...previous.sources, source])].sort();
+    if (candidate && !previous.metaCandidates.some((item) => (
+      item.source === candidate.source && item.sourcePath === candidate.sourcePath
+    ))) {
+      previous.metaCandidates.push(candidate);
+    }
+    previous.provenance = {
+      ...previous.provenance,
+      ...(record(input.provenance) || {}),
+    };
+    if (!previous.metaSessionDir && input.metaSessionDir) previous.metaSessionDir = input.metaSessionDir;
+    if (!previous.titleSessionDir && input.titleSessionDir) previous.titleSessionDir = input.titleSessionDir;
+    if (priority >= previous.priority) {
+      previous.ownerAgentId = text(input.ownerAgentId) || previous.ownerAgentId;
+      previous.ownerAgentIdSource = text(input.ownerAgentId) ? source : previous.ownerAgentIdSource;
+      previous.sourceAgentId = text(input.sourceAgentId) || previous.sourceAgentId;
+      previous.domain = input.domain || previous.domain;
+      previous.kind = input.kind || previous.kind;
+      previous.lifecycle = input.lifecycle || previous.lifecycle;
+      previous.priority = priority;
+    }
+  };
+
+  for (const sourceAgentId of listDirectories(agentsDir)) {
+    const agentDir = path.join(agentsDir, sourceAgentId);
+    const sessionDir = path.join(agentDir, "sessions");
+    const desktopBase = {
+      ownerAgentId: sourceAgentId,
+      sourceAgentId,
+      domain: "desktop",
+      kind: "chat",
+      metaSessionDir: sessionDir,
+      titleSessionDir: sessionDir,
+    };
+    for (const sessionPath of listJsonlFiles(sessionDir)) {
+      add({ ...desktopBase, sessionPath, lifecycle: "active", source: "desktop_session_layout" });
+    }
+    for (const sessionPath of listJsonlFiles(path.join(sessionDir, "archived"))) {
+      add({ ...desktopBase, sessionPath, lifecycle: "archived", source: "desktop_archived_layout" });
+    }
+
+    const bridgeDir = path.join(sessionDir, "bridge");
+    for (const role of ["owner", "guests"]) {
+      for (const sessionPath of listJsonlFiles(path.join(bridgeDir, role))) {
+        const bridgeRole = role === "owner" ? "owner" : "guest";
+        add({
+          sessionPath,
+          ownerAgentId: sourceAgentId,
+          sourceAgentId,
+          domain: "bridge",
+          kind: bridgeRole === "owner" ? "bridge_owner" : "bridge_guest",
+          lifecycle: "active",
+          source: "bridge_session_layout",
+          provenance: { createdBy: "bridge", bridgeRole },
+        });
+      }
+    }
+    const bridgeIndexPath = path.join(bridgeDir, "bridge-sessions.json");
+    const bridgeIndex = readJsonFile(bridgeIndexPath, {});
+    for (const [bridgeSessionKey, raw] of Object.entries(record(bridgeIndex) || {})) {
+      const entry: any = typeof raw === "string" ? { file: raw } : record(raw);
+      const sessionPath = storedPathWithin(bridgeDir, entry?.file, bridgeDir);
+      if (!sessionPath) continue;
+      const root = path.relative(bridgeDir, sessionPath).split(path.sep)[0];
+      const bridgeRole = entry.role === "guest" || root === "guests" ? "guest" : "owner";
+      add({
+        sessionPath,
+        ownerAgentId: sourceAgentId,
+        sourceAgentId,
+        domain: "bridge",
+        kind: bridgeRole === "owner" ? "bridge_owner" : "bridge_guest",
+        lifecycle: "active",
+        source: "legacy_bridge_index",
+        sourcePath: bridgeIndexPath,
+        indexed: true,
+        priority: 60,
+        metaEntry: capabilityEntry(entry),
+        provenance: {
+          createdBy: "bridge",
+          bridgeSessionKey,
+          bridgeRole,
+          ...(text(entry.platform) ? { platform: text(entry.platform) } : {}),
+          ...(text(entry.chatType) ? { chatType: text(entry.chatType) } : {}),
+        },
+      });
+    }
+
+    const activityDir = path.join(agentDir, "activity");
+    for (const sessionPath of listJsonlFiles(activityDir)) {
+      add({
+        sessionPath,
+        ownerAgentId: sourceAgentId,
+        sourceAgentId,
+        domain: "activity",
+        kind: "activity",
+        lifecycle: "active",
+        source: "activity_session_layout",
+        metaSessionDir: sessionDir,
+        provenance: { createdBy: "activity" },
+      });
+    }
+    const activitiesPath = path.join(agentDir, "desk", "activities.json");
+    const activities = readJsonFile(activitiesPath, []);
+    for (const entry of Array.isArray(activities) ? activities : []) {
+      const sessionPath = storedPathWithin(activityDir, entry?.sessionFile, activityDir);
+      if (!sessionPath) continue;
+      add({
+        sessionPath,
+        ownerAgentId: text(entry.agentId) || sourceAgentId,
+        sourceAgentId,
+        domain: "activity",
+        kind: "activity",
+        lifecycle: "active",
+        source: "legacy_activity_index",
+        sourcePath: activitiesPath,
+        indexed: true,
+        priority: 60,
+        metaSessionDir: sessionDir,
+        provenance: {
+          createdBy: "activity",
+          ...(text(entry.id) ? { activityId: text(entry.id) } : {}),
+          ...(text(entry.type) ? { activityType: text(entry.type) } : {}),
+        },
+      });
+    }
+
+    const phoneSessionsDir = path.join(agentDir, "phone", "sessions");
+    for (const conversationDir of listDirectories(phoneSessionsDir)) {
+      for (const sessionPath of listJsonlFiles(path.join(phoneSessionsDir, conversationDir))) {
+        add({
+          sessionPath,
+          ownerAgentId: sourceAgentId,
+          sourceAgentId,
+          domain: "phone",
+          kind: "phone_conversation",
+          lifecycle: "active",
+          source: "phone_session_layout",
+          provenance: { createdBy: "agent_phone" },
+        });
+      }
+    }
+    const phoneRuntimeDir = path.join(agentDir, "phone", "session-runtime");
+    for (const runtimePath of jsonFiles(phoneRuntimeDir)) {
+      const runtime: any = readJsonFile(runtimePath, null);
+      if (!record(runtime)) continue;
+      const sessionPath = resolveAgentPhoneStoredSessionPath(agentDir, runtime.phoneSessionFile);
+      if (!sessionPath || !pathIsInside(phoneSessionsDir, sessionPath)) continue;
+      add({
+        sessionPath,
+        ownerAgentId: text(runtime.agentId) || sourceAgentId,
+        sourceAgentId,
+        domain: "phone",
+        kind: "phone_conversation",
+        lifecycle: "active",
+        source: "legacy_phone_runtime",
+        sourcePath: runtimePath,
+        indexed: true,
+        priority: 70,
+        metaEntry: capabilityEntry(runtime),
+        provenance: {
+          createdBy: "agent_phone",
+          ...(text(runtime.conversationId) ? { conversationId: text(runtime.conversationId) } : {}),
+          ...(text(runtime.conversationType) ? { conversationType: text(runtime.conversationType) } : {}),
+        },
+      });
+    }
+    for (const projectionPath of listAgentPhoneProjectionFiles(agentDir).sort()) {
+      const projection = readAgentPhoneProjection(projectionPath);
+      const meta: any = record(projection?.meta);
+      const sessionPath = resolveAgentPhoneStoredSessionPath(agentDir, meta?.phoneSessionFile);
+      if (!sessionPath || !pathIsInside(phoneSessionsDir, sessionPath)) continue;
+      add({
+        sessionPath,
+        ownerAgentId: text(meta.agentId) || sourceAgentId,
+        sourceAgentId,
+        domain: "phone",
+        kind: "phone_conversation",
+        lifecycle: "active",
+        source: "legacy_phone_projection",
+        sourcePath: projectionPath,
+        indexed: true,
+        priority: 65,
+        metaEntry: capabilityEntry(meta),
+        provenance: {
+          createdBy: "agent_phone",
+          ...(text(meta.conversationId) ? { conversationId: text(meta.conversationId) } : {}),
+          ...(text(meta.conversationType) ? { conversationType: text(meta.conversationType) } : {}),
+        },
+      });
+    }
+
+    const subagentDir = path.join(agentDir, "subagent-sessions");
+    for (const sessionPath of listJsonlFiles(subagentDir)) {
+      add({
+        sessionPath,
+        ownerAgentId: sourceAgentId,
+        sourceAgentId,
+        domain: "subagent",
+        kind: "subagent_child",
+        lifecycle: "active",
+        source: "legacy_subagent_session_layout",
+        metaSessionDir: subagentDir,
+        provenance: { createdBy: "subagent" },
+      });
+    }
+    const directDir = path.join(subagentDir, "direct");
+    for (const sessionPath of listJsonlFiles(directDir)) {
+      add({
+        sessionPath,
+        ownerAgentId: sourceAgentId,
+        sourceAgentId,
+        domain: "subagent",
+        kind: "subagent_child",
+        lifecycle: "active",
+        source: "subagent_session_layout",
+        metaSessionDir: directDir,
+        provenance: { createdBy: "subagent", threadKind: "direct" },
+      });
+    }
+
+    const workflowDir = path.join(agentDir, "workflow-sessions");
+    for (const runId of listDirectories(workflowDir)) {
+      const runDir = path.join(workflowDir, runId);
+      for (const sessionPath of listJsonlFiles(runDir)) {
+        add({
+          sessionPath,
+          ownerAgentId: sourceAgentId,
+          sourceAgentId,
+          domain: "subagent",
+          kind: "subagent_child",
+          lifecycle: "active",
+          source: "workflow_session_layout",
+          metaSessionDir: runDir,
+          provenance: { createdBy: "subagent", parentRunId: runId, threadKind: "workflow_node" },
+        });
+      }
+    }
+  }
+
+  const addSubagentStoreRecords = (storePath, containerKey, source) => {
+    const raw = readJsonFile(storePath, {});
+    const entries = record(raw?.[containerKey]) || record(raw) || {};
+    for (const [recordId, value] of Object.entries(entries)) {
+      const entry: any = record(value);
+      if (!entry) continue;
+      const sessionPath = storedPathWithin(hanaHome, entry.childSessionPath || entry.sessionPath, hanaHome);
+      if (!sessionPath || isEphemeralSessionPath(sessionPath)) continue;
+      const sourceAgentId = ownerAgentIdForPath(agentsDir, sessionPath);
+      const ownerAgentId = text(entry.executorAgentId) || text(entry.agentId) || sourceAgentId;
+      const threadKind = text(entry.threadKind) || text(entry.kind);
+      add({
+        sessionPath,
+        ownerAgentId,
+        sourceAgentId,
+        domain: "subagent",
+        kind: "subagent_child",
+        lifecycle: "active",
+        source,
+        sourcePath: storePath,
+        indexed: true,
+        priority: source === "legacy_subagent_thread_store" ? 90 : 80,
+        metaEntry: entry,
+        provenance: {
+          createdBy: "subagent",
+          ...(text(entry.parentSessionId) ? { parentSessionId: text(entry.parentSessionId) } : {}),
+          ...(!text(entry.parentSessionId) && text(entry.parentSessionPath)
+            ? { legacyParentSessionPath: text(entry.parentSessionPath) }
+            : {}),
+          ...(text(entry.parentTaskId) ? { parentRunId: text(entry.parentTaskId) } : {}),
+          ...(source === "legacy_subagent_run_store" ? { subagentTaskId: recordId } : {}),
+          ...(source === "legacy_subagent_thread_store" ? { threadId: recordId } : {}),
+          ...(threadKind ? { threadKind } : {}),
+        },
+      });
+    }
+  };
+  addSubagentStoreRecords(path.join(hanaHome, "subagent-runs.json"), "runs", "legacy_subagent_run_store");
+  addSubagentStoreRecords(path.join(hanaHome, "subagent-threads.json"), "threads", "legacy_subagent_thread_store");
+
+  return {
+    sessions: [...rowsByKey.values()],
+    diagnostics,
+  };
+}
+
+export function discoverLegacySessions(opts: any = {}) {
+  if (!opts.hanaHome) throw new Error("discoverLegacySessions requires hanaHome");
+  const hanaHome = path.resolve(opts.hanaHome);
+  const agentsDir = path.resolve(opts.agentsDir || path.join(hanaHome, "agents"));
+  return discoverSessionRows({ hanaHome, agentsDir });
 }
 
 function hasLegacyPermissionFields(metaEntry) {
@@ -264,16 +664,9 @@ function backfillLegacyTitleSessionIdKey(titlesPath, titles, sessionDir, session
   }
 }
 
-function buildLegacyManifestInput({
-  agentId,
-  sessionDir,
-  sessionPath,
-  lifecycle,
-  metaSources,
-  titles,
-  migratedAt,
-}) {
-  const candidates = sessionMetaCandidates(metaSources, sessionPath);
+function buildLegacyManifestInput({ row, candidates, titles, migratedAt }) {
+  const sessionPath = row.sessionPath;
+  const sessionDir = row.titleSessionDir || row.metaSessionDir || path.dirname(sessionPath);
   const bestCandidate = selectBestMetaCandidate(candidates);
   const permissionCandidate = selectPermissionCandidate(candidates);
   const metaEntry = bestCandidate?.entry || {};
@@ -282,10 +675,10 @@ function buildLegacyManifestInput({
   const permissionHasLegacySource = hasLegacyPermissionFields(permissionEntry);
   return {
     sessionPath,
-    ownerAgentId: agentId,
-    domain: "desktop",
-    kind: plugin?.kind || "chat",
-    lifecycle,
+    ownerAgentId: row.ownerAgentId,
+    domain: row.domain,
+    kind: row.domain === "desktop" ? (plugin?.kind || row.kind || "chat") : row.kind,
+    lifecycle: row.lifecycle,
     memoryPolicy: legacyMemoryPolicy(metaEntry),
     permissionModeSnapshot: {
       mode: normalizeSessionPermissionMode(permissionEntry),
@@ -297,14 +690,17 @@ function buildLegacyManifestInput({
     workspaceScope: legacyWorkspaceScope(metaEntry),
     plugin,
     provenance: {
-      legacyAgentId: agentId,
-      legacyLifecycle: lifecycle,
+      legacyAgentId: row.sourceAgentId || row.ownerAgentId,
+      legacyLifecycle: row.lifecycle,
       legacyTitle: legacyTitleFor(titles, sessionDir, sessionPath),
+      ...(record(row.provenance) || {}),
     },
     migration: {
       legacySessionPath: sessionPath,
+      legacySessionFileName: path.basename(sessionPath),
       source: "legacy_scan",
       migratedAt,
+      legacySources: [...(row.sources || [])].sort(),
     },
     locatorReason: "legacy_scan",
   };
@@ -396,83 +792,241 @@ function repairExistingLocatorIfNeeded(store, existing, sessionPath) {
   return store.updateLocator(existing.sessionId, sessionPath, "legacy_scan_repair");
 }
 
+function createLegacyRowReader() {
+  const metaSourcesByDir = new Map();
+  const titlesByDir = new Map();
+  return {
+    candidates(row) {
+      let candidates: any[] = [];
+      if (row.metaSessionDir) {
+        if (!metaSourcesByDir.has(row.metaSessionDir)) {
+          metaSourcesByDir.set(row.metaSessionDir, readSessionMetaSources(row.metaSessionDir));
+        }
+        candidates = sessionMetaCandidates(metaSourcesByDir.get(row.metaSessionDir), row.sessionPath);
+      }
+      return [...candidates, ...(row.metaCandidates || [])];
+    },
+    titleState(row) {
+      if (!row.titleSessionDir) return { titlesPath: null, titles: {} };
+      if (!titlesByDir.has(row.titleSessionDir)) {
+        const titlesPath = path.join(row.titleSessionDir, "session-titles.json");
+        titlesByDir.set(row.titleSessionDir, {
+          titlesPath,
+          titles: readJsonFile(titlesPath, {}),
+        });
+      }
+      return titlesByDir.get(row.titleSessionDir);
+    },
+  };
+}
+
+function expectedManifestInput(row, reader, migratedAt) {
+  const candidates = reader.candidates(row);
+  const { titles } = reader.titleState(row);
+  return {
+    candidates,
+    input: buildLegacyManifestInput({ row, candidates, titles, migratedAt }),
+  };
+}
+
+export function auditLegacySessionManifests(opts: any = {}) {
+  if (!opts.hanaHome) throw new Error("auditLegacySessionManifests requires hanaHome");
+  if (!opts.store) throw new Error("auditLegacySessionManifests requires store");
+
+  const discovery = discoverLegacySessions(opts);
+  const reader = createLegacyRowReader();
+  const details: any = {
+    missing: [],
+    missingLocators: [],
+    domainMismatches: [],
+    ownerMismatches: [],
+    lifecycleMismatches: [],
+    discoveryWarnings: [...discovery.diagnostics],
+  };
+  let manifested = 0;
+
+  for (const row of discovery.sessions) {
+    let manifest = null;
+    try {
+      manifest = opts.store.resolveByLocatorPath(row.sessionPath);
+    } catch (error) {
+      details.missing.push({
+        sessionPath: row.sessionPath,
+        expectedDomain: row.domain,
+        expectedKind: row.kind,
+        error: error?.message || String(error),
+      });
+      continue;
+    }
+    const { input } = expectedManifestInput(row, reader, opts.scannedAt || new Date().toISOString());
+    if (!manifest) {
+      details.missing.push({
+        sessionPath: row.sessionPath,
+        expectedDomain: input.domain,
+        expectedKind: input.kind,
+        ownerAgentId: input.ownerAgentId || null,
+        sources: [...(row.sources || [])],
+      });
+      continue;
+    }
+    manifested += 1;
+    if (manifest.domain !== input.domain || manifest.kind !== input.kind) {
+      details.domainMismatches.push({
+        sessionId: manifest.sessionId,
+        sessionPath: row.sessionPath,
+        actualDomain: manifest.domain,
+        actualKind: manifest.kind,
+        expectedDomain: input.domain,
+        expectedKind: input.kind,
+        sources: [...(row.sources || [])],
+      });
+    }
+    if (input.ownerAgentId && manifest.ownerAgentId !== input.ownerAgentId) {
+      details.ownerMismatches.push({
+        sessionId: manifest.sessionId,
+        sessionPath: row.sessionPath,
+        actualOwnerAgentId: manifest.ownerAgentId || null,
+        expectedOwnerAgentId: input.ownerAgentId,
+        sources: [...(row.sources || [])],
+      });
+    }
+    if (manifest.lifecycle !== input.lifecycle) {
+      details.lifecycleMismatches.push({
+        sessionId: manifest.sessionId,
+        sessionPath: row.sessionPath,
+        actualLifecycle: manifest.lifecycle,
+        expectedLifecycle: input.lifecycle,
+        sources: [...(row.sources || [])],
+      });
+    }
+  }
+
+  const missingLocatorKeys = new Set();
+  for (const manifest of opts.store.list?.() || []) {
+    const sessionPath = manifest?.currentLocator?.path || null;
+    if (!LOCATOR_REQUIRED_LIFECYCLES.has(manifest?.lifecycle)) continue;
+    if (!sessionPath || fs.existsSync(sessionPath)) continue;
+    const key = sessionLocatorKey(sessionPath);
+    if (missingLocatorKeys.has(key)) continue;
+    missingLocatorKeys.add(key);
+    details.missingLocators.push({
+      sessionId: manifest.sessionId || null,
+      sessionPath,
+      domain: manifest.domain || null,
+      kind: manifest.kind || null,
+      source: "manifest_current_locator",
+    });
+  }
+  for (const warning of discovery.diagnostics) {
+    if (warning.type !== "missing_source_locator") continue;
+    const key = sessionLocatorKey(warning.sessionPath);
+    if (missingLocatorKeys.has(key)) continue;
+    missingLocatorKeys.add(key);
+    details.missingLocators.push({
+      sessionId: null,
+      sessionPath: warning.sessionPath,
+      source: warning.source,
+      sourcePath: warning.sourcePath || null,
+    });
+  }
+
+  return {
+    discovered: discovery.sessions.length,
+    manifested,
+    missing: details.missing.length,
+    missingLocator: details.missingLocators.length,
+    domainMismatch: details.domainMismatches.length,
+    ownerMismatch: details.ownerMismatches.length,
+    lifecycleMismatch: details.lifecycleMismatches.length,
+    details,
+  };
+}
+
 export function migrateLegacySessions(opts: any = {}) {
   if (!opts.hanaHome) throw new Error("migrateLegacySessions requires hanaHome");
   if (!opts.store) throw new Error("migrateLegacySessions requires store");
 
   const hanaHome = path.resolve(opts.hanaHome);
-  const agentsDir = path.resolve(opts.agentsDir || path.join(hanaHome, "agents"));
   const migratedAt = opts.migratedAt || new Date().toISOString();
   const result: any = { scanned: 0, created: 0, existing: 0, skipped: 0, skippedDetails: [] };
+  const discovery = discoverLegacySessions({
+    hanaHome,
+    ...(opts.agentsDir ? { agentsDir: opts.agentsDir } : {}),
+  });
+  const reader = createLegacyRowReader();
 
-  for (const agentId of listDirectories(agentsDir)) {
-    const sessionGroups = [
-      {
-        sessionDir: path.join(agentsDir, agentId, "sessions"),
-        sessionRowsFor: (sessionDir) => [
-          ...listJsonlFiles(sessionDir).map((sessionPath) => ({ sessionPath, lifecycle: "active" })),
-          ...listJsonlFiles(path.join(sessionDir, "archived")).map((sessionPath) => ({ sessionPath, lifecycle: "archived" })),
-        ],
-      },
-      {
-        sessionDir: path.join(agentsDir, agentId, "subagent-sessions"),
-        sessionRowsFor: (sessionDir) => (
-          listJsonlFiles(sessionDir).map((sessionPath) => ({ sessionPath, lifecycle: "active" }))
-        ),
-      },
-    ];
-
-    for (const group of sessionGroups) {
-      const sessionDir = group.sessionDir;
-      if (!fs.existsSync(sessionDir)) continue;
-      const metaSources = readSessionMetaSources(sessionDir);
-      const titlesPath = path.join(sessionDir, "session-titles.json");
-      const titles = readJsonFile(titlesPath, {});
-      const sessionRows = group.sessionRowsFor(sessionDir);
-
-      for (const row of sessionRows) {
-        result.scanned += 1;
-        try {
-          const existing = opts.store.resolveByLocatorPath(row.sessionPath);
-          if (existing) {
-            const repaired = repairExistingLocatorIfNeeded(opts.store, existing, row.sessionPath);
-            const candidates = sessionMetaCandidates(metaSources, row.sessionPath);
-            const permissionRepaired = repairPermissionSnapshotFromLegacyMeta(opts.store, repaired, candidates);
-            importLegacyCapabilitySnapshot(opts.store, permissionRepaired || repaired, candidates);
-            importLegacyExecutorMetadata(opts.store, permissionRepaired || repaired, candidates);
-            backfillLegacyTitleSessionIdKey(titlesPath, titles, sessionDir, row.sessionPath, permissionRepaired || repaired);
-            const settled = permissionRepaired || repaired;
-            if (settled?.sessionId && !settled.ownerAgentId && typeof opts.store.backfillOwnerAgentId === "function") {
-              opts.store.backfillOwnerAgentId(settled.sessionId, agentId);
-            }
-            result.existing += 1;
-            continue;
-          }
-
-          const manifest = opts.store.createForPath(buildLegacyManifestInput({
-            agentId,
-            sessionDir,
-            sessionPath: row.sessionPath,
-            lifecycle: row.lifecycle,
-            metaSources,
-            titles,
-            migratedAt,
-          }));
-          const candidates = sessionMetaCandidates(metaSources, row.sessionPath);
-          importLegacyCapabilitySnapshot(opts.store, manifest, candidates);
-          importLegacyExecutorMetadata(opts.store, manifest, candidates);
-          backfillLegacyTitleSessionIdKey(titlesPath, titles, sessionDir, row.sessionPath, manifest);
-          result.created += 1;
-        } catch (error) {
-          if (opts.stopOnError === true) throw error;
-          result.skipped += 1;
-          if (result.skippedDetails.length < MAX_SKIPPED_DETAILS) {
-            result.skippedDetails.push({
-              sessionPath: row.sessionPath,
-              error: error?.message || String(error),
-            });
-          }
+  for (const row of discovery.sessions) {
+    result.scanned += 1;
+    try {
+      const { candidates, input } = expectedManifestInput(row, reader, migratedAt);
+      const titleState = reader.titleState(row);
+      let existing = opts.store.resolveByLocatorPath(row.sessionPath);
+      if (existing) {
+        existing = repairExistingLocatorIfNeeded(opts.store, existing, row.sessionPath);
+        if (!existing.ownerAgentId && typeof opts.store.backfillOwnerAgentId === "function") {
+          existing = opts.store.backfillOwnerAgentId(existing.sessionId, input.ownerAgentId);
         }
+        if (typeof opts.store.repairLegacyScanMetadata === "function") {
+          existing = opts.store.repairLegacyScanMetadata(existing.sessionId, {
+            ownerAgentId: input.ownerAgentId,
+            ownerAgentIdSource: row.ownerAgentIdSource,
+            domain: input.domain,
+            kind: input.kind,
+            provenance: input.provenance,
+            migration: input.migration,
+          });
+        }
+        if (
+          existing?.migration?.source === "legacy_scan"
+          && existing.lifecycle !== input.lifecycle
+          && typeof opts.store.updateLocatorLifecycle === "function"
+        ) {
+          existing = opts.store.updateLocatorLifecycle(
+            existing.sessionId,
+            row.sessionPath,
+            input.lifecycle,
+            "legacy_scan_lifecycle_repair",
+            { domain: existing.domain, kind: existing.kind },
+          );
+        }
+        const permissionRepaired = repairPermissionSnapshotFromLegacyMeta(opts.store, existing, candidates);
+        const settled = permissionRepaired || existing;
+        importLegacyCapabilitySnapshot(opts.store, settled, candidates);
+        importLegacyExecutorMetadata(opts.store, settled, candidates);
+        if (titleState.titlesPath) {
+          backfillLegacyTitleSessionIdKey(
+            titleState.titlesPath,
+            titleState.titles,
+            row.titleSessionDir,
+            row.sessionPath,
+            settled,
+          );
+        }
+        result.existing += 1;
+        continue;
+      }
+
+      const manifest = opts.store.createForPath(input);
+      importLegacyCapabilitySnapshot(opts.store, manifest, candidates);
+      importLegacyExecutorMetadata(opts.store, manifest, candidates);
+      if (titleState.titlesPath) {
+        backfillLegacyTitleSessionIdKey(
+          titleState.titlesPath,
+          titleState.titles,
+          row.titleSessionDir,
+          row.sessionPath,
+          manifest,
+        );
+      }
+      result.created += 1;
+    } catch (error) {
+      if (opts.stopOnError === true) throw error;
+      result.skipped += 1;
+      if (result.skippedDetails.length < MAX_SKIPPED_DETAILS) {
+        result.skippedDetails.push({
+          sessionPath: row.sessionPath,
+          error: error?.message || String(error),
+        });
       }
     }
   }

@@ -39,6 +39,7 @@ vi.mock("../lib/debug-log.js", () => ({
 import { SessionCoordinator } from "../core/session-coordinator.ts";
 import { SessionManifestStore } from "../core/session-manifest/store.ts";
 import { repairRestoredToolSnapshot } from "../core/tool-snapshot-repair.ts";
+import { filterToolObjectsByAvailability } from "../core/tool-availability.ts";
 import { isBeautifyEnabledForAgentConfig } from "../plugins/beautify/lib/availability.ts";
 import { CORE_TOOL_NAMES } from "../shared/tool-categories.ts";
 
@@ -525,7 +526,7 @@ describe("session-coordinator tool snapshot (createSession)", () => {
     expect(entry.toolNames).not.toContain("dm");
   });
 
-  it("Case A: restore applies the global phone feature gate over frozen toolNames", async () => {
+  it("Case A: restore applies the global phone gate without rewriting frozen toolNames", async () => {
     channelsEnabled = false;
     currentAgentConfig = { tools: { disabled: [] } };
     const replayList = ["read", "channel", "dm", "browser"];
@@ -539,7 +540,8 @@ describe("session-coordinator tool snapshot (createSession)", () => {
     const appliedList = activeToolsSpy.mock.calls[0][0];
     expect(appliedList).toEqual(restoredSnapshot(["read", "browser"]));
     const entry = coord._sessions.get(sessionPath);
-    expect(entry.toolNames).toEqual(restoredSnapshot(["read", "browser"]));
+    expect(entry.toolNames).toEqual(restoredSnapshot(replayList, [...allNames(), "dm"]));
+    expect(entry.unavailableToolNames).toEqual(["channel", "dm"]);
   });
 
   it("Case C: snapshot includes sandbox built-ins (regression for P1 — bundle must carry command/file tools)", async () => {
@@ -715,7 +717,7 @@ describe("session-coordinator tool snapshot (createSession)", () => {
     expect(activeToolsSpy.mock.calls[0][0]).not.toContain("terminal");
   });
 
-  it("Case A: restore repairs corrupted snapshots that lost available core tools only", async () => {
+  it("Case A: restore repairs missing core tools without deleting unavailable frozen names", async () => {
     currentAgentConfig = { tools: { disabled: ["browser", "dm"] } };
     const replayList = ["todo_write", "retired_tool", "todo_write"];
     await fsp.writeFile(
@@ -733,10 +735,11 @@ describe("session-coordinator tool snapshot (createSession)", () => {
     expect(activeToolsSpy.mock.calls[0][0]).not.toContain("dm");
 
     const entry = coord._sessions.get(sessionPath);
-    expect(entry.toolNames).toEqual(expected);
+    expect(entry.toolNames).toEqual(restoredSnapshot(replayList, [...allNames(), "retired_tool"]));
+    expect(entry.unavailableToolNames).toEqual(["retired_tool"]);
 
     const meta = JSON.parse(await fsp.readFile(path.join(sessionDir, "session-meta.json"), "utf-8"));
-    expect(meta[path.basename(fakeSessionPath)].toolNames).toEqual(expected);
+    expect(meta[path.basename(fakeSessionPath)].toolNames).toEqual(entry.toolNames);
   });
 
   it("Case A: restore keeps newly registered tools inactive when they are absent from the frozen snapshot", async () => {
@@ -760,7 +763,7 @@ describe("session-coordinator tool snapshot (createSession)", () => {
     expect(activeToolsSpy.mock.calls[0][0]).not.toContain("mcp_new_dynamic_tool");
   });
 
-  it("Case A: restore replays frozen plugin tool snapshot even if MCP is currently disabled", async () => {
+  it("Case A: restore preserves a disabled MCP tool in the contract but not the active runtime", async () => {
     const mcpTool = {
       ...makeTool("mcp_github_search"),
       isEnabledForAgentConfig: () => false,
@@ -775,15 +778,64 @@ describe("session-coordinator tool snapshot (createSession)", () => {
       JSON.stringify({ [path.basename(fakeSessionPath)]: { toolNames: replayList } }, null, 2),
     );
 
-    await coord.createSession(null, tmpDir, true, null, { restore: true });
+    const { sessionPath } = await coord.createSession(null, tmpDir, true, null, { restore: true });
 
     expect(activeToolsSpy).toHaveBeenCalledTimes(1);
-    expect(activeToolsSpy.mock.calls[0][0]).toEqual(
-      restoredSnapshot(replayList, [...allNames(), "mcp_github_search"]),
-    );
+    expect(activeToolsSpy.mock.calls[0][0]).not.toContain("mcp_github_search");
+    const entry = coord._sessions.get(sessionPath);
+    expect(entry.toolNames).toContain("mcp_github_search");
+    expect(entry.unavailableToolNames).toEqual(["mcp_github_search"]);
   });
 
-  it("Case A: restore replays frozen computer snapshot even if its global gate is now closed", async () => {
+  it("Case A: a production-filtered temporary plugin outage does not rewrite the frozen contract", async () => {
+    let pluginAvailable = false;
+    const mcpTool = {
+      ...makeTool("mcp_github_search"),
+      _pluginId: "mcp",
+      isEnabledForAgentConfig: () => pluginAvailable,
+    };
+    coord._d.buildTools = () => ({
+      tools: SDK_BUILTIN_OBJS,
+      customTools: filterToolObjectsByAvailability(
+        [...HANAKO_CUSTOM_OBJS, mcpTool],
+        currentAgentConfig,
+        { agentId: "test", channelsEnabled },
+      ),
+    });
+    coord._d.getAgentById = (id) => (id === "test" ? focusAgent : null);
+    currentAgentConfig = { tools: { disabled: [] } };
+    const replayList = ["read", "mcp_github_search"];
+    await fsp.writeFile(
+      path.join(sessionDir, "session-meta.json"),
+      JSON.stringify({ [path.basename(fakeSessionPath)]: { toolNames: replayList } }, null, 2),
+    );
+
+    const { sessionPath } = await coord.createSession(null, tmpDir, true, null, { restore: true });
+
+    expect(activeToolsSpy.mock.calls[0][0]).not.toContain("mcp_github_search");
+    expect(coord._sessions.get(sessionPath).toolNames).toContain("mcp_github_search");
+    expect(coord.getSessionCapabilityDriftNotice(sessionPath)?.invalidToolNames)
+      .toEqual(["mcp_github_search"]);
+    let meta = JSON.parse(await fsp.readFile(path.join(sessionDir, "session-meta.json"), "utf-8"));
+    expect(meta[path.basename(fakeSessionPath)].toolNames).toContain("mcp_github_search");
+
+    pluginAvailable = true;
+    const staleResult = coord.markCapabilitySnapshotsStale({ reason: "plugin.lifecycle.changed" });
+    expect(staleResult).toMatchObject({ ok: true, marked: 1 });
+    expect(coord.getSessionCapabilityDriftNotice(sessionPath)).toMatchObject({
+      addedToolNames: expect.arrayContaining(["mcp_github_search"]),
+      invalidToolNames: [],
+      reason: "plugin.lifecycle.changed",
+    });
+    await coord.reloadSessionRuntime(sessionPath);
+
+    const restoredTools = activeToolsSpy.mock.calls.at(-1)[0];
+    expect(restoredTools).toContain("mcp_github_search");
+    meta = JSON.parse(await fsp.readFile(path.join(sessionDir, "session-meta.json"), "utf-8"));
+    expect(meta[path.basename(fakeSessionPath)].toolNames).toContain("mcp_github_search");
+  });
+
+  it("Case A: restore preserves a gated computer tool in the contract but not the active runtime", async () => {
     const computerTool = {
       ...makeTool("computer"),
       isEnabledForAgentConfig: () => false,
@@ -798,12 +850,13 @@ describe("session-coordinator tool snapshot (createSession)", () => {
       JSON.stringify({ [path.basename(fakeSessionPath)]: { toolNames: replayList } }, null, 2),
     );
 
-    await coord.createSession(null, tmpDir, true, null, { restore: true });
+    const { sessionPath } = await coord.createSession(null, tmpDir, true, null, { restore: true });
 
     expect(activeToolsSpy).toHaveBeenCalledTimes(1);
-    expect(activeToolsSpy.mock.calls[0][0]).toEqual(
-      restoredSnapshot(replayList, [...allNames(), "computer"]),
-    );
+    expect(activeToolsSpy.mock.calls[0][0]).not.toContain("computer");
+    const entry = coord._sessions.get(sessionPath);
+    expect(entry.toolNames).toContain("computer");
+    expect(entry.unavailableToolNames).toEqual(["computer"]);
   });
 
   // ── Case B tests ─────────────────────────────────────────────

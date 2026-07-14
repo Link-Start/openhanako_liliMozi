@@ -10,18 +10,19 @@ function mappedToolNames(name) {
 }
 
 /**
- * Same repair as repairRestoredToolSnapshot, but also reports which snapshot
- * names were dropped because they are no longer registered in the runtime.
- * #1624: the restore path surfaces these as "invalid tools" in the capability
- * drift notice instead of filtering them fully silently.
+ * Repairs the runtime-active subset while preserving a normalized copy of the
+ * frozen contract. A missing handler may be a transient plugin outage, so
+ * restore must not turn current availability into persisted history.
  */
 export function repairRestoredToolSnapshotDetailed(snapshotToolNames, allToolNames, {
   coreToolNames = CORE_TOOL_NAMES,
 } = {}) {
   const available = new Set(uniqueToolNames(allToolNames));
   const toolNames = [];
+  const contractToolNames = [];
   const droppedToolNames = [];
   const seen = new Set();
+  const seenContract = new Set();
   const seenSnapshotNames = new Set();
 
   for (const name of uniqueToolNames(snapshotToolNames)) {
@@ -31,9 +32,13 @@ export function repairRestoredToolSnapshotDetailed(snapshotToolNames, allToolNam
     const kept = mappedNames.filter((mapped) => available.has(mapped));
     if (!kept.length) {
       droppedToolNames.push(name);
-      continue;
     }
-    for (const mapped of kept) {
+    for (const mapped of mappedNames) {
+      if (!seenContract.has(mapped)) {
+        seenContract.add(mapped);
+        contractToolNames.push(mapped);
+      }
+      if (!available.has(mapped)) continue;
       if (seen.has(mapped)) continue;
       seen.add(mapped);
       toolNames.push(mapped);
@@ -44,9 +49,13 @@ export function repairRestoredToolSnapshotDetailed(snapshotToolNames, allToolNam
     if (!available.has(name) || seen.has(name)) continue;
     seen.add(name);
     toolNames.push(name);
+    if (!seenContract.has(name)) {
+      seenContract.add(name);
+      contractToolNames.push(name);
+    }
   }
 
-  return { toolNames, droppedToolNames };
+  return { toolNames, contractToolNames, droppedToolNames };
 }
 
 export function repairRestoredToolSnapshot(snapshotToolNames, allToolNames, options = {}) {
