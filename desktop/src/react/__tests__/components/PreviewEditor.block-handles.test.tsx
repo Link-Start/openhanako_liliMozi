@@ -218,6 +218,33 @@ describe('markdown block handle rail', () => {
     view.destroy();
   });
 
+  it('keeps the drop indicator symmetrically inset inside the rendered text width', () => {
+    rectSpy.mockImplementation(function rect(this: HTMLElement) {
+      if (this.classList.contains('cm-line')) {
+        return {
+          ...elementRect(),
+          x: 160,
+          left: 160,
+          right: 800,
+          width: 640,
+        } as DOMRect;
+      }
+      return elementRect();
+    });
+    const { view } = createView();
+    const firstHandle = view.dom.querySelectorAll<HTMLButtonElement>('.cm-markdown-block-handle')[0];
+
+    fireEvent(firstHandle, pointerEvent('pointerdown', 14, 32));
+    fireEvent(firstHandle, pointerEvent('pointermove', 14, 100));
+
+    const indicator = view.dom.querySelector<HTMLElement>('.cm-markdown-block-drop-indicator');
+    expect(indicator?.style.left).toBe('168px');
+    expect(indicator?.style.width).toBe('624px');
+    fireEvent(firstHandle, pointerEvent('pointercancel', 14, 100));
+    expect(indicator?.classList.contains('is-visible')).toBe(false);
+    view.destroy();
+  });
+
   it('keeps a fenced code block handle when its hidden fence lines have no coordinates', () => {
     coordsSpy.mockImplementation(function coords(this: EditorView, pos: number) {
       const line = this.state.doc.lineAt(Math.min(pos, this.state.doc.length));

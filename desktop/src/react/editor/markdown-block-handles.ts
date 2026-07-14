@@ -28,6 +28,7 @@ const HANDLE_WIDTH = 20;
 const HANDLE_HEIGHT = 24;
 const HANDLE_GAP = 8;
 const HANDLE_RAIL_WIDTH = HANDLE_WIDTH + HANDLE_GAP;
+const DROP_INDICATOR_INSET = 8;
 const DRAG_THRESHOLD = 4;
 const FENCE_LINE_RE = /^ {0,3}(?:`{3,}|~{3,})/;
 
@@ -37,6 +38,7 @@ interface MeasuredMarkdownBlock {
   readonly start: EditorCoordinates;
   readonly end: EditorCoordinates;
   readonly left: number;
+  readonly textBounds: { left: number; right: number } | null;
 }
 
 interface MarkdownBlockRailItemLayout {
@@ -102,10 +104,25 @@ function renderedLineCoordinates(
   };
 }
 
+function renderedLineElement(view: EditorView, lineNumber: number): HTMLElement | null {
+  const line = view.state.doc.line(lineNumber);
+  const { node } = view.domAtPos(line.from, 1);
+  let element = node.nodeType === Node.ELEMENT_NODE
+    ? node as HTMLElement
+    : node.parentElement;
+  while (element && element !== view.contentDOM) {
+    if (element.classList.contains('cm-line')) return element;
+    element = element.parentElement;
+  }
+  return null;
+}
+
 function measureMarkdownBlock(view: EditorView, block: MarkdownBlock): MeasuredMarkdownBlock | null {
   let start: EditorCoordinates | null = null;
   let end: EditorCoordinates | null = null;
   let left = Number.POSITIVE_INFINITY;
+  let textLeft = Number.POSITIVE_INFINITY;
+  let textRight = Number.NEGATIVE_INFINITY;
 
   const lineNumbers = measurableLineNumbers(view, block);
   for (const lineNumber of lineNumbers) {
@@ -113,13 +130,23 @@ function measureMarkdownBlock(view: EditorView, block: MarkdownBlock): MeasuredM
     if (!coordinates) continue;
     start ??= coordinates;
     left = Math.min(left, coordinates.left);
+    const lineElement = renderedLineElement(view, lineNumber);
+    if (lineElement) {
+      const lineRect = lineElement.getBoundingClientRect();
+      textLeft = Math.min(textLeft, lineRect.left);
+      textRight = Math.max(textRight, lineRect.right);
+    }
   }
   for (let index = lineNumbers.length - 1; index >= 0; index -= 1) {
     end = renderedLineCoordinates(view, lineNumbers[index], 'end');
     if (end) break;
   }
 
-  return start && end && Number.isFinite(left) ? { start, end, left } : null;
+  if (!start || !end || !Number.isFinite(left)) return null;
+  const textBounds = Number.isFinite(textLeft) && Number.isFinite(textRight) && textRight > textLeft
+    ? { left: textLeft, right: textRight }
+    : null;
+  return { start, end, left, textBounds };
 }
 
 function blockMatches(left: MarkdownBlock, right: MarkdownBlock): boolean {
@@ -356,18 +383,8 @@ class MarkdownBlockHandleView {
   private renderedLineElements(block: MarkdownBlock): HTMLElement[] {
     const elements = new Set<HTMLElement>();
     for (const lineNumber of measurableLineNumbers(this.view, block)) {
-      const line = this.view.state.doc.line(lineNumber);
-      const { node } = this.view.domAtPos(line.from, 1);
-      let element = node.nodeType === Node.ELEMENT_NODE
-        ? node as HTMLElement
-        : node.parentElement;
-      while (element && element !== this.view.contentDOM) {
-        if (element.classList.contains('cm-line')) {
-          elements.add(element);
-          break;
-        }
-        element = element.parentElement;
-      }
+      const element = renderedLineElement(this.view, lineNumber);
+      if (element) elements.add(element);
     }
     return [...elements];
   }
@@ -483,11 +500,18 @@ class MarkdownBlockHandleView {
     const editorRect = this.view.dom.getBoundingClientRect();
     const measurement = this.measuredBlocks.find(({ block }) => blockMatches(block, target))?.measurement;
     if (!measurement) return;
-    const { start, end, left } = measurement;
+    const { start, end, textBounds } = measurement;
+    if (!textBounds) {
+      this.dropIndicator.classList.remove('is-visible');
+      return;
+    }
     const top = (placement === 'before' ? start.top : end.bottom) - editorRect.top;
-    this.dropIndicator.style.left = `${Math.max(0, left - editorRect.left - HANDLE_RAIL_WIDTH)}px`;
+    const inset = Math.min(DROP_INDICATOR_INSET, (textBounds.right - textBounds.left) / 2);
+    const indicatorLeft = textBounds.left + inset;
+    const indicatorRight = textBounds.right - inset;
+    this.dropIndicator.style.left = `${indicatorLeft - editorRect.left}px`;
     this.dropIndicator.style.top = `${top}px`;
-    this.dropIndicator.style.width = `${Math.max(HANDLE_WIDTH, editorRect.right - start.left)}px`;
+    this.dropIndicator.style.width = `${Math.max(0, indicatorRight - indicatorLeft)}px`;
     this.dropIndicator.classList.add('is-visible');
   }
 
