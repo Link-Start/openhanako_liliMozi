@@ -9,10 +9,103 @@ import { stripAllInlineMediaForHistory } from "./message-sanitizer.ts";
 import { buildSessionCacheSnapshot } from "./session-cache-snapshot.ts";
 import { runSessionSnapshotSideTask } from "../lib/llm/session-snapshot-side-task-runner.ts";
 import { buildCacheStrategyMetadata } from "../lib/llm/cache-strategy-contract.ts";
-import { normalizeProviderContextMessages } from "./provider-compat.ts";
+import {
+  normalizeProviderContextMessages,
+  normalizeProviderPayload,
+} from "./provider-compat.ts";
+import { resolveOutputCapCapability } from "./provider-compat/output-budget.ts";
+import { normalizeRequestThinkingLevel } from "./session-thinking-level.ts";
 
 const DEFAULT_HARD_TRUNCATE_THRESHOLD = 0.85;
 const COMPACTION_REQUEST_BUFFER_TOKENS = 1024;
+const OUTPUT_CAP_FIELDS = ["max_completion_tokens", "max_tokens", "max_output_tokens", "maxOutputTokens"];
+const OUTPUT_CAP_FIELD_SET = new Set(OUTPUT_CAP_FIELDS);
+
+export const COMPACTION_OUTPUT_POLICIES = Object.freeze({
+  PROVIDER_DEFAULT: "provider-default",
+  BOUNDED: "bounded",
+});
+
+function positiveInteger(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : null;
+}
+
+function normalizeCompactionOutputPolicy(value) {
+  const policy = value || COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT;
+  if (policy === COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT || policy === COMPACTION_OUTPUT_POLICIES.BOUNDED) {
+    return policy;
+  }
+  throw new Error(`Unknown compaction output policy: ${String(value)}`);
+}
+
+function hasValidOutputCap(payload) {
+  return OUTPUT_CAP_FIELDS.some((field) => positiveInteger(payload?.[field]) !== null);
+}
+
+function safeRequiredOutputCap(model, boundedMaxTokens) {
+  const modelCandidates = [
+    positiveInteger(model?.maxTokens || model?.maxOutput),
+    positiveInteger(model?.contextWindow),
+  ].filter((value) => value !== null);
+  if (modelCandidates.length > 0) return Math.min(...modelCandidates);
+  return positiveInteger(boundedMaxTokens) ?? 1;
+}
+
+function requiredOutputCapField(payload, model) {
+  const explicit = model?.compat?.outputCapField;
+  if (typeof explicit === "string" && OUTPUT_CAP_FIELD_SET.has(explicit)) return explicit;
+  return OUTPUT_CAP_FIELDS.find((field) => Object.prototype.hasOwnProperty.call(payload || {}, field)) || "max_tokens";
+}
+
+export function normalizeCompactionProviderPayload(payload, model, {
+  outputPolicy = COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT,
+  boundedMaxTokens,
+  ...providerOptions
+}: Record<string, any> = {}) {
+  const policy = normalizeCompactionOutputPolicy(outputPolicy);
+  const hadValidOutputCap = hasValidOutputCap(payload);
+  let normalized = normalizeProviderPayload(payload, model, {
+    ...providerOptions,
+    mode: "chat",
+    outputBudgetSource: policy === COMPACTION_OUTPUT_POLICIES.BOUNDED ? "system" : "sdk-default",
+  });
+  const capability = resolveOutputCapCapability(model);
+
+  if (policy === COMPACTION_OUTPUT_POLICIES.BOUNDED) {
+    if (hasValidOutputCap(normalized)) return normalized;
+    const bounded = positiveInteger(boundedMaxTokens);
+    if (bounded === null) throw new Error("Bounded compaction output requires a positive token limit");
+    return { ...normalized, [requiredOutputCapField(normalized, model)]: bounded };
+  }
+  if (!capability.required) {
+    for (const field of OUTPUT_CAP_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(normalized, field)) continue;
+      if (normalized === payload) normalized = { ...normalized };
+      delete normalized[field];
+    }
+    return normalized;
+  }
+
+  if (!hadValidOutputCap) {
+    const field = requiredOutputCapField(normalized, model);
+    const next = { ...normalized };
+    for (const outputField of OUTPUT_CAP_FIELDS) delete next[outputField];
+    next[field] = safeRequiredOutputCap(model, boundedMaxTokens);
+    normalized = next;
+  }
+  return normalized;
+}
+
+export function resolveCompactionReasoningPolicy(model, thinkingLevel) {
+  const normalizedThinkingLevel = normalizeRequestThinkingLevel(thinkingLevel, "off");
+  return {
+    thinkingLevel: normalizedThinkingLevel,
+    reasoningLevel: model?.reasoning && normalizedThinkingLevel !== "off"
+      ? normalizedThinkingLevel
+      : null,
+  };
+}
 
 // Keep these prompt strings aligned with Pi SDK's compaction prompts. Hana's
 // cache-preserving variant only moves the prompt after the cached message prefix.
@@ -397,6 +490,7 @@ export async function createCachePreservingCompactionResult({
   customInstructions,
   signal,
   thinkingLevel,
+  outputPolicy = COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT,
   streamFn,
   streamOptions = {},
   convertToLlm = convertAgentMessagesToLlm,
@@ -414,6 +508,7 @@ export async function createCachePreservingCompactionResult({
   customInstructions: any;
   signal: any;
   thinkingLevel: any;
+  outputPolicy?: "provider-default" | "bounded";
   streamFn: any;
   streamOptions?: Record<string, any>;
   convertToLlm?: any;
@@ -432,13 +527,17 @@ export async function createCachePreservingCompactionResult({
   const seedCacheKeyParams = !cacheMetadataOverride
     ? (cacheKeyParamsFromSnapshot(sessionSnapshot) || cacheKeyParams)
     : cacheKeyParams;
+  const resolvedOutputPolicy = normalizeCompactionOutputPolicy(outputPolicy);
+  const rawThinkingLevel = seedCacheKeyParams.thinkingLevel ?? thinkingLevel ?? "off";
+  const reasoningPolicy = resolveCompactionReasoningPolicy(model, rawThinkingLevel);
   const effectiveCacheKeyParams = {
     ...seedCacheKeyParams,
-    thinkingLevel: seedCacheKeyParams.thinkingLevel ?? thinkingLevel ?? "off",
+    thinkingLevel: reasoningPolicy.thinkingLevel,
   };
-  const effectiveThinkingLevel = !cacheMetadataOverride && typeof effectiveCacheKeyParams.thinkingLevel === "string"
-    ? effectiveCacheKeyParams.thinkingLevel
-    : thinkingLevel;
+  const effectiveThinkingLevel = !cacheMetadataOverride
+    ? reasoningPolicy.thinkingLevel
+    : resolveCompactionReasoningPolicy(model, thinkingLevel).thinkingLevel;
+  const effectiveReasoningLevel = resolveCompactionReasoningPolicy(model, effectiveThinkingLevel).reasoningLevel;
   const requests = buildCachePreservingCompactionRequests({ preparation: effectivePreparation, customInstructions });
 
   async function runRequest(request) {
@@ -449,13 +548,17 @@ export async function createCachePreservingCompactionResult({
     });
     const suffixMessage = llmMessages[llmMessages.length - 1];
     const prefixMessages = llmMessages.slice(0, -1);
-    const options = {
+    const options: Record<string, any> = {
       ...streamOptions,
-      maxTokens: request.maxTokens,
       signal,
       toolChoice: "none",
-      ...(model.reasoning && effectiveThinkingLevel && effectiveThinkingLevel !== "off" ? { reasoning: effectiveThinkingLevel } : {}),
     };
+    delete options.maxTokens;
+    delete options.reasoning;
+    if (resolvedOutputPolicy === COMPACTION_OUTPUT_POLICIES.BOUNDED) {
+      options.maxTokens = request.maxTokens;
+    }
+    if (effectiveReasoningLevel) options.reasoning = effectiveReasoningLevel;
     if (cacheMetadataOverride) {
       const context = {
         systemPrompt,
@@ -624,6 +727,7 @@ export async function runCachePreservingCompactionForSession(session: any, {
       cacheKeyParams: {
         thinkingLevel: session.thinkingLevel ?? session.agent.state?.thinkingLevel ?? "off",
       },
+      outputPolicy: COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT,
       streamFn: session.agent.streamFn,
       streamOptions: {
         sessionId: session.agent.sessionId,

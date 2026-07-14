@@ -32,6 +32,7 @@ import {
   compactSessionWithCachePreservation,
   compactSessionWithCachePreservationRecoveringRuntime,
   createCachePreservingCompactionResult,
+  normalizeCompactionProviderPayload,
   runCachePreservingCompactionForSession,
 } from "../core/session-compactor.ts";
 import { buildSessionCacheSnapshot } from "../core/session-cache-snapshot.ts";
@@ -87,6 +88,7 @@ describe("session-compactor", () => {
       customInstructions: "focus on decisions",
       signal,
       thinkingLevel: "high",
+      outputPolicy: "bounded",
       streamFn,
       convertToLlm,
     } as any);
@@ -134,6 +136,113 @@ describe("session-compactor", () => {
         modifiedFiles: ["/tmp/edited.md", "/tmp/written.md"],
       },
     });
+  });
+
+  it("uses provider-default output for reasoning compaction without a Hana numeric cap", async () => {
+    const streamFn = vi.fn(async () => ({
+      result: vi.fn(async () => ({
+        stopReason: "stop",
+        content: [
+          { type: "thinking", thinking: "reasoning that does not consume a Hana summary cap" },
+          { type: "text", text: "complete summary" },
+        ],
+      })),
+    }));
+
+    const result = await createCachePreservingCompactionResult({
+      preparation: {
+        firstKeptEntryId: "entry-keep",
+        tokensBefore: 1234,
+        messagesToSummarize: [{ role: "user", content: "history" }],
+        settings: { reserveTokens: 1000 },
+      },
+      model: {
+        id: "deepseek-reasoner",
+        provider: "deepseek",
+        api: "openai-completions",
+        reasoning: true,
+        maxTokens: 64_000,
+        contextWindow: 128_000,
+      },
+      systemPrompt: "system prompt",
+      thinkingLevel: "high",
+      outputPolicy: "provider-default",
+      streamFn,
+      convertToLlm: vi.fn(async (messages) => messages),
+    } as any);
+
+    expect(result.summary).toBe("complete summary");
+    const [, , options] = streamFn.mock.calls[0] as any;
+    expect(options).toMatchObject({ reasoning: "high", toolChoice: "none" });
+    expect(options).not.toHaveProperty("maxTokens");
+  });
+
+  it("normalizes provider-default and bounded compaction payloads without changing global chat policy", () => {
+    const model = {
+      id: "deepseek-reasoner",
+      provider: "deepseek",
+      api: "openai-completions",
+      reasoning: true,
+      maxTokens: 64_000,
+      contextWindow: 128_000,
+    };
+    const payload = {
+      model: model.id,
+      messages: [{ role: "user", content: "summarize" }],
+      max_tokens: 800,
+      reasoning_effort: "auto",
+    };
+
+    const providerDefault = normalizeCompactionProviderPayload(payload, model, {
+      outputPolicy: "provider-default",
+      boundedMaxTokens: 800,
+      reasoningLevel: "high",
+    });
+    expect(providerDefault).toMatchObject({
+      model: model.id,
+      messages: payload.messages,
+      reasoning_effort: "high",
+      thinking: { type: "enabled" },
+    });
+    expect(providerDefault).not.toHaveProperty("max_tokens");
+    expect(normalizeCompactionProviderPayload({
+      model: "summary-model",
+      messages: payload.messages,
+      max_tokens: 800,
+    }, {
+      id: "summary-model",
+      provider: "custom",
+      api: "openai-completions",
+      reasoning: false,
+      maxTokens: 16_000,
+      contextWindow: 128_000,
+    }, {
+      outputPolicy: "bounded",
+      boundedMaxTokens: 800,
+      reasoningLevel: "off",
+    })).toMatchObject({ max_tokens: 800 });
+  });
+
+  it("synthesizes a safe cap when a provider protocol requires one", () => {
+    const model = {
+      id: "claude-sonnet",
+      provider: "anthropic",
+      api: "anthropic-messages",
+      reasoning: true,
+      maxTokens: 64_000,
+      contextWindow: 128_000,
+    };
+
+    expect(normalizeCompactionProviderPayload({ messages: [] }, model, {
+      outputPolicy: "provider-default",
+      boundedMaxTokens: 800,
+      reasoningLevel: "high",
+    })).toMatchObject({ max_tokens: 64_000 });
+    expect(normalizeCompactionProviderPayload({ messages: [], max_tokens: 0 }, model, {
+      outputPolicy: "provider-default",
+      boundedMaxTokens: 800,
+      reasoningLevel: "high",
+    })).toMatchObject({ max_tokens: 64_000 });
   });
 
   it("records cache-preserving compaction usage in the usage ledger", async () => {

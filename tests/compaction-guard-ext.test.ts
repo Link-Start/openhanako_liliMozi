@@ -205,6 +205,7 @@ describe("CompactionGuardExtension", () => {
         systemPrompt: "system prompt",
         customInstructions: undefined,
         thinkingLevel: "off",
+        outputPolicy: "provider-default",
         sessionSnapshot: expect.objectContaining({
           sessionPath: "/sessions/current.jsonl",
           tools: [{
@@ -443,6 +444,14 @@ describe("CompactionGuardExtension", () => {
 
     it("canonicalizes legacy auto thinking before compaction side-task requests", async () => {
       (estimatePreparationTokens as any).mockReturnValue(50_000);
+      const deepseekModel = {
+        id: "deepseek-v4-pro",
+        provider: "deepseek",
+        api: "openai-completions",
+        reasoning: true,
+        maxTokens: 64_000,
+        contextWindow: 128_000,
+      };
       (buildSessionCacheSnapshot as any).mockImplementationOnce((sessionPath: any, { reason, messages }: any = {}) => ({
         strategy: "session_snapshot",
         strict: true,
@@ -460,6 +469,7 @@ describe("CompactionGuardExtension", () => {
         { preparation, signal: { aborted: false } },
         {
           ...ctx,
+          model: deepseekModel,
           sessionManager: {
             ...ctx.sessionManager,
             buildSessionContext: () => ({ thinkingLevel: "auto" }),
@@ -470,20 +480,14 @@ describe("CompactionGuardExtension", () => {
       const call = cacheCompactor.mock.calls[0][0];
       expect(call.cacheKeyParams).toEqual({ thinkingLevel: "medium" });
       expect(call.thinkingLevel).toBe("medium");
-      expect(call.streamOptions.onPayload({
+      const normalizedPayload = call.streamOptions.onPayload({
         model: "deepseek-v4-pro",
         messages: [{ role: "user", content: "hello" }],
         reasoning_effort: "auto",
         max_tokens: 32000,
-      }, {
-        id: "deepseek-v4-pro",
-        provider: "deepseek",
-        api: "openai-completions",
-        reasoning: true,
-        contextWindow: 128_000,
-      })).toMatchObject({
-        reasoning_effort: "high",
-      });
+      }, deepseekModel);
+      expect(normalizedPayload).toMatchObject({ reasoning_effort: "high" });
+      expect(normalizedPayload).not.toHaveProperty("max_tokens");
     });
 
     it("uses explicit cache recovery when GLM thinking tool-call history cannot replay reasoning_content", async () => {

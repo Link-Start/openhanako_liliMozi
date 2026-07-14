@@ -28,13 +28,16 @@
 
 import { computeHardTruncation, estimatePreparationTokens, truncateTextHeadTail } from "../../core/compaction-utils.ts";
 import {
+  COMPACTION_OUTPUT_POLICIES,
   createCachePreservingCompactionResult,
+  getCachePreservingCompactionMaxTokens,
+  normalizeCompactionProviderPayload,
+  resolveCompactionReasoningPolicy,
   shouldHardTruncateCachePreservingCompaction,
   stripInlineMediaFromCompactionPreparation,
 } from "../../core/session-compactor.ts";
 import {
   normalizeProviderContextMessages,
-  normalizeProviderPayload,
 } from "../../core/provider-compat.ts";
 import {
   ensureReasoningContentForToolCalls,
@@ -219,8 +222,9 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
         if (event.signal?.aborted) return { cancel: true };
         allowNativeFallback = compactionMode === COMPACTION_MODES.AUTO;
 
-        let thinkingLevel = normalizeRequestThinkingLevel(readThinkingLevel(ctx), "off");
-        let reasoningLevel = typeof thinkingLevel === "string" && thinkingLevel !== "off" ? thinkingLevel : null;
+        const initialReasoningPolicy = resolveCompactionReasoningPolicy(model, readThinkingLevel(ctx));
+        const thinkingLevel = initialReasoningPolicy.thinkingLevel;
+        const reasoningLevel = initialReasoningPolicy.reasoningLevel;
         let reasoningReplay = "preserve";
         let cacheMetadataOverride = null;
         const builtContext = ctx.sessionManager?.buildSessionContext?.();
@@ -300,7 +304,7 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
         const requestThinkingLevel = typeof requestCacheKeyParams.thinkingLevel === "string"
           ? normalizeRequestThinkingLevel(requestCacheKeyParams.thinkingLevel, "off")
           : normalizeRequestThinkingLevel(thinkingLevel, "off");
-        const requestReasoningLevel = requestThinkingLevel !== "off" ? requestThinkingLevel : null;
+        const requestReasoningLevel = resolveCompactionReasoningPolicy(model, requestThinkingLevel).reasoningLevel;
 
         const buildCompactorRequest = ({
           requestMessages = messages,
@@ -321,12 +325,14 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
           customInstructions: event.customInstructions,
           signal: event.signal,
           thinkingLevel: requestThinking,
+          outputPolicy: COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT,
           streamOptions: {
             apiKey: auth.apiKey,
             headers: auth.headers,
             sessionId: ctx.sessionManager?.getSessionId?.(),
-            onPayload: (payload, requestModel) => normalizeProviderPayload(payload, requestModel || model, {
-              mode: "chat",
+            onPayload: (payload, requestModel) => normalizeCompactionProviderPayload(payload, requestModel || model, {
+              outputPolicy: COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT,
+              boundedMaxTokens: getCachePreservingCompactionMaxTokens(preparation),
               reasoningLevel: requestReasoning,
               reasoningReplay: requestReplay,
             }),
