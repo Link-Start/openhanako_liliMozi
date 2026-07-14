@@ -80,7 +80,6 @@ export function externalReadPathsFromSessionFiles(files = [], { workspaceRoots =
 
 export function buildWin32SandboxGrants({
   policy,
-  cwd,
 }: { policy?: any; cwd?: any } = {}) {
   if (!policy || policy.mode === "full-access") {
     return { readPaths: [], optionalReadPaths: [], writePaths: [], optionalWritePaths: [], denyReadPaths: [], denyWritePaths: [] };
@@ -90,9 +89,10 @@ export function buildWin32SandboxGrants({
   const isWorkspaceGitDir = (target) =>
     basenameForPlatformPath(target) === ".git" && isInsideAny(target, workspaceRoots);
 
-  const writePaths = uniqueNormalized([
-    cwd,
-  ]);
+  // `cwd` only selects where the child process starts. Write authority comes
+  // from the session policy (workspace roots / explicitly authorized folders),
+  // never from a per-command working-directory override.
+  const writePaths = workspaceRoots;
   const optionalWritePaths = uniqueExistingNormalized(policy.writablePaths || [])
     .filter((p) => !isInsideAny(p, writePaths));
   const writeGrantRoots = [...writePaths, ...optionalWritePaths];

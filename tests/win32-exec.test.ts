@@ -1154,6 +1154,44 @@ describe("createWin32Exec", () => {
     expect(helperArgs).not.toContain("C:\\Hanako\\resources\\git");
   });
 
+  it("keeps sandbox helper cwd separate from policy write roots", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "windows-native-utility" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    existsSync.mockImplementation((p) => p === helper);
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        policy: {
+          mode: "standard",
+          workspaceRoots: ["/workspace"],
+          writablePaths: ["/workspace", "/hana/.ephemeral"],
+          protectedPaths: [],
+        },
+      },
+    });
+
+    await exec("echo hello", "C:\\read-only-reference", {
+      onData: () => {},
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32" },
+    });
+
+    const helperArgs = spawnAndStream.mock.calls[0][1];
+    expect(helperArgs).toEqual(expect.arrayContaining([
+      "--cwd",
+      "C:\\read-only-reference",
+      "--writable-root",
+      "/workspace",
+    ]));
+    const writableRootIndexes = helperArgs
+      .map((arg, index) => arg === "--writable-root" || arg === "--writable-root-optional" ? index + 1 : -1)
+      .filter((index) => index >= 0);
+    expect(writableRootIndexes.map((index) => helperArgs[index]))
+      .not.toContain("C:\\read-only-reference");
+  });
+
   it("holds a cleanup lease while sandboxed commands use writable roots", async () => {
     classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "windows-native-utility" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";

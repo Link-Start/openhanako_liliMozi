@@ -99,6 +99,29 @@ describe("Windows sandbox policy projection", () => {
     expect(grants.denyReadPaths).toEqual([]);
   });
 
+  it("does not turn a per-command working directory into a writable root", () => {
+    const { hanakoHome, agentDir, workspace, externalDir } = makeTree();
+    const policy = deriveSandboxPolicy({
+      agentDir,
+      workspace,
+      workspaceFolders: [],
+      hanakoHome,
+      mode: "standard",
+    });
+
+    const grants = buildWin32SandboxGrants({
+      policy,
+      cwd: externalDir,
+    });
+
+    expect(grants.writePaths).toEqual([real(workspace)]);
+    expect(grants.optionalWritePaths).not.toContain(real(externalDir));
+    expect([
+      ...grants.writePaths,
+      ...grants.optionalWritePaths,
+    ]).not.toContain(real(externalDir));
+  });
+
   it("does not project ordinary system-readable roots into ACL work", () => {
     const { hanakoHome, agentDir, workspace, externalDir } = makeTree();
     const policy = deriveSandboxPolicy({
