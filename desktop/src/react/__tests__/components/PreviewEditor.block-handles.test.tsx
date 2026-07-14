@@ -266,6 +266,73 @@ describe('markdown block handle rail', () => {
     view.destroy();
   });
 
+  it('copies the exact raw Markdown source for a block range with Mod-c', () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const doc = [
+      '# Heading',
+      '',
+      '> quoted text',
+      '',
+      '```ts',
+      'const value = 1;',
+      '```',
+    ].join('\n');
+    const { view } = createView(
+      vi.fn<(request: MarkdownBlockMenuRequest) => void>(),
+      doc,
+    );
+    const blocks = collectMarkdownBlocks(view.state);
+    view.dispatch({
+      effects: setMarkdownBlockSelection.of({
+        anchor: blocks[0].from,
+        head: blocks[blocks.length - 1].from,
+      }),
+    });
+    view.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'c',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    view.contentDOM.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(writeText).toHaveBeenCalledWith(doc);
+    view.destroy();
+  });
+
+  it('leaves Mod-c to the native text copy path without a block selection', () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const { view } = createView(
+      vi.fn<(request: MarkdownBlockMenuRequest) => void>(),
+      'Paragraph text',
+    );
+    view.dispatch({ selection: { anchor: 0, head: 9 } });
+    view.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'c',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    view.contentDOM.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(writeText).not.toHaveBeenCalled();
+    view.destroy();
+  });
+
   it('keeps the rubber-band origin attached to document content while scrolling', () => {
     rectSpy.mockImplementation(function rect(this: HTMLElement) {
       if (this.classList.contains('cm-line')) {

@@ -19,6 +19,7 @@ import type {
   MarkdownBlockMenuRequest,
   MarkdownBlockMenuTarget,
 } from '../../editor/markdown-block-handles';
+import { copyMarkdownSource } from '../../editor/markdown-block-selection';
 import { EditorFormatMenu } from './EditorFormatMenu';
 
 function label(key: string, fallback: string): string {
@@ -219,6 +220,15 @@ export function EditorContextMenu({
     const view = getView();
     if (!view) return;
     const target = menu?.blockTarget;
+    if (target && command === 'copy') {
+      if (view.state.sliceDoc(target.from, target.to) !== target.source) return;
+      try {
+        await copyMarkdownSource(view, target.source);
+      } catch (err) {
+        console.warn('[EditorContextMenu] copy block source failed:', err);
+      }
+      return;
+    }
     if (target && command !== 'selectAll') {
       const selection = command === 'paste' ? 'end' : 'block';
       if (!selectBlockTarget(view, target, selection)) return;

@@ -4,7 +4,7 @@
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EditorContextMenu } from '../../components/preview/EditorContextMenu';
 import { collectMarkdownBlocks } from '../../editor/markdown-blocks';
@@ -84,6 +84,29 @@ describe('EditorContextMenu block target', () => {
     fireEvent.click(await screen.findByText('引用到对话'));
 
     expect(onQuoteRange).toHaveBeenCalledWith(view, { from: 0, to: doc.length });
+    view.destroy();
+  });
+
+  it('copies the exact raw Markdown source for a highlighted block range', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const doc = [
+      '# Heading',
+      '',
+      '> quoted text',
+      '',
+      '```ts',
+      'const value = 1;',
+      '```',
+    ].join('\n');
+    const { view } = renderBlockMenu(doc, { allBlocks: true });
+
+    fireEvent.click(await screen.findByText('复制'));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(doc));
     view.destroy();
   });
 

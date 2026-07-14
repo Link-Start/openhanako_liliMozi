@@ -6,6 +6,7 @@ import {
 } from '@codemirror/state';
 import {
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
@@ -83,6 +84,29 @@ export function selectedMarkdownBlocks(state: EditorState): MarkdownBlock[] {
   const headIndex = indexForStoredPosition(blocks, selection.head);
   if (anchorIndex < 0 || headIndex < 0) return [];
   return blocks.slice(Math.min(anchorIndex, headIndex), Math.max(anchorIndex, headIndex) + 1);
+}
+
+function selectedMarkdownBlockSource(state: EditorState): string | null {
+  const blocks = selectedMarkdownBlocks(state);
+  if (blocks.length === 0) return null;
+  return state.sliceDoc(blocks[0].from, blocks[blocks.length - 1].to);
+}
+
+export function copyMarkdownSource(view: EditorView, source: string): Promise<void> {
+  const clipboard = view.dom.ownerDocument.defaultView?.navigator.clipboard;
+  if (!clipboard?.writeText) {
+    return Promise.reject(new Error('Clipboard API is unavailable for this editor window.'));
+  }
+  return clipboard.writeText(source);
+}
+
+function copySelectedMarkdownBlocks(view: EditorView): boolean {
+  const source = selectedMarkdownBlockSource(view.state);
+  if (source === null) return false;
+  void copyMarkdownSource(view, source).catch((error: unknown) => {
+    console.warn('[markdown-block-selection] copy failed:', error);
+  });
+  return true;
 }
 
 function eventTargetNode(target: EventTarget | null): Node | null {
@@ -433,6 +457,10 @@ class MarkdownBlockSelectionView {
 export function markdownBlockSelectionPlugin(): Extension {
   return [
     markdownBlockSelectionField,
+    keymap.of([
+      { key: 'Meta-c', run: copySelectedMarkdownBlocks },
+      { key: 'Ctrl-c', run: copySelectedMarkdownBlocks },
+    ]),
     ViewPlugin.define(view => new MarkdownBlockSelectionView(view)),
   ];
 }
