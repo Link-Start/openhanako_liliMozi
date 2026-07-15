@@ -1,46 +1,130 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.401.8",
-  "version": "0.401.8",
-  "previousTag": "v0.401.7",
-  "generatedAt": "2026-07-15T05:58:00.000Z",
+  "tag": "v0.403.0",
+  "version": "0.403.0",
+  "previousTag": "v0.401.8",
+  "generatedAt": "2026-07-15T18:18:27.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "本版修复后台会话在缺少持久身份时工具调用失败的问题：计划任务、巡检、子代理、Bridge、Hub 临时会话与手机会话会在执行前先建立并复用稳定会话身份。",
-    "en": "This release fixes tool failures for background sessions that lacked a durable identity. Scheduled activities, patrols, subagents, bridge sessions, Hub temporary sessions, and phone sessions now create and reuse a stable session identity before execution."
+    "zh": "本版让 Dreamina 模型与能力随本机 CLI 自动识别，并把完成提醒收成桌面聊天与计划任务/巡检结果两类；同时修复编辑器标题语法与触控 Grabber，以及非会话模型调用的凭证请求头。",
+    "en": "This release discovers Dreamina models from the installed CLI, narrows completion alerts to desktop chats and scheduled/patrol outcomes, and fixes editor heading syntax, touch Grabbers, and credential headers for non-session model calls."
   },
   "counts": {
-    "feature": 0,
-    "fix": 1,
+    "feature": 2,
+    "fix": 3,
     "improvement": 0,
     "migration": 0
   },
   "source": {
     "owner": "liliMozi",
     "repo": "openhanako",
-    "commitRange": "v0.401.7..v0.401.8",
-    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.401.8",
+    "commitRange": "v0.401.8..v0.403.0",
+    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.403.0",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "background-session-identity-backfill",
-      "kind": "fix",
+      "id": "dreamina-cli-capability-discovery",
+      "kind": "feature",
       "importance": "high",
       "title": {
-        "zh": "后台会话先补齐身份再装工具",
-        "en": "Backfill session identity before background tools"
+        "zh": "Dreamina CLI 能力发现",
+        "en": "Dreamina CLI capability discovery"
       },
       "summary": {
-        "zh": "没有 manifest 的后台会话原先会在装工具时失败；现在会先创建并持久化 SessionRef，再绑定到各运行时。",
-        "en": "Background sessions without a manifest used to fail during tool assembly; they now create and persist a SessionRef first, then bind it across runtimes."
+        "zh": "媒体设置里的 Dreamina 模型与约束改为读取本机 CLI，并在回到设置或开始生成时刷新。",
+        "en": "Dreamina models and constraints now follow the installed CLI and refresh when Media settings regain focus or generation starts."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "1eff520c9",
-          "title": "fix(session): backfill identity before background tools"
+          "ref": "284fba7b4",
+          "title": "feat(media): discover Dreamina CLI capabilities at runtime"
+        }
+      ]
+    },
+    {
+      "id": "completion-alert-categories",
+      "kind": "feature",
+      "importance": "high",
+      "title": {
+        "zh": "完成提醒分类收紧",
+        "en": "Narrower completion alert categories"
+      },
+      "summary": {
+        "zh": "成功回合不再一律弹完成提醒；仅桌面聊天，以及计划任务/巡检的汇总结果可以通知。",
+        "en": "Successful turns no longer always fire completion alerts; only desktop chats and aggregate scheduled-task or patrol outcomes can notify."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "403bb2775",
+          "title": "feat(notifications): separate completion alert categories"
+        }
+      ]
+    },
+    {
+      "id": "provider-execution-headers",
+      "kind": "fix",
+      "importance": "medium",
+      "title": {
+        "zh": "非会话模型调用统一请求头",
+        "en": "Unified headers for non-session model calls"
+      },
+      "summary": {
+        "zh": "辅助视觉、记忆、健康检查等非会话模型调用现在共用同一套带凭证的执行配置，避免漏带协议头或误拒仅靠请求头的凭证。",
+        "en": "Auxiliary vision, memory, health checks, and similar non-session calls now share one credential-aware execution config so protocol headers are not omitted and header-only credentials are not rejected."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "5ee661892",
+          "title": "fix(models): unify provider execution headers"
+        }
+      ]
+    },
+    {
+      "id": "bare-heading-hashes-visible",
+      "kind": "fix",
+      "importance": "medium",
+      "title": {
+        "zh": "裸标题井号保持可见",
+        "en": "Keep bare heading hashes visible"
+      },
+      "summary": {
+        "zh": "只有 `#` 到 `######`、后面还没有空格的行，会当作普通正文显示，不再被提前藏成标题样式。",
+        "en": "Bare `#` through `######` lines stay visible as body text until a space confirms a heading."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "889f7ec0f",
+          "title": "fix(editor): keep bare heading hashes visible"
+        }
+      ]
+    },
+    {
+      "id": "touch-grabber-focused-block",
+      "kind": "fix",
+      "importance": "medium",
+      "title": {
+        "zh": "触控 Grabber 只跟焦点块",
+        "en": "Touch Grabbers follow the focused block"
+      },
+      "summary": {
+        "zh": "触控设备上只显示当前焦点块的 Grabber；仅点击打开的块菜单不再替换原先悬停的节点。",
+        "en": "Touch surfaces show only the focused block’s Grabber, and click-only block menus no longer replace the hovered node."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "3862f8482",
+          "title": "fix(editor): scope touch Grabbers to the focused block"
         }
       ]
     }
