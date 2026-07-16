@@ -383,6 +383,43 @@
       "exemption": null
     },
     {
+      "id": "data-epoch-checkpoints",
+      "ownerModule": "core/data-epoch-checkpoint-provider.ts",
+      "pathPattern": "data-epoch-checkpoints/{transitionId}/**",
+      "pathPatterns": [
+        "data-epoch-checkpoints/{transitionId}/**"
+      ],
+      "pathExclusions": [],
+      "pathKind": "tree",
+      "format": "mixed-directory",
+      "schemaSource": {
+        "kind": "runtime-contract",
+        "module": "core/data-epoch-checkpoint-provider.ts",
+        "contract": "checkpoint metadata.json layout, per-store capture strategy, and verify byte/sha256 reconciliation"
+      },
+      "schemaContract": {
+        "kind": "runtime-source",
+        "source": "core/data-epoch-checkpoint-provider.ts",
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
+      },
+      "openEntry": [
+        "createDataEpochCheckpointProvider",
+        "pruneDataEpochCheckpoints"
+      ],
+      "migrationEntry": [],
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "epoch_transition",
+      "firstPossibleWritePhase": "epoch_transition",
+      "epochPolicy": "compatible",
+      "checkpointPolicy": "This store holds captured checkpoint bytes for other stores; it is never itself listed as an affected store inside the snapshot it produces.",
+      "restorePolicy": "Read only through the provider's verify contract; a published checkpoint directory is never hand-edited or restored independently of the coordinator's restore path.",
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
+      "identityContract": "transitionId identifies one published or in-progress checkpoint directory for one canonical HANA_HOME; provider-internal .tmp-/.invalid- suffixes on that name are staging, not separate identities.",
+      "exemption": null
+    },
+    {
       "id": "data-epoch-stamp",
       "ownerModule": "shared/data-epoch.cjs",
       "pathPattern": "data-epoch.json",
@@ -2487,6 +2524,105 @@
       "reason": "Creates helper/request files in the operating-system temporary directory for one Windows UIA call.",
       "storeId": null,
       "exemptionId": "windows-uia-request-temp"
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 282,
+      "kind": "mkdir",
+      "excerpt": "fs.promises.mkdir(path.dirname(destPath), { recursive: true })",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 283,
+      "kind": "copy-file",
+      "excerpt": "fs.promises.copyFile(srcPath, destPath)",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 287,
+      "kind": "mkdir",
+      "excerpt": "fs.promises.mkdir(path.dirname(destPath), { recursive: true })",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 292,
+      "kind": "database-open",
+      "excerpt": "new Database(srcPath, { readonly: true, fileMustExist: true })",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 475,
+      "kind": "remove-path",
+      "excerpt": "fs.promises.rm(path.join(checkpointsRoot, entry.name), { recursive: true, force: true })",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 518,
+      "kind": "rename",
+      "excerpt": "fs.promises.rename(publishedDir, invalidDir)",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 533,
+      "kind": "mkdir",
+      "excerpt": "fs.promises.mkdir(tmpDir, { recursive: true })",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 551,
+      "kind": "write-file",
+      "excerpt": "fs.promises.writeFile(path.join(tmpDir, \"metadata.json\"), `${JSON.stringify(metadata, null, 2)}\\n`, \"utf8\")",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 552,
+      "kind": "rename",
+      "excerpt": "fs.promises.rename(tmpDir, publishedDir)",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 554,
+      "kind": "remove-path",
+      "excerpt": "fs.promises.rm(tmpDir, { recursive: true, force: true })",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "line": 661,
+      "kind": "remove-path",
+      "excerpt": "fs.promises.rm(entry.dir, { recursive: true, force: true })",
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "storeId": "data-epoch-checkpoints",
+      "exemptionId": null
     },
     {
       "sourceFile": "core/device-registry.ts",

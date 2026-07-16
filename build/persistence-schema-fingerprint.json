@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:53a85344285573b8ff6ab9f016d12d287fc2039015c37312d34c6c9a9877b322",
+  "payloadFingerprint": "sha256:80be3b55a6ee3964547fbf0493d0091a6e8809e64a565cc9d94293cc34cca86c",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -963,6 +963,43 @@
         "contract": "CronStore job registry and run receipt protocol",
         "kind": "directory-contract",
         "module": "lib/desk/cron-store.ts"
+      }
+    },
+    {
+      "affectedByEpochMigration": false,
+      "bootstrapSafety": null,
+      "checkpointPolicy": "This store holds captured checkpoint bytes for other stores; it is never itself listed as an affected store inside the snapshot it produces.",
+      "epochPolicy": "compatible",
+      "exemption": null,
+      "firstPossibleOpenPhase": "epoch_transition",
+      "firstPossibleWritePhase": "epoch_transition",
+      "format": "mixed-directory",
+      "id": "data-epoch-checkpoints",
+      "identityContract": "transitionId identifies one published or in-progress checkpoint directory for one canonical HANA_HOME; provider-internal .tmp-/.invalid- suffixes on that name are staging, not separate identities.",
+      "migrationEntry": [],
+      "openEntry": [
+        "createDataEpochCheckpointProvider",
+        "pruneDataEpochCheckpoints"
+      ],
+      "ownerModule": "core/data-epoch-checkpoint-provider.ts",
+      "pathExclusions": [],
+      "pathKind": "tree",
+      "pathPattern": "data-epoch-checkpoints/{transitionId}/**",
+      "pathPatterns": [
+        "data-epoch-checkpoints/{transitionId}/**"
+      ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
+      "restorePolicy": "Read only through the provider's verify contract; a published checkpoint directory is never hand-edited or restored independently of the coordinator's restore path.",
+      "schemaContract": {
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
+        "kind": "runtime-source",
+        "source": "core/data-epoch-checkpoint-provider.ts"
+      },
+      "schemaSource": {
+        "contract": "checkpoint metadata.json layout, per-store capture strategy, and verify byte/sha256 reconciliation",
+        "kind": "runtime-contract",
+        "module": "core/data-epoch-checkpoint-provider.ts"
       }
     },
     {
@@ -2802,8 +2839,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Refreshes generated write-site mappings after model execution call paths changed without changing persisted fields or file formats.",
-    "payloadFingerprint": "sha256:53a85344285573b8ff6ab9f016d12d287fc2039015c37312d34c6c9a9877b322"
+    "compatibilityReason": "Adds the data-epoch-checkpoints store descriptor and its owning provider module; every existing store's on-disk format and schema contract is unchanged.",
+    "payloadFingerprint": "sha256:80be3b55a6ee3964547fbf0493d0091a6e8809e64a565cc9d94293cc34cca86c"
   },
   "schemas": [
     {
@@ -2908,6 +2945,13 @@
       "module": "lib/desk/cron-store.ts",
       "sourceHash": "sha256:957b3eaa9f2cc197ff60b5efe5981aa1cb48a3f5ae002d066ed3c90a5557d44a",
       "storeId": "cron-automation"
+    },
+    {
+      "contract": "checkpoint metadata.json layout, per-store capture strategy, and verify byte/sha256 reconciliation",
+      "kind": "runtime-contract",
+      "module": "core/data-epoch-checkpoint-provider.ts",
+      "sourceHash": "sha256:754e20e58253549d9f8d92b125178442bb3c25503b021f99d4a4edf7828764b0",
+      "storeId": "data-epoch-checkpoints"
     },
     {
       "contract": "DATA_EPOCH stamp parser and atomic writer",
@@ -3560,6 +3604,94 @@
       "reason": "Creates helper/request files in the operating-system temporary directory for one Windows UIA call.",
       "sourceFile": "core/computer-use/providers/windows-uia-provider.ts",
       "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 282,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "line": 283,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 287,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "database-open",
+      "line": 292,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 475,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "line": 518,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 533,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 551,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "line": 552,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 554,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 661,
+      "reason": "Captures, verifies, or prunes data epoch transition checkpoints.",
+      "sourceFile": "core/data-epoch-checkpoint-provider.ts",
+      "storeId": "data-epoch-checkpoints"
     },
     {
       "exemptionId": null,

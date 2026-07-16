@@ -25,6 +25,7 @@ import {
   writeDataEpochJournal,
   writeDataEpochStamp,
 } from "../shared/data-epoch.cjs";
+import { createDataEpochCheckpointProvider } from "../core/data-epoch-checkpoint-provider.ts";
 
 const tempDirs: string[] = [];
 
@@ -569,5 +570,182 @@ describe("migration registry", () => {
       ...breakingReview(),
       affectedStoreIds: ["agent-facts-sqlite"],
     }])).toThrow(/does not match its breaking review/);
+  });
+});
+
+describe("coordinated epoch transition with the real checkpoint provider", () => {
+  function seedPreferences(homeDir: string, content: unknown = { locale: "zh" }) {
+    fs.mkdirSync(path.join(homeDir, "user"), { recursive: true });
+    fs.writeFileSync(path.join(homeDir, "user", "preferences.json"), JSON.stringify(content));
+  }
+
+  it("front matrix point: a crash before the snapshot starts leaves no checkpoint directory, stops the journal at prepared, and blocks a plain restart", async () => {
+    const homeDir = makeHomeDir();
+    seedLegacyStamp(homeDir, 1);
+    seedPreferences(homeDir);
+    const provider = createDataEpochCheckpointProvider();
+
+    const crashed = await coordinateDataEpochStartup({
+      homeDir,
+      ownEpoch: 2,
+      ownVersion: "2.0.0",
+      migrations: [migration()],
+      breakingReviews: [breakingReview()],
+      checkpointProvider: provider,
+      transitionIdFactory: () => "real-provider-before-snapshot",
+      faultHook: (event) => {
+        if (event === "checkpoint:starting") throw new Error("injected crash before snapshot");
+      },
+    });
+    expect(crashed).toMatchObject({ allowed: false, reason: "transition-failed" });
+    expect(JSON.parse(fs.readFileSync(dataEpochJournalPath(homeDir), "utf8"))).toMatchObject({
+      phase: "prepared",
+      checkpointId: null,
+      checkpointReceipt: null,
+    });
+    expect(fs.existsSync(path.join(homeDir, "data-epoch-checkpoints"))).toBe(false);
+    expect(inspectDataEpochMaintenance(homeDir)).toMatchObject({
+      status: "incomplete",
+      phase: "prepared",
+      continuation: "continue-before-migration",
+    });
+
+    // No auto-resume in the frozen coordinator: a plain restart stays fail-closed
+    // until an explicit maintenance/recovery flow acts (out of this slice's scope).
+    const restarted = await coordinateDataEpochStartup({
+      homeDir,
+      ownEpoch: 2,
+      ownVersion: "2.0.0",
+    });
+    expect(restarted).toMatchObject({ allowed: false, reason: "incomplete-transition", phase: "prepared" });
+  });
+
+  it("front matrix point: tmp residue from an earlier crashed capture does not corrupt the checkpoint attempt that reuses its transitionId", async () => {
+    const homeDir = makeHomeDir();
+    seedLegacyStamp(homeDir, 1);
+    seedPreferences(homeDir);
+    const provider = createDataEpochCheckpointProvider();
+    const transitionId = "real-provider-mid-snapshot";
+
+    const staleTmp = path.join(homeDir, "data-epoch-checkpoints", `${transitionId}.tmp-11111-deadbeef`);
+    fs.mkdirSync(staleTmp, { recursive: true });
+    fs.writeFileSync(path.join(staleTmp, "partial-debris.txt"), "leftover from a simulated crash mid-capture");
+
+    const result = await coordinateDataEpochStartup({
+      homeDir,
+      ownEpoch: 2,
+      ownVersion: "2.0.0",
+      migrations: [migration()],
+      breakingReviews: [breakingReview()],
+      checkpointProvider: provider,
+      transitionIdFactory: () => transitionId,
+    });
+
+    expect(result).toMatchObject({ allowed: true, action: "transition-committed", committedDataEpoch: 2 });
+    expect(fs.existsSync(staleTmp)).toBe(false);
+    const checkpointDir = path.join(homeDir, "data-epoch-checkpoints", transitionId);
+    expect(fs.existsSync(path.join(checkpointDir, "metadata.json"))).toBe(true);
+    await expect(provider.verify({ id: transitionId, dir: checkpointDir })).resolves.toBeUndefined();
+  });
+
+  it("front matrix point: a verify failure after a successful capture stops the journal at prepared and never raises the barrier", async () => {
+    const homeDir = makeHomeDir();
+    seedLegacyStamp(homeDir, 1);
+    seedPreferences(homeDir);
+    const provider = createDataEpochCheckpointProvider();
+    const transitionId = "real-provider-verify-failure";
+
+    const result = await coordinateDataEpochStartup({
+      homeDir,
+      ownEpoch: 2,
+      ownVersion: "2.0.0",
+      migrations: [migration()],
+      breakingReviews: [breakingReview()],
+      checkpointProvider: provider,
+      transitionIdFactory: () => transitionId,
+      faultHook: (event) => {
+        if (event === "checkpoint:created") {
+          // Tamper with the just-published checkpoint bytes so the
+          // coordinator's very next step — checkpointProvider.verify() —
+          // fails its sha256 reconciliation.
+          const capturedPath = path.join(
+            homeDir, "data-epoch-checkpoints", transitionId, "stores", "user-preferences", "user", "preferences.json",
+          );
+          fs.writeFileSync(capturedPath, "tampered-after-capture");
+        }
+      },
+    });
+
+    expect(result).toMatchObject({ allowed: false, reason: "transition-failed" });
+    expect(JSON.parse(fs.readFileSync(dataEpochJournalPath(homeDir), "utf8"))).toMatchObject({
+      phase: "prepared",
+      checkpointId: null,
+      checkpointReceipt: null,
+    });
+    // No barrier: the stamp was never touched by this failed transition, so
+    // it is still exactly the legacy v1 seed written before the run.
+    expect(readDataEpochStamp(homeDir)).toMatchObject({
+      status: "ok",
+      format: "legacy-v1",
+      stamp: { minimumReaderEpoch: 1, committedDataEpoch: 1 },
+    });
+  });
+
+  it("front matrix point: the normal full path only raises the barrier after checkpoint_complete, and the published checkpoint independently verifies", async () => {
+    const homeDir = makeHomeDir();
+    seedLegacyStamp(homeDir, 1);
+    seedPreferences(homeDir, { locale: "zh", update_channel: "stable" });
+    const provider = createDataEpochCheckpointProvider();
+    const transitionId = "real-provider-happy-path";
+    const faultEvents: DataEpochFaultEvent[] = [];
+    let stampWhenCheckpointVerified: unknown = null;
+
+    const result = await coordinateDataEpochStartup({
+      homeDir,
+      ownEpoch: 2,
+      ownVersion: "2.0.0",
+      migrations: [migration("preferences-1-to-2", 1, 2)],
+      breakingReviews: [breakingReview()],
+      checkpointProvider: provider,
+      transitionIdFactory: () => transitionId,
+      clock: () => "2026-01-02T00:00:00.000Z",
+      faultHook: (event) => {
+        faultEvents.push(event);
+        if (event === "checkpoint:verified") {
+          // Barrier must not exist yet at this point in the sequence.
+          stampWhenCheckpointVerified = readDataEpochStamp(homeDir);
+        }
+      },
+    });
+
+    expect(result).toMatchObject({ allowed: true, action: "transition-committed", minimumReaderEpoch: 2, committedDataEpoch: 2 });
+    expect(faultEvents).toEqual([
+      "journal:prepared",
+      "checkpoint:starting",
+      "checkpoint:created",
+      "checkpoint:verified",
+      "journal:checkpoint_complete",
+      "stamp:barrier",
+      "journal:barrier_raised",
+      "journal:migrating",
+      "migration:preferences-1-to-2:before",
+      "migration:preferences-1-to-2:after",
+      "journal:migrated",
+      "validation:preferences-1-to-2:before",
+      "validation:preferences-1-to-2:after",
+      "journal:validated",
+      "stamp:committed",
+      "journal:committed",
+      "journal:remove-starting",
+      "journal:removed",
+    ]);
+    expect(stampWhenCheckpointVerified).toMatchObject({ status: "ok", format: "legacy-v1", stamp: { minimumReaderEpoch: 1 } });
+    expect(fs.existsSync(dataEpochJournalPath(homeDir))).toBe(false);
+
+    const checkpointDir = path.join(homeDir, "data-epoch-checkpoints", transitionId);
+    const metadata = JSON.parse(fs.readFileSync(path.join(checkpointDir, "metadata.json"), "utf8"));
+    expect(metadata).toMatchObject({ complete: true, transitionId, fromEpoch: 1, toEpoch: 2 });
+    expect(metadata.items).toEqual([expect.objectContaining({ storeId: "user-preferences", relPath: "user/preferences.json" })]);
+    await expect(provider.verify({ id: transitionId, dir: checkpointDir })).resolves.toBeUndefined();
   });
 });

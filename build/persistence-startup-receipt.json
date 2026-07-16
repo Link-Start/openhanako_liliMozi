@@ -97,6 +97,16 @@
       "breakingMigrationRequiresAccessMove": false
     },
     {
+      "id": "data-epoch-checkpoints",
+      "firstPossibleOpenPhase": "epoch_transition",
+      "firstPossibleWritePhase": "epoch_transition",
+      "opensBeforeFutureCoordinator": false,
+      "writesBeforeFutureCoordinator": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
+      "breakingMigrationRequiresAccessMove": false
+    },
+    {
       "id": "data-epoch-stamp",
       "firstPossibleOpenPhase": "epoch_read_preflight",
       "firstPossibleWritePhase": "epoch_transition",
