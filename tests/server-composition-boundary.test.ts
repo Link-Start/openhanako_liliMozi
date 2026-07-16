@@ -161,7 +161,9 @@ describe("composition boundary behavior lock: bootstrap contract (no silent non-
       expect(fs.existsSync(path.join(hanaHome, "agents"))).toBe(false);
       expect(stderr).not.toContain("ensureFirstRun");
     } finally {
-      fs.rmSync(hanaHome, { recursive: true, force: true });
+      // The timeout/assertion-failure paths reach here right after a SIGKILL,
+      // so this rm needs the same Windows handle-latency tolerance as Part 3.
+      fs.rmSync(hanaHome, TEMP_HOME_RM_OPTIONS);
     }
   }, 20000);
 });
@@ -173,6 +175,28 @@ describe("composition boundary behavior lock: bootstrap contract (no silent non-
 // gated by the same auth check, end to end — not by static source
 // inspection.
 // ---------------------------------------------------------------------------
+
+// Windows cleanup contract for tests that SIGKILL a spawned server: kill() is
+// TerminateProcess and returns before the process dies, and the dying process
+// (plus antivirus/search-indexer scans) can briefly hold handles inside the
+// temp HANA_HOME without FILE_SHARE_DELETE. Removing the directory therefore
+// has to happen after the real exit event, with retries for transient
+// EPERM/EBUSY — otherwise cleanup itself fails the test on Windows CI.
+const TEMP_HOME_RM_OPTIONS = { recursive: true, force: true, maxRetries: 20, retryDelay: 250 } as const;
+
+function waitForExit(child: ReturnType<typeof spawn>, timeoutMs = 15000): Promise<void> {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
 
 function waitForServerInfo(serverInfoPath: string, child: ReturnType<typeof spawn>, timeoutMs = 60000): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -256,7 +280,8 @@ describe("composition boundary behavior lock: real request smoke against the ful
       expect(Array.isArray(diaryBody.files)).toBe(true);
     } finally {
       child.kill("SIGKILL");
-      fs.rmSync(hanaHome, { recursive: true, force: true });
+      await waitForExit(child);
+      fs.rmSync(hanaHome, TEMP_HOME_RM_OPTIONS);
       if (process.env.HANA_TEST_DEBUG) process.stderr.write(stderr);
     }
   }, 60000);

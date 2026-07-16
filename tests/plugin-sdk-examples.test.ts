@@ -37,7 +37,10 @@ describe("plugin SDK examples and docs", () => {
     ], { cwd: root, encoding: "utf-8" }).trim();
 
     expect(result).toBe("file:///D:/a/openhanako/openhanako/packages/plugin-sdk");
-  });
+    // Spawning a python interpreter on a loaded Windows CI runner has been
+    // observed to take >10s (the suite-wide default); the assertion itself is
+    // instant once the interpreter is up.
+  }, 30000);
 
   it("documents the SDK package map in a top-level guide", () => {
     const guide = fs.readFileSync(path.join(root, "PLUGIN_SDK.md"), "utf-8");
