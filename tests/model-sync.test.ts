@@ -109,6 +109,21 @@ const KNOWN_MODELS = {
     },
   },
   "kimi-coding": {
+    k3: {
+      name: "Kimi K3",
+      context: 1048576,
+      reasoning: true,
+      thinkingLevels: ["off", "max"],
+      thinkingLevelMap: {
+        off: null,
+        minimal: "max",
+        low: "max",
+        medium: "max",
+        high: "max",
+        xhigh: "max",
+      },
+      defaultThinkingLevel: "max",
+    },
     "kimi-for-coding": {
       name: "Kimi for Coding",
       context: 262144,
@@ -678,7 +693,7 @@ describe("syncModels", () => {
     expect(model.reasoning).toBe(true);
   });
 
-  it("normalizes legacy Kimi Coding Plan configs to the official OpenAI-compatible endpoint", async () => {
+  it("normalizes legacy Kimi Coding Plan transport without rewriting the configured model id", async () => {
     const syncModels = await loadSync();
 
     const providers = {
@@ -699,17 +714,12 @@ describe("syncModels", () => {
       apiKey: "hana-runtime-api-key:kimi-coding",
     });
     expect(result.providers["kimi-coding"].models[0]).toMatchObject({
-      id: "kimi-for-coding",
-      name: "Kimi for Coding",
+      id: "kimi-k2.6",
+      name: "Kimi K2.6",
+      contextWindow: 262144,
+      maxTokens: 98304,
+      input: ["text", "image"],
       reasoning: true,
-      defaultThinkingLevel: "high",
-      thinkingLevelMap: {
-        off: null,
-        low: "low",
-        medium: "high",
-        high: "high",
-        xhigh: "max",
-      },
       headers: { "User-Agent": "KimiCLI/1.5" },
       compat: {
         supportsDeveloperRole: false,
@@ -720,7 +730,7 @@ describe("syncModels", () => {
     expect(result.providers["kimi-coding"].modelOverrides).toBeUndefined();
   });
 
-  it("preserves user metadata while projecting Kimi Coding Plan to the official model id", async () => {
+  it("preserves user metadata for the configured Kimi Coding model id", async () => {
     const syncModels = await loadSync();
 
     const providers = {
@@ -749,6 +759,118 @@ describe("syncModels", () => {
         hanaVideoInput: true,
       },
     });
+  });
+
+  it("keeps distinct Kimi model ids and user metadata isolated from the Pi default model", async () => {
+    const syncModels = await loadSync();
+
+    const providers = {
+      "kimi-coding": {
+        base_url: "https://api.kimi.com/coding/",
+        api: "anthropic-messages",
+        api_key: "sk-test",
+        models: [
+          "kimi-for-coding",
+          {
+            id: "k3",
+            name: "User K3 Alias",
+            context: 777777,
+            maxOutput: 12345,
+            image: false,
+            reasoning: false,
+          },
+          "kimi-k2.6",
+        ],
+      },
+    };
+
+    syncModels(providers, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    const models = result.providers["kimi-coding"].models;
+    expect(models.map((model) => model.id)).toEqual([
+      "kimi-for-coding",
+      "k3",
+      "kimi-k2.6",
+    ]);
+    expect(models.find((model) => model.id === "k3")).toMatchObject({
+      id: "k3",
+      name: "User K3 Alias",
+      contextWindow: 777777,
+      maxTokens: 12345,
+      input: ["text"],
+      reasoning: false,
+      headers: { "User-Agent": "KimiCLI/1.5" },
+    });
+  });
+
+  it("projects official K3 metadata without inventing image or output limits", async () => {
+    const syncModels = await loadSync();
+
+    const providers = {
+      "kimi-coding": {
+        base_url: "https://api.kimi.com/coding/v1",
+        api: "openai-completions",
+        api_key: "sk-test",
+        models: ["k3"],
+      },
+    };
+
+    syncModels(providers, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    const model = result.providers["kimi-coding"].models[0];
+    expect(model).toMatchObject({
+      id: "k3",
+      name: "Kimi K3",
+      contextWindow: 1048576,
+      input: ["text"],
+      reasoning: true,
+      defaultThinkingLevel: "max",
+      thinkingLevelMap: {
+        off: null,
+        minimal: "max",
+        low: "max",
+        medium: "max",
+        high: "max",
+        xhigh: "max",
+      },
+      headers: { "User-Agent": "KimiCLI/1.5" },
+    });
+    expect(model).not.toHaveProperty("maxTokens");
+    expect(model).not.toHaveProperty("visionCapabilities");
+  });
+
+  it("treats future official Kimi Coding ids as reasoning-capable without borrowing model metadata", async () => {
+    const syncModels = await loadSync();
+    const providers = {
+      "kimi-coding": {
+        base_url: "https://api.kimi.com/coding/v1",
+        api: "openai-completions",
+        api_key: "sk-test",
+        models: ["future-kimi-code-model"],
+      },
+    };
+
+    syncModels(providers, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    const model = result.providers["kimi-coding"].models[0];
+    expect(model).toMatchObject({
+      id: "future-kimi-code-model",
+      reasoning: true,
+      input: ["text"],
+      headers: { "User-Agent": "KimiCLI/1.5" },
+      compat: {
+        thinkingFormat: "kimi",
+        reasoningProfile: "kimi-openai",
+        reasoningReplay: {
+          carrier: "reasoning_content",
+          policy: "require-tool-call",
+        },
+      },
+    });
+    expect(model).not.toHaveProperty("maxTokens");
   });
 
   it("keeps Kimi OpenAI-compatible configs custom while reusing Pi request headers", async () => {
@@ -808,7 +930,7 @@ describe("syncModels", () => {
       api: "openai-completions",
     });
     expect(result.providers["kimi-coding"].models[0]).toMatchObject({
-      id: "kimi-for-coding",
+      id: "kimi-k2.6",
       compat: {
         supportsDeveloperRole: false,
         thinkingFormat: "kimi",
@@ -1739,6 +1861,10 @@ describe("syncModels", () => {
     expect(result.providers.gemini.api).toBe("google-generative-ai");
     expect(result.providers.gemini.models[0].compat).toEqual({
       supportsDeveloperRole: false,
+      reasoningReplay: {
+        carrier: "thought_signature",
+        policy: "preserve",
+      },
     });
   });
 
@@ -2048,6 +2174,10 @@ describe("syncModels", () => {
       supportsDeveloperRole: false,
       thinkingFormat: "qwen",
       reasoningProfile: "mimo-openai",
+      reasoningReplay: {
+        carrier: "reasoning_content",
+        policy: "require-tool-call",
+      },
     });
     expect(model.visionCapabilities).toEqual({
       grounding: true,

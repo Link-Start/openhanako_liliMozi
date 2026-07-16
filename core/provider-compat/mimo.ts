@@ -30,7 +30,6 @@ import {
 } from "../../shared/model-capabilities.ts";
 import {
   ensureAssistantContentForToolCalls,
-  ensureReasoningContentForToolCalls,
   stripReasoningContent,
 } from "./reasoning-content-replay.ts";
 import { normalizeOpenAIInputAudioPayload } from "./input-audio.ts";
@@ -126,11 +125,6 @@ export function apply(payload, model, options: { mode?: string; reasoningLevel?:
 
   const p = editable();
   enableThinking(p);
-
-  const ensured = ensureReasoningContentForToolCalls(p.messages, { providerLabel: "MiMo" });
-  if (ensured !== p.messages) {
-    p.messages = ensured;
-  }
 
   const contentEnsured = ensureAssistantContentForToolCalls(p.messages);
   if (contentEnsured !== p.messages) {

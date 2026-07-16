@@ -347,6 +347,46 @@ describe("ModelManager AuthStorage ownership", () => {
     expect(model).not.toHaveProperty("visionCapabilities");
   });
 
+  it("loads a fetched Kimi K3 id through the real ModelRegistry without projecting it to the default model", async () => {
+    writeAddedModels({
+      "kimi-coding": {
+        base_url: "https://api.kimi.com/coding/v1",
+        api: "openai-completions",
+        api_key: "sk-kimi",
+        models: ["k3"],
+      },
+    });
+    writeAuth({});
+
+    const manager = new ModelManager({ hanakoHome: tmpDir });
+    manager.init();
+    await manager.refreshAvailable();
+
+    const projected = JSON.parse(fs.readFileSync(path.join(tmpDir, "models.json"), "utf-8"));
+    expect(projected.providers["kimi-coding"].models).toHaveLength(1);
+    expect(projected.providers["kimi-coding"].models[0]).toMatchObject({
+      id: "k3",
+      reasoning: true,
+    });
+    expect(manager.availableModels.find((item) => (
+      item.provider === "kimi-coding" && item.id === "k3"
+    ))).toMatchObject({
+      id: "k3",
+      reasoning: true,
+      compat: {
+        thinkingFormat: "kimi",
+        reasoningProfile: "kimi-openai",
+        reasoningReplay: {
+          carrier: "reasoning_content",
+          policy: "require-tool-call",
+        },
+      },
+    });
+    expect(manager.availableModels.some((item) => (
+      item.provider === "kimi-coding" && item.id === "kimi-for-coding"
+    ))).toBe(false);
+  });
+
   it("keeps provider-specific GPT-5.6 APIs ahead of an incompatible provider-wide default", async () => {
     writeAddedModels({
       openai: {

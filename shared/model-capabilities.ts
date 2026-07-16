@@ -85,6 +85,7 @@ const MODEL_THINKING_FORMATS = new Set([
   "openrouter",
   "kimi",
   "volcengine",
+  "longcat",
 ]);
 
 const MODEL_REASONING_PROFILES = new Set([
@@ -118,6 +119,33 @@ const OUTPUT_CAP_FIELDS = new Set([
   "maxOutputTokens",
 ]);
 
+const REASONING_REPLAY_POLICIES = new Set([
+  "none",
+  "preserve",
+  "require-tool-call",
+]);
+
+const REASONING_REPLAY_CARRIERS = new Set([
+  "reasoning_content",
+  "reasoning_details",
+  "thinking_blocks",
+  "reasoning_items",
+  "thought_signature",
+]);
+
+export function normalizeReasoningReplayContract(value: any): Record<string, any> | null {
+  if (!isPlainObject(value)) return null;
+  const policy = lower(value.policy);
+  if (!REASONING_REPLAY_POLICIES.has(policy)) return null;
+  if (policy === "none") return { policy: "none" };
+
+  const carrier = lower(value.carrier);
+  if (!REASONING_REPLAY_CARRIERS.has(carrier)) return null;
+  const out: Record<string, any> = { carrier, policy };
+  if (value.clearable === true) out.clearable = true;
+  return out;
+}
+
 export function normalizeModelProtocolCompat(value: any): Record<string, any> | null {
   if (!isPlainObject(value)) return null;
   const out: Record<string, any> = {};
@@ -137,6 +165,14 @@ export function normalizeModelProtocolCompat(value: any): Record<string, any> | 
   if (value.outputCapRequired === true) out.outputCapRequired = true;
   if (typeof value.outputCapField === "string" && OUTPUT_CAP_FIELDS.has(value.outputCapField)) {
     out.outputCapField = value.outputCapField;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, "reasoningReplay")) {
+    const reasoningReplay = normalizeReasoningReplayContract(value.reasoningReplay);
+    if (reasoningReplay) out.reasoningReplay = reasoningReplay;
+  }
+  if (typeof value.requiresReasoningContentOnAssistantMessages === "boolean") {
+    out.requiresReasoningContentOnAssistantMessages = value.requiresReasoningContentOnAssistantMessages;
   }
 
   return Object.keys(out).length > 0 ? out : null;
@@ -225,6 +261,13 @@ function isOfficialKimiOpenAIEndpoint(model: any, context: any = {}) {
     host === "api.kimi.com"
     && baseUrl.includes("/coding/v1")
   ) || host === "api.moonshot.cn";
+}
+
+function isKimiCodingEndpoint(model: any, context: any = {}) {
+  if (!isOpenAIReasoningApi(model, context)) return false;
+  if (getProvider(model, context) === "kimi-coding") return true;
+  const host = getBaseHost(model, context);
+  return host === "api.kimi.com" && getBaseUrl(model, context).includes("/coding/v1");
 }
 
 function isOfficialVolcengineEndpoint(model: any, context: any = {}) {
@@ -409,17 +452,107 @@ export function getReasoningProfile(model: any, context: any = {}) {
   return isMimoOpenAIProtocolModel(model, context) ? "mimo-openai" : null;
 }
 
+/**
+ * Endpoint-level reasoning defaults are intentionally narrow. They are used
+ * only when a provider catalog entry did not declare `reasoning` and known
+ * model metadata has no answer. Explicit model metadata always wins.
+ */
+export function getEndpointDefaultReasoningCapability(model: any, context: any = {}) {
+  if (!isPlainObject(model)) return null;
+  return isKimiCodingEndpoint(model, context) ? true : null;
+}
+
+/**
+ * Resolve how assistant reasoning state must be replayed on the wire.
+ *
+ * The contract describes protocol semantics, not the SDK currently executing
+ * the turn. Explicit model compat is authoritative, including `policy:none`.
+ * Inference is limited to protocol/profile facts that are stable without a
+ * model-id allowlist.
+ */
+export function getReasoningReplayContract(model: any, context: any = {}) {
+  if (!isPlainObject(model)) return null;
+
+  if (isPlainObject(model.compat)
+    && Object.prototype.hasOwnProperty.call(model.compat, "reasoningReplay")) {
+    return normalizeReasoningReplayContract(model.compat.reasoningReplay);
+  }
+  if (model.reasoning === false) return null;
+
+  const api = getApi(model, context);
+  const profile = getReasoningProfile(model, context);
+  const format = getThinkingFormat(model, context);
+
+  if (profile === "deepseek-v4-anthropic") {
+    return { carrier: "thinking_blocks", policy: "preserve" };
+  }
+  if (
+    profile === "deepseek-v4-openai"
+    || profile === "mimo-openai"
+    || profile === "kimi-openai"
+  ) {
+    return { carrier: "reasoning_content", policy: "require-tool-call" };
+  }
+  if (profile === "zhipu-openai") {
+    return { carrier: "reasoning_content", policy: "require-tool-call", clearable: true };
+  }
+
+  if (format === "anthropic") {
+    return { carrier: "thinking_blocks", policy: "preserve" };
+  }
+  if (format === "openrouter") {
+    return { carrier: "reasoning_details", policy: "preserve" };
+  }
+  if (format === "deepseek" || format === "kimi") {
+    return { carrier: "reasoning_content", policy: "require-tool-call" };
+  }
+  if (format === "zhipu") {
+    return { carrier: "reasoning_content", policy: "require-tool-call", clearable: true };
+  }
+
+  if (api === "openai-responses" || api === "openai-codex-responses") {
+    return model.reasoning === true
+      ? { carrier: "reasoning_items", policy: "preserve" }
+      : null;
+  }
+  if (api === "google-generative-ai") {
+    return model.reasoning === true
+      ? { carrier: "thought_signature", policy: "preserve" }
+      : null;
+  }
+
+  return null;
+}
+
+function sameReasoningReplayContract(left: any, right: any) {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return left.policy === right.policy
+    && left.carrier === right.carrier
+    && left.clearable === right.clearable;
+}
+
 export function withThinkingFormatCompat(model: any, context: any = {}) {
   if (!isPlainObject(model)) return model;
 
   const format = getThinkingFormat(model, context);
   const profile = getReasoningProfile(model, context);
-  if (!format && !profile) return model;
+  const reasoningReplay = getReasoningReplayContract(model, context);
+  if (!format && !profile && !reasoningReplay) return model;
 
   const compat = isPlainObject(model.compat) ? model.compat : {};
+  const existingReplay = Object.prototype.hasOwnProperty.call(compat, "reasoningReplay")
+    ? normalizeReasoningReplayContract(compat.reasoningReplay)
+    : null;
+  const needsKimiEmptyReplayMarker = format === "kimi"
+    && reasoningReplay?.carrier === "reasoning_content"
+    && reasoningReplay.policy !== "none"
+    && compat.requiresReasoningContentOnAssistantMessages === undefined;
   if (
     (!format || lower(compat.thinkingFormat) === format)
     && (!profile || lower(compat.reasoningProfile) === profile)
+    && (!reasoningReplay || sameReasoningReplayContract(existingReplay, reasoningReplay))
+    && !needsKimiEmptyReplayMarker
   ) {
     return model;
   }
@@ -430,6 +563,8 @@ export function withThinkingFormatCompat(model: any, context: any = {}) {
       ...compat,
       ...(format ? { thinkingFormat: format } : {}),
       ...(profile ? { reasoningProfile: profile } : {}),
+      ...(reasoningReplay ? { reasoningReplay } : {}),
+      ...(needsKimiEmptyReplayMarker ? { requiresReasoningContentOnAssistantMessages: true } : {}),
     },
   };
 }

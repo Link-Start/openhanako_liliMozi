@@ -35,6 +35,10 @@ import { normalizeImplicitOutputBudget } from "./provider-compat/output-budget.t
 import { stripOrphanToolResults } from "./provider-compat/tool-pairing.ts";
 import { normalizeOpenAIInputAudioPayload } from "./provider-compat/input-audio.ts";
 import {
+  normalizeReasoningReplayContextMessages,
+  normalizeReasoningReplayPayload,
+} from "./provider-compat/reasoning-content-replay.ts";
+import {
   MODEL_AUDIO_TRANSPORTS,
   resolveModelAudioInputTransport,
 } from "../shared/model-capabilities.ts";
@@ -355,14 +359,21 @@ export function normalizeProviderPayload(payload, model, options = {}) {
   result = normalizeImplicitOutputBudget(result, model, normalizedOptions);
   result = stripNativeMediaAttachmentMarkers(result);
   result = normalizeAudioTransportPayload(result, model);
+  // 先把 SDK 尚未序列化的 signed thinking block 投影成 wire carrier。
+  // 部分 provider 模块随后会把 assistant.content 归一化为字符串。
+  result = normalizeReasoningReplayPayload(result, model, normalizedOptions);
 
-  // 2. Provider-specific 补丁（按 matches 分发，first-match-wins）
+  // 2. Provider-specific 请求控制（按 matches 分发，first-match-wins）
   for (const mod of PROVIDER_MODULES) {
     if (mod.matches(model)) {
       result = mod.apply(result, model, normalizedOptions);
       break;
     }
   }
+
+  // 3. reasoning replay 是协议级契约，不归任何单个 provider 模块所有。
+  // 子模块决定本轮 thinking 开关后，中心层再校验最终请求状态。
+  result = normalizeReasoningReplayPayload(result, model, normalizedOptions);
 
   return result;
 }
@@ -381,7 +392,8 @@ export function normalizeProviderContextMessages(messages, model, options = {}) 
   if (!Array.isArray(messages)) return messages;
 
   const normalizedOptions = normalizeProviderOptions(options, model);
-  const result = projectToolResultResourcesForModel(messages);
+  let result = projectToolResultResourcesForModel(messages);
+  result = normalizeReasoningReplayContextMessages(result, model, normalizedOptions);
   for (const mod of PROVIDER_MODULES) {
     if (mod.matches(model)) {
       if (typeof mod.normalizeContextMessages === "function") {

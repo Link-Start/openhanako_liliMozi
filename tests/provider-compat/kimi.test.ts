@@ -65,7 +65,7 @@ describe("provider-compat/kimi", () => {
     });
 
     expect(result.reasoning_effort).toBe("max");
-    expect(result.thinking).toEqual({ type: "enabled" });
+    expect(result.thinking).toEqual({ type: "enabled", keep: "all" });
     expect(result).not.toHaveProperty("output_config");
   });
 
@@ -165,7 +165,11 @@ describe("provider-compat/kimi", () => {
       messages: [
         {
           role: "assistant",
-          content: [{ type: "text", text: "I need to inspect the file." }],
+          content: [{
+            type: "thinking",
+            thinking: "I need to inspect the file.",
+            thinkingSignature: "reasoning_content",
+          }],
           tool_calls: [{
             id: "call_1",
             type: "function",

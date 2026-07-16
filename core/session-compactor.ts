@@ -545,6 +545,7 @@ export async function createCachePreservingCompactionResult({
     const llmMessages = normalizeProviderContextMessages(rawLlmMessages, model, {
       mode: "chat",
       reasoningLevel: effectiveThinkingLevel,
+      reasoningReplay: effectiveCacheKeyParams.reasoningReplay,
     });
     const suffixMessage = llmMessages[llmMessages.length - 1];
     const prefixMessages = llmMessages.slice(0, -1);

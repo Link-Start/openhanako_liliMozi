@@ -10,6 +10,7 @@ import { getPiModel } from "../lib/pi-sdk/index.ts";
 import { lookupKnown, lookupKnownProvider } from "../shared/known-models.ts";
 import { atomicWriteSync } from "../shared/safe-fs.ts";
 import {
+  getEndpointDefaultReasoningCapability,
   normalizeModelProtocolCompat,
   normalizeToolUseContract,
   normalizeVisionCapabilities,
@@ -27,7 +28,7 @@ import { normalizeThinkingLevelForModel } from "./session-thinking-level.ts";
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const PI_BUILTIN_PROVIDER_REUSE = new Set(["kimi-coding", "opencode-go"]);
 const KIMI_CODING_PROVIDER = "kimi-coding";
-const KIMI_CODING_MODEL_ID = "kimi-for-coding";
+const KIMI_CODING_HEADER_MODEL_ID = "kimi-for-coding";
 const CHAT_CREDENTIAL_SOURCES = new Set(["provider-catalog", "auth-storage", "none"]);
 
 /**
@@ -126,33 +127,21 @@ function getKimiCodingEffectiveApi(provider, baseUrl, api) {
   return "openai-completions";
 }
 
-function normalizeKimiCodingModelEntry(modelEntry) {
-  if (typeof modelEntry === "object" && modelEntry !== null) {
-    return { ...modelEntry, id: KIMI_CODING_MODEL_ID };
-  }
-  return KIMI_CODING_MODEL_ID;
+function pickHeader(headers, headerName) {
+  if (!headers || typeof headers !== "object" || Array.isArray(headers)) return {};
+  const entry = Object.entries(headers).find(([name]) => name.toLowerCase() === headerName.toLowerCase());
+  return entry ? { [entry[0]]: entry[1] } : {};
 }
 
-function isObjectModelEntry(modelEntry) {
-  return typeof modelEntry === "object" && modelEntry !== null;
-}
+function getPiRequestHeaders(provider, modelId) {
+  const exactHeaders = getPiBuiltinModel(provider, modelId)?.headers;
+  if (exactHeaders && typeof exactHeaders === "object") return exactHeaders;
+  if (!isKimiCodingProvider(provider)) return {};
 
-function normalizeKimiCodingModelEntries(provider, baseUrl, modelEntries) {
-  if (!isKimiCodingProvider(provider) || !isOfficialKimiCodingBaseUrl(baseUrl)) return modelEntries;
-
-  const byId = new Map();
-  for (const rawEntry of modelEntries) {
-    const entry = normalizeKimiCodingModelEntry(rawEntry);
-    const id = getModelId(entry);
-    const current = byId.get(id);
-    if (!current) {
-      byId.set(id, entry);
-      continue;
-    }
-    if (isObjectModelEntry(current) || !isObjectModelEntry(entry)) continue;
-    byId.set(id, entry);
-  }
-  return Array.from(byId.values());
+  // New Kimi Coding model ids still need the provider's client identity, but
+  // request headers are the only field shared with the Pi default model.
+  const providerHeaders = getPiBuiltinModel(provider, KIMI_CODING_HEADER_MODEL_ID)?.headers;
+  return pickHeader(providerHeaders, "user-agent");
 }
 
 function isZhipuOpenAICompat(provider, baseUrl, api) {
@@ -240,12 +229,18 @@ function buildModelEntry(
   const id = getModelId(modelEntry);
   const known = lookupKnown(provider, id);
   const providerKnown = lookupKnownProvider(provider, id);
-  const piBuiltin = getPiBuiltinModel(provider, id);
+  const piRequestHeaders = getPiRequestHeaders(provider, id);
   const piProtocolBaseline = getPiProtocolBaseline(provider, id);
   const modelApi = (isObj && modelEntry.api)
     || providerKnown?.api
     || piProtocolBaseline?.api
     || api;
+  const endpointReasoning = getEndpointDefaultReasoningCapability({
+    id,
+    provider,
+    api: modelApi,
+    baseUrl,
+  });
 
   // 输入模态能力：用户设置 > known-models 词典 > 默认 false
   // 兼容读：migration #7 之前的旧数据用 vision 字段；两个版本后移除 vision fallback
@@ -271,7 +266,11 @@ function buildModelEntry(
       ?? DEFAULT_CONTEXT_WINDOW,
     reasoning: (isObj && modelEntry.reasoning !== undefined)
       ? modelEntry.reasoning
-      : (piProtocolBaseline?.reasoning === true || known?.reasoning === true),
+      : (
+        piProtocolBaseline?.reasoning === true
+        || known?.reasoning === true
+        || endpointReasoning === true
+      ),
   };
   if (xhigh === true) entry.xhigh = true;
 
@@ -305,7 +304,7 @@ function buildModelEntry(
 
   if (known?.quirks?.length) entry.quirks = known.quirks;
   const modelHeaders = normalizeProviderHeaders({
-    ...(piBuiltin?.headers || {}),
+    ...piRequestHeaders,
     ...(isObj ? (modelEntry.headers || {}) : {}),
     ...executionHeaders,
   });
@@ -423,11 +422,7 @@ export function syncModels(providers, opts: Record<string, any> = {}) {
       api: effectiveApi,
     });
     const modelDefaults = p.model_defaults || {};
-    const chatModels = normalizeKimiCodingModelEntries(
-      provider,
-      p.base_url,
-      filterChatModelEntries(provider, p.models),
-    );
+    const chatModels = filterChatModelEntries(provider, p.models);
     const customModels = [];
     const modelOverrides = {};
     const modelExecutionHeaders = plan.modelExecutionHeaders || {};

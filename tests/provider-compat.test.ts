@@ -926,7 +926,11 @@ describe("normalizeProviderPayload — 通用层", () => {
         { role: "user", content: "需要查天气" },
         {
           role: "assistant",
-          content: [{ type: "thinking", thinking: "Need to call the weather tool." }],
+          content: [{
+            type: "thinking",
+            thinking: "Need to call the weather tool.",
+            thinkingSignature: "reasoning_content",
+          }],
           tool_calls: [{
             id: "call_1",
             type: "function",
@@ -964,7 +968,11 @@ describe("normalizeProviderPayload — 通用层", () => {
         { role: "user", content: "需要查天气" },
         {
           role: "assistant",
-          content: [{ type: "thinking", thinking: "Need to call the weather tool." }],
+          content: [{
+            type: "thinking",
+            thinking: "Need to call the weather tool.",
+            thinkingSignature: "reasoning_content",
+          }],
           tool_calls: [{
             id: "call_1",
             type: "function",

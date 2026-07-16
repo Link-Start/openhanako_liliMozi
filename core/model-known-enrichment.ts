@@ -1,10 +1,15 @@
 import { getPiModel } from "../lib/pi-sdk/index.ts";
 import { lookupKnown } from "../shared/known-models.ts";
-import { normalizeVisionCapabilities, withThinkingFormatCompat } from "../shared/model-capabilities.ts";
+import {
+  getEndpointDefaultReasoningCapability,
+  normalizeVisionCapabilities,
+  withThinkingFormatCompat,
+} from "../shared/model-capabilities.ts";
 import { inferOllamaModelMetadata } from "../shared/ollama-model-metadata.ts";
 
 const RUNTIME_ENRICHED_PROVIDERS = new Set(["kimi-coding", "ollama", "volcengine-coding"]);
-const KIMI_CODING_MODEL_ID = "kimi-for-coding";
+const KIMI_CODING_PROVIDER = "kimi-coding";
+const KIMI_CODING_HEADER_MODEL_ID = "kimi-for-coding";
 
 function isPlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
@@ -17,6 +22,23 @@ function getPiBuiltinModel(provider, modelId) {
   } catch {
     return null;
   }
+}
+
+function pickHeader(headers, headerName) {
+  if (!isPlainObject(headers)) return null;
+  const entry = Object.entries(headers).find(([name]) => name.toLowerCase() === headerName.toLowerCase());
+  return entry ? { [entry[0]]: entry[1] } : null;
+}
+
+function getPiRequestHeaders(provider, modelId) {
+  const exactHeaders = getPiBuiltinModel(provider, modelId)?.headers;
+  if (isPlainObject(exactHeaders)) return exactHeaders;
+  if (provider !== KIMI_CODING_PROVIDER) return null;
+
+  // Unknown/new Kimi ids inherit only the provider request identity. Model
+  // identity, limits, modalities, and cost remain owned by the actual model.
+  const providerHeaders = getPiBuiltinModel(provider, KIMI_CODING_HEADER_MODEL_ID)?.headers;
+  return pickHeader(providerHeaders, "user-agent");
 }
 
 function mergeCompat(model, known) {
@@ -41,14 +63,13 @@ function isOfficialKimiCodingRuntime(model) {
   }
 }
 
-function normalizeKimiCodingRuntimeModel(model) {
+function normalizeKimiCodingRuntimeTransport(model) {
   if (!isOfficialKimiCodingRuntime(model)) return model;
   const compat = isPlainObject(model.compat) ? { ...model.compat } : {};
   delete compat.thinkingFormat;
   delete compat.reasoningProfile;
   return {
     ...model,
-    id: KIMI_CODING_MODEL_ID,
     api: "openai-completions",
     baseUrl: "https://api.kimi.com/coding/v1",
     compat,
@@ -59,13 +80,17 @@ export function enrichModelFromKnownMetadata(model) {
   if (!isPlainObject(model)) return model;
   if (!RUNTIME_ENRICHED_PROVIDERS.has(model.provider)) return model;
 
-  const normalizedModel = normalizeKimiCodingRuntimeModel(model);
+  const normalizedModel = normalizeKimiCodingRuntimeTransport(model);
   const known = lookupKnown(normalizedModel.provider, normalizedModel.id);
-  const piBuiltin = getPiBuiltinModel(normalizedModel.provider, normalizedModel.id);
+  const piRequestHeaders = getPiRequestHeaders(normalizedModel.provider, normalizedModel.id);
   const patch: Record<string, unknown> = {};
 
-  if (!normalizedModel.headers && piBuiltin?.headers) {
-    patch.headers = { ...piBuiltin.headers };
+  if (normalizedModel.reasoning === undefined && getEndpointDefaultReasoningCapability(normalizedModel) === true) {
+    patch.reasoning = true;
+  }
+
+  if (!normalizedModel.headers && piRequestHeaders) {
+    patch.headers = { ...piRequestHeaders };
   }
 
   const hasInputContract = Array.isArray(normalizedModel.input);

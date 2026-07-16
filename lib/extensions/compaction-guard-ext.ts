@@ -40,8 +40,8 @@ import {
   normalizeProviderContextMessages,
 } from "../../core/provider-compat.ts";
 import {
-  ensureReasoningContentForToolCalls,
   isReasoningReplayUnavailable,
+  reasoningReplayCanClear,
 } from "../../core/provider-compat/reasoning-content-replay.ts";
 import {
   CACHE_STRATEGIES,
@@ -59,14 +59,6 @@ const log = createModuleLogger("compaction-guard");
 
 const DEFAULT_MAX_TOOL_RESULT_BYTES = 32 * 1024; // 32KB ≈ 8K token
 const DEFAULT_HARD_TRUNCATE_THRESHOLD = 0.85;    // messagesToSummarize 超 85% 窗口 → 硬截断
-
-function needsToolCallReasoningReplay(model: any) {
-  const provider = typeof model?.provider === "string" ? model.provider.toLowerCase() : "";
-  const baseUrl = typeof model?.baseUrl === "string"
-    ? model.baseUrl.toLowerCase()
-    : (typeof model?.base_url === "string" ? model.base_url.toLowerCase() : "");
-  return provider === "zhipu" || baseUrl.includes("open.bigmodel.cn");
-}
 
 function hardTruncateFromPreparation(event: any, ctx: any, preparation: any) {
   const sm = ctx.sessionManager;
@@ -237,11 +229,8 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
             mode: "chat",
             reasoningLevel,
           });
-          if (reasoningLevel && needsToolCallReasoningReplay(model)) {
-            messages = ensureReasoningContentForToolCalls(messages, { providerLabel: "Zhipu" });
-          }
         } catch (err) {
-          if (!isReasoningReplayUnavailable(err)) throw err;
+          if (!isReasoningReplayUnavailable(err) || !reasoningReplayCanClear(model)) throw err;
           reasoningReplay = "clear";
           cacheMetadataOverride = buildCacheStrategyMetadata({
             cacheStrategy: CACHE_STRATEGIES.CACHE_RECOVERY,
@@ -253,6 +242,7 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
           messages = normalizeProviderContextMessages(rawMessages, model, {
             mode: "chat",
             reasoningLevel,
+            reasoningReplay: "clear",
           });
           log.warn(`[L3] cache recovery compaction: reasoning replay unavailable, historical thinking cleared for this compaction`);
         }
@@ -343,7 +333,11 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
         });
 
         async function retryWithClearedReasoningReplay(originalError: any) {
-          if (!isReasoningReplayUnavailable(originalError) || reasoningReplay === "clear") {
+          if (
+            !isReasoningReplayUnavailable(originalError)
+            || reasoningReplay === "clear"
+            || !reasoningReplayCanClear(model)
+          ) {
             throw originalError;
           }
           const recoveryMetadata = buildCacheStrategyMetadata({
@@ -356,6 +350,7 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
           const recoveryMessages = normalizeProviderContextMessages(rawMessages, model, {
             mode: "chat",
             reasoningLevel,
+            reasoningReplay: "clear",
           });
           const recoveryCacheKeyParams = {
             thinkingLevel: normalizeRequestThinkingLevel(thinkingLevel, "off"),

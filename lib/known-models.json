@@ -2638,6 +2638,21 @@
     }
   },
   "kimi-coding": {
+    "k3": {
+      "name": "Kimi K3",
+      "context": 1048576,
+      "reasoning": true,
+      "thinkingLevels": ["off", "max"],
+      "thinkingLevelMap": {
+        "off": null,
+        "minimal": "max",
+        "low": "max",
+        "medium": "max",
+        "high": "max",
+        "xhigh": "max"
+      },
+      "defaultThinkingLevel": "max"
+    },
     "kimi-for-coding": {
       "name": "Kimi for Coding",
       "context": 262144,

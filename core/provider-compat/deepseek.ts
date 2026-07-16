@@ -408,13 +408,6 @@ export function apply(payload, model, options: Record<string, any> = {}) {
     }
   }
 
-  // chat mode 思考开启：严格校验 tool_calls 历史的 reasoning_content（覆盖 transform-messages 降级）。
-  // 守卫与上方 off-path / utility-path 风格对称；此处 p 已是副本，去掉守卫直接赋值也对，但保持三处同形便于阅读。
-  const ensured = ensureReasoningContentForToolCalls(p.messages);
-  if (ensured !== p.messages) {
-    p.messages = ensured;
-  }
-
   const contentEnsured = ensureAssistantContentForToolCalls(p.messages);
   if (contentEnsured !== p.messages) {
     p.messages = contentEnsured;

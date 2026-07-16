@@ -352,6 +352,28 @@ describe("known-models dictionary", () => {
     });
   });
 
+  it("declares official Kimi K3 metadata while keeping the stable default model", () => {
+    const k3 = lookupKnownProvider("kimi-coding", "k3");
+    expect(k3).toMatchObject({
+      name: "Kimi K3",
+      context: 1048576,
+      reasoning: true,
+      thinkingLevels: ["off", "max"],
+      thinkingLevelMap: {
+        off: null,
+        minimal: "max",
+        low: "max",
+        medium: "max",
+        high: "max",
+        xhigh: "max",
+      },
+      defaultThinkingLevel: "max",
+    });
+    expect(k3).not.toHaveProperty("image");
+    expect(k3).not.toHaveProperty("maxOutput");
+    expect(defaultModels["kimi-coding"]).toEqual(["kimi-for-coding"]);
+  });
+
   it("declares official Moonshot Kimi K2.6 video capability", () => {
     expect(lookupKnown("moonshot", "kimi-k2.6")).toMatchObject({
       name: "Kimi K2.6",

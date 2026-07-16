@@ -12,10 +12,7 @@
  */
 
 import { getReasoningProfile, getThinkingFormat } from "../../shared/model-capabilities.ts";
-import {
-  ensureReasoningContentForToolCalls as ensureReasoningContentForToolCallsBase,
-  stripReasoningContent,
-} from "./reasoning-content-replay.ts";
+import { stripReasoningContent } from "./reasoning-content-replay.ts";
 
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 const MFJS_PARENT_ANNOTATION_KEYS = new Set(["description", "default"]);
@@ -58,7 +55,7 @@ function reasoningEffortForLevel(level, model = null) {
 }
 
 function normalizeThinking(thinking) {
-  const next: { type: string; keep?: unknown } = { type: "enabled" };
+  const next: { type: string; keep?: unknown } = { type: "enabled", keep: "all" };
   if (thinking && typeof thinking === "object" && !Array.isArray(thinking) && hasOwn(thinking, "keep")) {
     next.keep = thinking.keep;
   }
@@ -96,10 +93,6 @@ function shouldEnableThinking(payload, model, options) {
     || payload.thinking
     || reasoningEffortForLevel(options?.reasoningLevel, model)
   );
-}
-
-function ensureReasoningContentForToolCalls(messages) {
-  return ensureReasoningContentForToolCallsBase(messages, { providerLabel: "Kimi" });
 }
 
 function isPlainObject(value) {
@@ -285,9 +278,6 @@ export function apply(payload, model, options: Record<string, unknown> = {}) {
   if (effort) {
     p.reasoning_effort = effort;
   }
-
-  const messages = ensureReasoningContentForToolCalls(p.messages);
-  if (messages !== p.messages) p.messages = messages;
 
   return next;
 }

@@ -23,7 +23,6 @@
 
 import {
   ensureAssistantContentForToolCalls,
-  ensureReasoningContentForToolCalls,
   stripReasoningContent,
 } from "./reasoning-content-replay.ts";
 
@@ -181,13 +180,6 @@ function normalizeThinking(payload, model, options) {
   }
 
   if (hasToolCalls) {
-    if (!clearHistory) {
-      const ensured = ensureReasoningContentForToolCalls(next.messages, { providerLabel: "Zhipu" });
-      if (ensured !== next.messages) {
-        next.messages = ensured;
-      }
-    }
-
     const contentEnsured = ensureAssistantContentForToolCalls(next.messages);
     if (contentEnsured !== next.messages) {
       next.messages = contentEnsured;

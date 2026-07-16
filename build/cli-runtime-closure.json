@@ -1837,11 +1837,16 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "core/provider-compat.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/extensions/compaction-guard-ext.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/provider-compat/deepseek.ts (import-statement); core/provider-compat/kimi.ts (import-statement); core/provider-compat/mimo.ts (import-statement); +4 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/provider-compat/deepseek.ts (import-statement); core/provider-compat/kimi.ts (import-statement); core/provider-compat/mimo.ts (import-statement); +5 more importer(s)."
     },
     {
       "path": "core/provider-compat/tool-pairing.ts",
@@ -110585,6 +110590,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "core/provider-compat/reasoning-content-replay.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "core/provider-compat/deepseek.ts",
           "kind": "import-statement"
         },
@@ -110719,7 +110729,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/message-sanitizer.ts (import-statement); core/provider-compat/deepseek.ts (import-statement); core/provider-compat/kimi.ts (import-statement); +25 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/message-sanitizer.ts (import-statement); core/provider-compat/reasoning-content-replay.ts (import-statement); core/provider-compat/deepseek.ts (import-statement); +26 more importer(s)."
     },
     {
       "path": "shared/model-ref.ts",
