@@ -126,16 +126,27 @@ export const CLOSURE_ROOTS = Object.freeze([
     path: "server/index.ts",
     inputType: "dynamic-process-root",
     reason:
-      "cli/server-runner.ts's resolveServerSpawnSpec() spawns this file by path as a "
-      + "child process in source mode (spec.args includes path.join(root, \"server\", "
-      + "\"index.ts\")) rather than statically importing it -- the exact reason a "
-      + "single-root static walk from cli/entry.ts would under-count. Also the build "
-      + "entry scripts/build-server.mjs feeds to vite.config.server.js's "
-      + "build.lib.entry. Today this file is simultaneously the only server "
-      + "composition root (nothing currently separates a redistributable registration "
-      + "surface from product-specific route registration -- see the coupling edges "
-      + "this census records below); splitting that apart is future work, not this "
-      + "census's job.",
+      "Since the route-composition split, this file is the open server composition "
+      + "root: it unconditionally, statically imports composition/open-root.ts and "
+      + "mounts every open route/WS surface, and no longer imports any closed-product "
+      + "route file directly (avatar/cards/character-cards/desk/diary moved to "
+      + "composition/full-root.ts, imported only by the closed server/main-full.ts "
+      + "entry). No current boot path spawns or imports this file directly anymore -- "
+      + "cli/server-runner.ts's resolveServerSpawnSpec() source mode, "
+      + "scripts/launch.js, scripts/dev-web.js, and desktop/main.cjs's dev "
+      + "HANA_SERVER_ENTRY all target server/main-full.ts instead, and "
+      + "vite.config.server.js's build.lib.entry (which scripts/build-server.mjs feeds "
+      + "into the packaged bundle) does too. main-full.ts is a thin closed entry that "
+      + "statically imports this file's startServer() export plus "
+      + "composition/full-root.ts's registerClosedRoutes hook and calls one with the "
+      + "other; it is deliberately not declared as a root here because it, and "
+      + "everything it pulls in, is closed product wiring, not part of the CLI's open "
+      + "redistributable closure. This file remains declared directly (rather than "
+      + "relying on reachability through main-full.ts) so its own source graph -- now "
+      + "free of closed-product route imports, exactly the open closure this generator "
+      + "needs -- keeps being traced independent of that closed wiring; it is also the "
+      + "entry a future open-server distribution build is expected to spawn on its "
+      + "own.",
   },
   {
     id: "server-process-bootstrap",
@@ -167,9 +178,16 @@ export const CLOSURE_ROOTS = Object.freeze([
     reason:
       "@vercel/nft trace of an esbuild-compiled bundle of server/index.ts (internal "
       + "repo source inlined, npm packages left external) -- bundle externals / "
-      + "runtime dependency files for the spawned server's full npm dependency "
-      + "surface. Same nft usage pattern as scripts/build-server.mjs:491-535 "
-      + "(read-only precedent).",
+      + "runtime dependency files for the open server composition's npm dependency "
+      + "surface. Since the route-composition split this file no longer imports the "
+      + "closed-product route files (see the server-bootstrap root's reason above), so "
+      + "this trace no longer pulls in their npm dependencies either -- narrower, and "
+      + "more accurate, than before the split. The packaged product bundle "
+      + "(vite.config.server.js's build.lib.entry) is compiled from "
+      + "server/main-full.ts instead, which statically includes this file plus the "
+      + "closed-product routes; that closed bundle is out of scope for this "
+      + "open-closure trace by design. Same nft usage pattern as "
+      + "scripts/build-server.mjs:491-535 (read-only precedent).",
   },
 ]);
 
@@ -198,8 +216,13 @@ export const DYNAMIC_CALL_ALLOWLIST = Object.freeze([
     argText: "pathToFileURL(serverEntry).href",
     reason:
       "serverEntry is HANA_SERVER_ENTRY or a path.join() computed from HANA_ROOT; it "
-      + "always resolves to the compiled output of the server-bootstrap root "
-      + "(server/index.ts), already covered as an explicit declared root above.",
+      + "always resolves to the compiled output of server/main-full.ts (the closed thin "
+      + "composition entry that statically imports the server-bootstrap root, "
+      + "server/index.ts, plus composition/full-root.ts), not to the server-bootstrap "
+      + "root's own compiled output directly. main-full.ts is deliberately not declared "
+      + "as a root here -- see the server-bootstrap root's reason above -- but its "
+      + "static import of server/index.ts means this dynamic import always terminates "
+      + "in code already covered by that explicit declared root.",
   },
   {
     file: "core/fresh-import.ts",
@@ -220,8 +243,13 @@ export const DYNAMIC_CALL_ALLOWLIST = Object.freeze([
       "The child-process boundary between the CLI and the server it launches -- the "
       + "exact reason this whole census cannot rely on a single static-import walk. "
       + "spec.command/spec.args come from resolveServerSpawnSpec(), which always "
-      + "targets either the server-process-bootstrap root (packaged mode) or the "
-      + "server-bootstrap root (source mode), both already declared above.",
+      + "targets either the server-process-bootstrap root (server/bootstrap.ts, packaged "
+      + "mode) or server/main-full.ts (source mode) -- the closed thin composition entry "
+      + "that statically imports the server-bootstrap root (server/index.ts)'s "
+      + "startServer() export plus composition/full-root.ts. main-full.ts is "
+      + "deliberately not itself declared as a root (see the server-bootstrap root's "
+      + "reason above for why), but both spawn targets ultimately resolve to code "
+      + "already covered by the two declared roots above.",
   },
   {
     file: "lib/pi-sdk/search-tools.ts",

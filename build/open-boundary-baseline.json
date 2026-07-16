@@ -327,52 +327,10 @@
     },
     {
       "from": "server/index.ts",
-      "to": "server/routes/avatar.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-product",
-      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
-    },
-    {
-      "from": "server/index.ts",
-      "to": "server/routes/cards.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-product",
-      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
-    },
-    {
-      "from": "server/index.ts",
-      "to": "server/routes/character-cards.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-product",
-      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
-    },
-    {
-      "from": "server/index.ts",
-      "to": "server/routes/desk.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-product",
-      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
-    },
-    {
-      "from": "server/index.ts",
-      "to": "server/routes/diary.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-product",
-      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
-    },
-    {
-      "from": "server/index.ts",
       "to": "server/routes/mobile-workbench.ts",
       "provenance": "server-bootstrap:import-statement",
       "classification": "evidence-needed",
       "note": "Not yet classified as open host capability or closed product surface; this census supplies the evidence a future decision needs."
-    },
-    {
-      "from": "server/routes/character-cards.ts",
-      "to": "lib/character-cards/service.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-product",
-      "note": "Implements the closed-source character-card content system."
     },
     {
       "from": "server/routes/chat.ts",
@@ -387,41 +345,6 @@
       "provenance": "server-bootstrap:import-statement",
       "classification": "evidence-needed",
       "note": "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed."
-    },
-    {
-      "from": "server/routes/desk.ts",
-      "to": "lib/desk/activity-store.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-product",
-      "note": "Implements the closed-source desk product surface (named as closed product experience by the split classification principles)."
-    },
-    {
-      "from": "server/routes/desk.ts",
-      "to": "plugins/beautify/lib/cover-gallery-assets.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-content",
-      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
-    },
-    {
-      "from": "server/routes/desk.ts",
-      "to": "plugins/beautify/lib/cover-style-guide.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-content",
-      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
-    },
-    {
-      "from": "server/routes/desk.ts",
-      "to": "plugins/beautify/lib/markdown-cover-service.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-content",
-      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
-    },
-    {
-      "from": "server/routes/desk.ts",
-      "to": "plugins/image-gen/lib/image-task-runner.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "closed-content",
-      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
     },
     {
       "from": "server/routes/plugins.ts",
@@ -485,13 +408,13 @@
     }
   ],
   "stats": {
-    "totalEdges": 62,
+    "totalEdges": 51,
     "byClassification": {
-      "closed-product": 25,
-      "closed-content": 31,
+      "closed-product": 18,
+      "closed-content": 27,
       "provisional": 3,
       "evidence-needed": 3
     },
-    "uniqueCoupledFiles": 40
+    "uniqueCoupledFiles": 31
   }
 }

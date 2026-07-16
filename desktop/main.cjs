@@ -1715,7 +1715,11 @@ async function _spawnServerOnce(serverInfoPath, artifactBootContext) {
     serverCwd = devRoot;
     serverArgs = [path.join(devRoot, "server", "bootstrap.ts")];
     serverEnv.HANA_ROOT = devRoot;
-    serverEnv.HANA_SERVER_ENTRY = path.join(devRoot, "server", "index.ts");
+    // server/main-full.ts is the thin closed composition entry: it
+    // statically imports server/index.ts's startServer() plus
+    // server/composition/full-root.ts's registerClosedRoutes hook.
+    // server/index.ts itself no longer boots anything on its own.
+    serverEnv.HANA_SERVER_ENTRY = path.join(devRoot, "server", "main-full.ts");
     // Keep dev and packaged startup contracts identical.
     serverEnv.HANA_CREATE_STARTUP_SESSION = "0";
     delete serverEnv.ELECTRON_RUN_AS_NODE;

@@ -34,7 +34,7 @@ switch (mode) {
     break;
   case "server":
     bin = process.execPath;
-    args = ["server/index.ts", ...extra];
+    args = ["server/main-full.ts", ...extra];
     break;
   default:
     console.error("Usage: node scripts/launch.js <electron|electron-dev|electron-vite|cli|server>");

@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:7d69cd8d53aa4f22773d6f48f896706f293509029bc922ba79578e2580d2b606",
+  "payloadFingerprint": "sha256:86412f63641b9244d9420a4050d89732b544b11302f776fe44efe4413b9ca440",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2876,8 +2876,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Fix: wrap the artifact directory-swap renames in a bounded win32 busy-retry helper (antivirus/indexer file handles transiently block directory renames on Windows); no persisted format changes — the swap's rename sites are now inside the helper and other activation.cjs site line numbers shifted.",
-    "payloadFingerprint": "sha256:7d69cd8d53aa4f22773d6f48f896706f293509029bc922ba79578e2580d2b606"
+    "compatibilityReason": "Route composition refactor moved server/index.ts's inline open/closed-product route mounting into server/composition/{open-root,full-root}.ts and wrapped the rest of the file's top-level script body into an exported startServer() function; every persistent-store call site keeps the exact same code, only its line number inside server/index.ts shifted. No store's serialized format, schema, or migration contract changed.",
+    "payloadFingerprint": "sha256:86412f63641b9244d9420a4050d89732b544b11302f776fe44efe4413b9ca440"
   },
   "schemas": [
     {
@@ -3060,7 +3060,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:97ba47d86fb76b73e23338985ab4519a7fd3e444f4006f7dbdd9dd09bcdfaae8",
+      "sourceHash": "sha256:0b939a9ae3ec92576c07b714d2a1a970e67598bd3afe7399a8124181deff3c50",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3206,7 +3206,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:45ef1694059614602d615a06f28e0c8c65e8e4e5e6539900e592fb36b415bb14",
+      "sourceHash": "sha256:b0d13f69449b7cfd88393dadd4da8105e534b8165731cc0c8ea1f5c6a4cd00d0",
       "storeId": "server-runtime-info"
     },
     {
@@ -5716,7 +5716,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1725,
+      "line": 1729,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -5724,7 +5724,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2211,
+      "line": 2215,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -5732,7 +5732,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2212,
+      "line": 2216,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -5740,7 +5740,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2273,
+      "line": 2277,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -5748,7 +5748,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2274,
+      "line": 2278,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -5756,7 +5756,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2342,
+      "line": 2346,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -5764,7 +5764,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2441,
+      "line": 2445,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -5772,7 +5772,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2442,
+      "line": 2446,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -5780,7 +5780,7 @@
     {
       "exemptionId": null,
       "kind": "append-file",
-      "line": 4187,
+      "line": 4191,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -5788,7 +5788,7 @@
     {
       "exemptionId": "desktop-screenshot-html-temp",
       "kind": "write-file",
-      "line": 4754,
+      "line": 4758,
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5796,7 +5796,7 @@
     {
       "exemptionId": "desktop-screenshot-html-temp",
       "kind": "remove-path",
-      "line": 4808,
+      "line": 4812,
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5804,7 +5804,7 @@
     {
       "exemptionId": "desktop-skill-preview-temp",
       "kind": "mkdir",
-      "line": 5363,
+      "line": 5367,
       "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5812,7 +5812,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5509,
+      "line": 5513,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5820,7 +5820,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "mkdir",
-      "line": 5531,
+      "line": 5535,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5828,7 +5828,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5532,
+      "line": 5536,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5836,7 +5836,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "mkdir",
-      "line": 5543,
+      "line": 5547,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5844,7 +5844,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "copy-file",
-      "line": 5544,
+      "line": 5548,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5852,7 +5852,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "mkdir",
-      "line": 5577,
+      "line": 5581,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5860,7 +5860,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5578,
+      "line": 5582,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -5868,7 +5868,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 6100,
+      "line": 6104,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -8172,7 +8172,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 298,
+      "line": 272,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
@@ -8180,7 +8180,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 460,
+      "line": 433,
       "reason": "Constructs the deferred result store.",
       "sourceFile": "server/index.ts",
       "storeId": "deferred-result-state"
@@ -8188,7 +8188,7 @@
     {
       "exemptionId": "in-memory-confirm-registry",
       "kind": "persistent-store-constructor",
-      "line": 660,
+      "line": 633,
       "reason": "ConfirmStore is deliberately process-memory-only: pending approvals time out or abort with their session and have no restart replay contract.",
       "sourceFile": "server/index.ts",
       "storeId": null
@@ -8196,7 +8196,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 665,
+      "line": 638,
       "reason": "Constructs subagent stores.",
       "sourceFile": "server/index.ts",
       "storeId": "subagent-state"
@@ -8204,7 +8204,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 671,
+      "line": 644,
       "reason": "Constructs subagent stores.",
       "sourceFile": "server/index.ts",
       "storeId": "subagent-state"
@@ -8212,7 +8212,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 682,
+      "line": 655,
       "reason": "Constructs the workflow activity store.",
       "sourceFile": "server/index.ts",
       "storeId": "workflow-state"
@@ -8220,7 +8220,7 @@
     {
       "exemptionId": null,
       "kind": "append-file",
-      "line": 1154,
+      "line": 1072,
       "reason": "Appends the browser worker log.",
       "sourceFile": "server/index.ts",
       "storeId": "runtime-diagnostics"
@@ -8228,7 +8228,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 1213,
+      "line": 1131,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
@@ -8236,7 +8236,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1311,
+      "line": 1229,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"

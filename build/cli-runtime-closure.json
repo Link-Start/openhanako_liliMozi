@@ -12,7 +12,7 @@
       "id": "server-bootstrap",
       "path": "server/index.ts",
       "inputType": "dynamic-process-root",
-      "reason": "cli/server-runner.ts's resolveServerSpawnSpec() spawns this file by path as a child process in source mode (spec.args includes path.join(root, \"server\", \"index.ts\")) rather than statically importing it -- the exact reason a single-root static walk from cli/entry.ts would under-count. Also the build entry scripts/build-server.mjs feeds to vite.config.server.js's build.lib.entry. Today this file is simultaneously the only server composition root (nothing currently separates a redistributable registration surface from product-specific route registration -- see the coupling edges this census records below); splitting that apart is future work, not this census's job."
+      "reason": "Since the route-composition split, this file is the open server composition root: it unconditionally, statically imports composition/open-root.ts and mounts every open route/WS surface, and no longer imports any closed-product route file directly (avatar/cards/character-cards/desk/diary moved to composition/full-root.ts, imported only by the closed server/main-full.ts entry). No current boot path spawns or imports this file directly anymore -- cli/server-runner.ts's resolveServerSpawnSpec() source mode, scripts/launch.js, scripts/dev-web.js, and desktop/main.cjs's dev HANA_SERVER_ENTRY all target server/main-full.ts instead, and vite.config.server.js's build.lib.entry (which scripts/build-server.mjs feeds into the packaged bundle) does too. main-full.ts is a thin closed entry that statically imports this file's startServer() export plus composition/full-root.ts's registerClosedRoutes hook and calls one with the other; it is deliberately not declared as a root here because it, and everything it pulls in, is closed product wiring, not part of the CLI's open redistributable closure. This file remains declared directly (rather than relying on reachability through main-full.ts) so its own source graph -- now free of closed-product route imports, exactly the open closure this generator needs -- keeps being traced independent of that closed wiring; it is also the entry a future open-server distribution build is expected to spawn on its own."
     },
     {
       "id": "server-process-bootstrap",
@@ -30,7 +30,7 @@
       "id": "nft-server-bundle",
       "path": "server/index.ts",
       "inputType": "nft-runtime-trace",
-      "reason": "@vercel/nft trace of an esbuild-compiled bundle of server/index.ts (internal repo source inlined, npm packages left external) -- bundle externals / runtime dependency files for the spawned server's full npm dependency surface. Same nft usage pattern as scripts/build-server.mjs:491-535 (read-only precedent)."
+      "reason": "@vercel/nft trace of an esbuild-compiled bundle of server/index.ts (internal repo source inlined, npm packages left external) -- bundle externals / runtime dependency files for the open server composition's npm dependency surface. Since the route-composition split this file no longer imports the closed-product route files (see the server-bootstrap root's reason above), so this trace no longer pulls in their npm dependencies either -- narrower, and more accurate, than before the split. The packaged product bundle (vite.config.server.js's build.lib.entry) is compiled from server/main-full.ts instead, which statically includes this file plus the closed-product routes; that closed bundle is out of scope for this open-closure trace by design. Same nft usage pattern as scripts/build-server.mjs:491-535 (read-only precedent)."
     },
     {
       "id": "create-require-root:shared/artifact-core/activation.cjs",
@@ -68,7 +68,7 @@
       "file": "server/bootstrap.ts",
       "callee": "import",
       "argText": "pathToFileURL(serverEntry).href",
-      "reason": "serverEntry is HANA_SERVER_ENTRY or a path.join() computed from HANA_ROOT; it always resolves to the compiled output of the server-bootstrap root (server/index.ts), already covered as an explicit declared root above."
+      "reason": "serverEntry is HANA_SERVER_ENTRY or a path.join() computed from HANA_ROOT; it always resolves to the compiled output of server/main-full.ts (the closed thin composition entry that statically imports the server-bootstrap root, server/index.ts, plus composition/full-root.ts), not to the server-bootstrap root's own compiled output directly. main-full.ts is deliberately not declared as a root here -- see the server-bootstrap root's reason above -- but its static import of server/index.ts means this dynamic import always terminates in code already covered by that explicit declared root."
     },
     {
       "file": "core/fresh-import.ts",
@@ -80,7 +80,7 @@
       "file": "cli/server-runner.ts",
       "callee": "spawn",
       "argText": "spec.command",
-      "reason": "The child-process boundary between the CLI and the server it launches -- the exact reason this whole census cannot rely on a single static-import walk. spec.command/spec.args come from resolveServerSpawnSpec(), which always targets either the server-process-bootstrap root (packaged mode) or the server-bootstrap root (source mode), both already declared above."
+      "reason": "The child-process boundary between the CLI and the server it launches -- the exact reason this whole census cannot rely on a single static-import walk. spec.command/spec.args come from resolveServerSpawnSpec(), which always targets either the server-process-bootstrap root (server/bootstrap.ts, packaged mode) or server/main-full.ts (source mode) -- the closed thin composition entry that statically imports the server-bootstrap root (server/index.ts)'s startServer() export plus composition/full-root.ts. main-full.ts is deliberately not itself declared as a root (see the server-bootstrap root's reason above for why), but both spawn targets ultimately resolve to code already covered by the two declared roots above."
     },
     {
       "file": "lib/pi-sdk/search-tools.ts",
@@ -1168,16 +1168,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "hub/index.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/session-collab/transcript.ts (import-statement); lib/tools/session-tool.ts (import-statement); core/agent-manager.ts (import-statement); +4 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/session-collab/transcript.ts (import-statement); lib/tools/session-tool.ts (import-statement); core/agent-manager.ts (import-statement); +3 more importer(s)."
     },
     {
       "path": "core/migrate-providers.ts",
@@ -1349,17 +1344,12 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/routes/sessions.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/mobile-workbench.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/sessions.ts",
           "kind": "import-statement"
         },
         {
@@ -1368,7 +1358,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/sessions.ts (import-statement); server/routes/desk.ts (import-statement); server/routes/mobile-workbench.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/mobile-workbench.ts (import-statement); server/routes/sessions.ts (import-statement); server/routes/studio-workspaces.ts (import-statement)."
     },
     {
       "path": "core/output-length-contract.ts",
@@ -2048,12 +2038,12 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/http/boundary.ts",
+          "from": "server/http/plugin-surface-session.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/ws-scope.ts",
+          "from": "server/http/boundary.ts",
           "kind": "import-statement"
         },
         {
@@ -2063,7 +2053,7 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/http/plugin-surface-session.ts",
+          "from": "server/ws-scope.ts",
           "kind": "import-statement"
         }
       ],
@@ -3960,18 +3950,6 @@
       "reason": "Reached via esbuild source module graph, imported by server/routes/channels.ts (import-statement)."
     },
     {
-      "path": "lib/character-cards/service.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/character-cards.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/character-cards.ts (import-statement)."
-    },
-    {
       "path": "lib/checkpoint-store.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -4422,6 +4400,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/chat.ts",
           "kind": "import-statement"
         },
@@ -4443,11 +4426,6 @@
         {
           "root": "server-bootstrap",
           "from": "server/routes/agents.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/character-cards.ts",
           "kind": "import-statement"
         },
         {
@@ -4478,16 +4456,6 @@
         {
           "root": "server-bootstrap",
           "from": "server/routes/auth.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/diary.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         },
         {
@@ -4636,7 +4604,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); lib/desk/cron-store.ts (import-statement); core/studio-cron-service.ts (import-statement); +80 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); lib/desk/cron-store.ts (import-statement); core/studio-cron-service.ts (import-statement); +78 more importer(s)."
     },
     {
       "path": "lib/default-models.json",
@@ -4730,14 +4698,9 @@
           "root": "server-bootstrap",
           "from": "core/agent-manager.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/agent-manager.ts (import-statement); server/routes/desk.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/agent-manager.ts (import-statement)."
     },
     {
       "path": "lib/desk/agent-run-automation.ts",
@@ -4846,14 +4809,9 @@
           "root": "server-bootstrap",
           "from": "core/engine.ts",
           "kind": "dynamic-import"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/diary.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/engine.ts (dynamic-import); server/routes/diary.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/engine.ts (dynamic-import)."
     },
     {
       "path": "lib/exec-command/guidance.ts",
@@ -4999,16 +4957,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/search-tools.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement); lib/character-cards/service.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/search-tools.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement); server/routes/plugins.ts (import-statement)."
     },
     {
       "path": "lib/file-metadata.ts",
@@ -5439,21 +5392,6 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "plugins/beautify/lib/markdown-cover-service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "plugins/beautify/lib/cover-style-guide.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/skills.ts",
           "kind": "import-statement"
         },
@@ -5513,7 +5451,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/llm/provider-client.ts (import-statement); core/execution-router.ts (import-statement); core/model-manager.ts (import-statement); +78 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/llm/provider-client.ts (import-statement); core/execution-router.ts (import-statement); core/model-manager.ts (import-statement); +75 more importer(s)."
     },
     {
       "path": "lib/identity-templates",
@@ -5836,14 +5774,9 @@
           "root": "server-bootstrap",
           "from": "core/agent-manager.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/agent-manager.ts (import-statement); lib/character-cards/service.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/agent-manager.ts (import-statement)."
     },
     {
       "path": "lib/memory/compiled-memory-state.ts",
@@ -5972,16 +5905,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "hub/channel-router.ts",
           "kind": "dynamic-import"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/agent.ts (import-statement); server/routes/config.ts (import-statement); lib/character-cards/service.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/agent.ts (import-statement); server/routes/config.ts (import-statement); hub/channel-router.ts (dynamic-import)."
     },
     {
       "path": "lib/memory/llm-budget.ts",
@@ -8058,6 +7986,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/sessions.ts",
           "kind": "import-statement"
         },
@@ -8069,11 +8002,6 @@
         {
           "root": "server-bootstrap",
           "from": "server/routes/skills.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         }
       ],
@@ -8240,11 +8168,6 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "lib/skill-bundles/package-service.ts",
           "kind": "import-statement"
         },
@@ -8254,7 +8177,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/agent-manager.ts (import-statement); lib/character-cards/service.ts (import-statement); lib/skill-bundles/package-service.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/agent-manager.ts (import-statement); lib/skill-bundles/package-service.ts (import-statement); server/routes/skills.ts (import-statement)."
     },
     {
       "path": "lib/skills/session-skill-snapshot.ts",
@@ -8291,14 +8214,9 @@
           "root": "server-bootstrap",
           "from": "lib/skills/skill-package-installer.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); lib/skills/session-skill-snapshot.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); lib/skills/session-skill-snapshot.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement)."
     },
     {
       "path": "lib/skills/skill-metadata.ts",
@@ -8318,14 +8236,9 @@
           "root": "server-bootstrap",
           "from": "lib/skills/skill-package-installer.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/skill-manager.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/skill-manager.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement)."
     },
     {
       "path": "lib/skills/skill-name-translation-cache.ts",
@@ -8350,16 +8263,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/skills.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/tools/install-skill.ts (import-statement); server/routes/desk.ts (import-statement); server/routes/skills.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/install-skill.ts (import-statement); server/routes/skills.ts (import-statement)."
     },
     {
       "path": "lib/subagent-executor-metadata.ts",
@@ -8486,16 +8394,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "hub/agent-executor.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/llm-utils.ts (import-statement); core/session-coordinator.ts (import-statement); lib/character-cards/service.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/llm-utils.ts (import-statement); core/session-coordinator.ts (import-statement); hub/agent-executor.ts (import-statement)."
     },
     {
       "path": "lib/time-utils.ts",
@@ -8740,16 +8643,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "lib/skill-bundles/package-service.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/agent.ts (import-statement); lib/character-cards/service.ts (import-statement); lib/skill-bundles/package-service.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/agent.ts (import-statement); lib/skill-bundles/package-service.ts (import-statement)."
     },
     {
       "path": "lib/tools/media-details.ts",
@@ -9372,16 +9270,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "lib/skill-bundles/package-service.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/character-cards/service.ts (import-statement); lib/skill-bundles/package-service.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/skill-bundles/package-service.ts (import-statement)."
     },
     {
       "path": "node_modules/@anthropic-ai/sdk/_vendor/partial-json-parser/parser.js",
@@ -108322,42 +108215,6 @@
       "reason": "Reached via esbuild source module graph, imported by server/http/plugin-surface-session.ts (import-statement)."
     },
     {
-      "path": "plugins/beautify/lib/cover-gallery-assets.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/desk.ts (import-statement)."
-    },
-    {
-      "path": "plugins/beautify/lib/cover-style-guide.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/desk.ts (import-statement)."
-    },
-    {
-      "path": "plugins/beautify/lib/markdown-cover-service.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/desk.ts (import-statement)."
-    },
-    {
       "path": "plugins/image-gen/adapters/agnes.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -108537,14 +108394,9 @@
           "root": "server-bootstrap",
           "from": "core/media/universal-media-manager.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by plugins/image-gen/lib/poller.ts (import-statement); plugins/image-gen/lib/submit-image.ts (import-statement); core/media/universal-media-manager.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by plugins/image-gen/lib/poller.ts (import-statement); plugins/image-gen/lib/submit-image.ts (import-statement); core/media/universal-media-manager.ts (import-statement)."
     },
     {
       "path": "plugins/image-gen/lib/model-catalog.ts",
@@ -108647,11 +108499,6 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/character-cards.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/skills.ts",
           "kind": "import-statement"
         },
@@ -108661,7 +108508,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/tools/update-settings-tool.ts (import-statement); server/routes/chat.ts (import-statement); server/routes/config.ts (import-statement); +5 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/update-settings-tool.ts (import-statement); server/routes/chat.ts (import-statement); server/routes/config.ts (import-statement); +4 more importer(s)."
     },
     {
       "path": "server/block-extractors.ts",
@@ -108693,19 +108540,19 @@
       "reason": "Declared root: cli/server-runner.ts's resolveServerSpawnSpec() spawns this file by path as a child process in packaged mode (spec.args includes path.join(packagedRoot, \"bootstrap.js\")). scripts/build-server.mjs copies it verbatim (not bundled) as the packaged entry. Its own `await import(pathToFileURL(serverEntry).href)` is a non-literal dynamic import resolved out-of-band to this same server-bootstrap root's compiled output -- see DYNAMIC_CALL_ALLOWLIST."
     },
     {
-      "path": "server/cards/card-document.ts",
+      "path": "server/cli.ts",
       "inputType": "source-graph",
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/routes/cards.ts",
+          "from": "server/index.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/cards.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
     },
     {
-      "path": "server/cli.ts",
+      "path": "server/composition/open-root.ts",
       "inputType": "source-graph",
       "provenance": [
         {
@@ -108751,6 +108598,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "server/routes/mobile-workbench.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/sessions.ts",
           "kind": "import-statement"
         },
@@ -108776,32 +108628,12 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/avatar.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/agents.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
           "from": "server/routes/devices.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/character-cards.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/cards.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
           "kind": "import-statement"
         },
         {
@@ -108851,6 +108683,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "server/routes/media.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/resource-io.ts",
           "kind": "import-statement"
         },
@@ -108861,17 +108698,7 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/mobile-workbench.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/studio-workspaces.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/media.ts",
           "kind": "import-statement"
         },
         {
@@ -108885,12 +108712,17 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/sessions.ts (import-statement); server/routes/models.ts (import-statement); server/routes/config.ts (import-statement); +24 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/mobile-workbench.ts (import-statement); server/routes/sessions.ts (import-statement); server/routes/models.ts (import-statement); +20 more importer(s)."
     },
     {
       "path": "server/http/boundary.ts",
       "inputType": "source-graph",
       "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/mobile-workbench.ts",
+          "kind": "import-statement"
+        },
         {
           "root": "server-bootstrap",
           "from": "server/routes/chat.ts",
@@ -108899,11 +108731,6 @@
         {
           "root": "server-bootstrap",
           "from": "server/routes/sessions.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
           "kind": "import-statement"
         },
         {
@@ -108918,16 +108745,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/mobile-workbench.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/studio-workspaces.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/chat.ts (import-statement); server/routes/sessions.ts (import-statement); server/routes/desk.ts (import-statement); +4 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/mobile-workbench.ts (import-statement); server/routes/chat.ts (import-statement); server/routes/sessions.ts (import-statement); +3 more importer(s)."
     },
     {
       "path": "server/http/capability-guard.ts",
@@ -108960,11 +108782,6 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/preferences.ts",
           "kind": "import-statement"
         },
@@ -108990,6 +108807,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "server/routes/media.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/server-identity.ts",
           "kind": "import-statement"
         },
@@ -109000,16 +108822,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/media.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/speech-recognition.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/http/security-audit.ts (import-statement); server/routes/config.ts (import-statement); server/routes/providers.ts (import-statement); +12 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/http/security-audit.ts (import-statement); server/routes/config.ts (import-statement); server/routes/providers.ts (import-statement); +11 more importer(s)."
     },
     {
       "path": "server/http/cors-policy.ts",
@@ -109102,7 +108919,7 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
+          "from": "server/routes/mobile-workbench.ts",
           "kind": "import-statement"
         },
         {
@@ -109112,16 +108929,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/mobile-workbench.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/studio-workspaces.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/desk.ts (import-statement); server/routes/resource-io.ts (import-statement); server/routes/mobile-workbench.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/mobile-workbench.ts (import-statement); server/routes/resource-io.ts (import-statement); server/routes/studio-workspaces.ts (import-statement)."
     },
     {
       "path": "server/http/route-errors.ts",
@@ -109136,14 +108948,9 @@
           "root": "server-bootstrap",
           "from": "server/http/boundary.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/http/boundary.ts (import-statement); server/http/boundary.ts (import-statement); server/routes/desk.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/http/boundary.ts (import-statement); server/http/boundary.ts (import-statement)."
     },
     {
       "path": "server/http/route-security.ts",
@@ -109151,17 +108958,27 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/http/request-principal.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/http/capability-guard.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/devices.ts",
+          "from": "server/routes/mobile-workbench.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
+          "from": "server/routes/devices.ts",
           "kind": "import-statement"
         },
         {
@@ -109176,21 +108993,6 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/http/request-principal.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/mobile-workbench.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/studio-workspaces.ts",
           "kind": "import-statement"
         },
@@ -109200,12 +109002,17 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/http/capability-guard.ts (import-statement); server/routes/devices.ts (import-statement); server/routes/desk.ts (import-statement); +7 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement); server/http/request-principal.ts (import-statement); server/http/capability-guard.ts (import-statement); +6 more importer(s)."
     },
     {
       "path": "server/http/security-audit.ts",
       "inputType": "source-graph",
       "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/mobile-workbench.ts",
+          "kind": "import-statement"
+        },
         {
           "root": "server-bootstrap",
           "from": "server/routes/config.ts",
@@ -109238,7 +109045,7 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/mobile-workbench.ts",
+          "from": "server/routes/media.ts",
           "kind": "import-statement"
         },
         {
@@ -109248,16 +109055,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/media.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/speech-recognition.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/config.ts (import-statement); server/routes/agents.ts (import-statement); server/routes/devices.ts (import-statement); +7 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/mobile-workbench.ts (import-statement); server/routes/config.ts (import-statement); server/routes/agents.ts (import-statement); +7 more importer(s)."
     },
     {
       "path": "server/http/transport-context.ts",
@@ -109281,7 +109083,7 @@
           "kind": "root"
         }
       ],
-      "reason": "Declared root: cli/server-runner.ts's resolveServerSpawnSpec() spawns this file by path as a child process in source mode (spec.args includes path.join(root, \"server\", \"index.ts\")) rather than statically importing it -- the exact reason a single-root static walk from cli/entry.ts would under-count. Also the build entry scripts/build-server.mjs feeds to vite.config.server.js's build.lib.entry. Today this file is simultaneously the only server composition root (nothing currently separates a redistributable registration surface from product-specific route registration -- see the coupling edges this census records below); splitting that apart is future work, not this census's job."
+      "reason": "Declared root: Since the route-composition split, this file is the open server composition root: it unconditionally, statically imports composition/open-root.ts and mounts every open route/WS surface, and no longer imports any closed-product route file directly (avatar/cards/character-cards/desk/diary moved to composition/full-root.ts, imported only by the closed server/main-full.ts entry). No current boot path spawns or imports this file directly anymore -- cli/server-runner.ts's resolveServerSpawnSpec() source mode, scripts/launch.js, scripts/dev-web.js, and desktop/main.cjs's dev HANA_SERVER_ENTRY all target server/main-full.ts instead, and vite.config.server.js's build.lib.entry (which scripts/build-server.mjs feeds into the packaged bundle) does too. main-full.ts is a thin closed entry that statically imports this file's startServer() export plus composition/full-root.ts's registerClosedRoutes hook and calls one with the other; it is deliberately not declared as a root here because it, and everything it pulls in, is closed product wiring, not part of the CLI's open redistributable closure. This file remains declared directly (rather than relying on reachability through main-full.ts) so its own source graph -- now free of closed-product route imports, exactly the open closure this generator needs -- keeps being traced independent of that closed wiring; it is also the entry a future open-server distribution build is expected to spawn on its own."
     },
     {
       "path": "server/plugin-chat-surface.ts",
@@ -109323,11 +109125,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/settings-snapshot.ts (import-statement); server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/settings-snapshot.ts (import-statement); server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/agents.ts",
@@ -109335,11 +109137,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/auth.ts",
@@ -109347,23 +109149,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
-    },
-    {
-      "path": "server/routes/avatar.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/index.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/bridge.ts",
@@ -109376,23 +109166,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/settings-snapshot.ts (import-statement); server/index.ts (import-statement)."
-    },
-    {
-      "path": "server/routes/cards.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/index.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/settings-snapshot.ts (import-statement); server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/channels.ts",
@@ -109400,23 +109178,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
-    },
-    {
-      "path": "server/routes/character-cards.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/index.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/chat.ts",
@@ -109424,11 +109190,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/checkpoints.ts",
@@ -109436,11 +109202,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/commands.ts",
@@ -109448,11 +109214,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/config.ts",
@@ -109460,11 +109226,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/confirm.ts",
@@ -109472,23 +109238,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
-    },
-    {
-      "path": "server/routes/desk.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/index.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/devices.ts",
@@ -109496,23 +109250,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
-    },
-    {
-      "path": "server/routes/diary.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/index.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/dm.ts",
@@ -109520,11 +109262,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/experiments.ts",
@@ -109532,11 +109274,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/fs.ts",
@@ -109544,11 +109286,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/html-preview.ts",
@@ -109556,11 +109298,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/input-drafts.ts",
@@ -109568,11 +109310,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/media.ts",
@@ -109580,11 +109322,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/mobile-static.ts",
@@ -109592,11 +109334,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/mobile-workbench.ts",
@@ -109616,11 +109358,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/plugins.ts",
@@ -109628,11 +109370,16 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "server/composition/open-root.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/index.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement); server/index.ts (import-statement)."
     },
     {
       "path": "server/routes/preferences.ts",
@@ -109645,11 +109392,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/settings-snapshot.ts (import-statement); server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/settings-snapshot.ts (import-statement); server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/provider-credentials.ts",
@@ -109674,11 +109421,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/resource-io.ts",
@@ -109686,11 +109433,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/resources.ts",
@@ -109698,11 +109445,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/server-identity.ts",
@@ -109710,11 +109457,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/session-collab.ts",
@@ -109722,11 +109469,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/session-projects.ts",
@@ -109734,11 +109481,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/sessions.ts",
@@ -109746,11 +109493,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/settings-snapshot.ts",
@@ -109758,11 +109505,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/skills.ts",
@@ -109770,11 +109517,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/speech-recognition.ts",
@@ -109782,11 +109529,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/studio-workspaces.ts",
@@ -109794,11 +109541,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/upload.ts",
@@ -109806,11 +109553,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/usage.ts",
@@ -109818,11 +109565,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/web-auth.ts",
@@ -109830,11 +109577,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/routes/ws-auth.ts",
@@ -109842,11 +109589,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/index.ts",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
       "path": "server/session-stream-store.ts",
@@ -109909,14 +109656,9 @@
           "root": "server-bootstrap",
           "from": "server/routes/upload.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/upload.ts (import-statement); server/routes/desk.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/upload.ts (import-statement)."
     },
     {
       "path": "server/utils/resolve-agent.ts",
@@ -109924,12 +109666,12 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/routes/config.ts",
+          "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/avatar.ts",
+          "from": "server/routes/config.ts",
           "kind": "import-statement"
         },
         {
@@ -109956,14 +109698,9 @@
           "root": "server-bootstrap",
           "from": "server/routes/bridge.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/config.ts (import-statement); server/routes/avatar.ts (import-statement); server/routes/skills.ts (import-statement); +5 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement); server/routes/config.ts (import-statement); server/routes/skills.ts (import-statement); +4 more importer(s)."
     },
     {
       "path": "server/utils/uploaded-skill-package.ts",
@@ -109971,16 +109708,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/skills.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/desk.ts (import-statement); server/routes/skills.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/skills.ts (import-statement)."
     },
     {
       "path": "server/utils/validation.ts",
@@ -110083,14 +109815,9 @@
           "root": "server-bootstrap",
           "from": "server/routes/agents.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/preferences-manager.ts (import-statement); core/agent-manager.ts (import-statement); core/engine.ts (import-statement); +4 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/preferences-manager.ts (import-statement); core/agent-manager.ts (import-statement); core/engine.ts (import-statement); +3 more importer(s)."
     },
     {
       "path": "shared/artifact-core/activation.cjs",
@@ -110426,18 +110153,6 @@
       "reason": "Reached via esbuild source module graph, imported by shared/contract-versions.cjs (require-call); shared/contract-versions.cjs (require-call); shared/contract-versions.cjs (require-call)."
     },
     {
-      "path": "shared/cover-gallery-presets.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "plugins/beautify/lib/cover-gallery-assets.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by plugins/beautify/lib/cover-gallery-assets.ts (import-statement)."
-    },
-    {
       "path": "shared/data-epoch.cjs",
       "inputType": "source-graph",
       "provenance": [
@@ -110662,17 +110377,12 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "plugins/beautify/lib/cover-gallery-assets.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/plugins.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/composition/open-root.ts",
           "kind": "import-statement"
         },
         {
@@ -110681,7 +110391,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/data-epoch-restore.ts (import-statement); core/migrate-providers.ts (import-statement); shared/known-models.ts (import-statement); +6 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/data-epoch-restore.ts (import-statement); core/migrate-providers.ts (import-statement); shared/known-models.ts (import-statement); +5 more importer(s)."
     },
     {
       "path": "shared/hana-runtime-paths.cjs",
@@ -111590,12 +111300,17 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/character-cards/service.ts",
+          "from": "core/plugin-iframe-ticket-service.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "plugins/beautify/lib/markdown-cover-service.ts",
+          "from": "core/plugin-asset-session-service.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "core/plugin-surface-session-service.ts",
           "kind": "import-statement"
         },
         {
@@ -111611,21 +111326,6 @@
         {
           "root": "server-bootstrap",
           "from": "core/local-user-account.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "core/plugin-iframe-ticket-service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "core/plugin-asset-session-service.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "core/plugin-surface-session-service.ts",
           "kind": "import-statement"
         },
         {
@@ -111654,7 +111354,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/migrate-providers.ts (import-statement); core/provider-media-config.ts (import-statement); core/device-registry.ts (import-statement); +53 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/migrate-providers.ts (import-statement); core/provider-media-config.ts (import-statement); core/device-registry.ts (import-statement); +51 more importer(s)."
     },
     {
       "path": "shared/safe-parse.ts",
@@ -111908,16 +111608,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "server/routes/settings-snapshot.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/tool-snapshot-repair.ts (import-statement); core/bridge-session-manager.ts (import-statement); +8 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/tool-snapshot-repair.ts (import-statement); core/bridge-session-manager.ts (import-statement); +7 more importer(s)."
     },
     {
       "path": "shared/video-mime.ts",
@@ -112079,14 +111774,9 @@
           "root": "server-bootstrap",
           "from": "core/engine.ts",
           "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/desk.ts",
-          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); core/engine.ts (import-statement); server/routes/desk.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); core/engine.ts (import-statement)."
     },
     {
       "path": "shared/workspace-ui-state.ts",
@@ -112124,9 +111814,9 @@
     }
   ],
   "stats": {
-    "totalFiles": 9608,
+    "totalFiles": 9598,
     "byInputType": {
-      "source-graph": 629,
+      "source-graph": 619,
       "runtime-asset": 11,
       "nft-runtime-trace": 8968
     }

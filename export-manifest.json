@@ -487,6 +487,8 @@
     "server/bootstrap.ts",
     "server/cards/card-document.ts",
     "server/cli.ts",
+    "server/composition/contract.ts",
+    "server/composition/open-root.ts",
     "server/deferred-result-bus-handlers.ts",
     "server/deferred-result-interlude.ts",
     "server/hono-helpers.ts",

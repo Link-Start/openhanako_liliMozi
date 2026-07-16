@@ -76,7 +76,7 @@ describe("CLI server runner", () => {
       mode: "source",
       command: process.execPath,
     });
-    expect(spec.args).toEqual([path.join(tmpDir, "server", "index.ts"), "--chat"]);
+    expect(spec.args).toEqual([path.join(tmpDir, "server", "main-full.ts"), "--chat"]);
     expect(spec.env.HANA_RENDERER_DIST).toBeUndefined();
   });
 

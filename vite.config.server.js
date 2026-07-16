@@ -6,7 +6,12 @@ const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 export default defineConfig({
   build: {
     lib: {
-      entry: "server/index.ts",
+      // main-full.ts is the thin closed composition entry: it statically
+      // imports server/index.ts's open startServer() plus
+      // composition/full-root.ts's registerClosedRoutes hook, so the
+      // packaged bundle still ships the full product (open + closed-product
+      // routes).
+      entry: "server/main-full.ts",
       formats: ["es"],
       fileName: () => "index.js",
     },

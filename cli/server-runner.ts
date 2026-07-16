@@ -98,7 +98,12 @@ export async function resolveServerSpawnSpec({
   return {
     mode: "source",
     command: process.execPath,
-    args: [path.join(root, "server", "index.ts"), ...extraArgs],
+    // server/main-full.ts is the thin closed composition entry: it
+    // statically imports server/index.ts's startServer() plus
+    // server/composition/full-root.ts's registerClosedRoutes hook and
+    // calls one with the other. server/index.ts itself only exports
+    // startServer and is not a spawnable entry on its own anymore.
+    args: [path.join(root, "server", "main-full.ts"), ...extraArgs],
     env: spawnEnv,
     rendererDist,
   };

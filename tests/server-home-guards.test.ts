@@ -20,7 +20,10 @@ function spawnServerBootstrap(hanaHome: string, extraEnv: Record<string, string>
       HANA_HOME: hanaHome,
       HANA_PORT: "0",
       HANA_ROOT: root,
-      HANA_SERVER_ENTRY: path.join(root, "server", "index.ts"),
+      // server/main-full.ts is the thin closed composition entry:
+      // server/index.ts itself only exports startServer() and boots
+      // nothing on mere import.
+      HANA_SERVER_ENTRY: path.join(root, "server", "main-full.ts"),
       HANA_CREATE_STARTUP_SESSION: "0",
       ...extraEnv,
     },
