@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "generatedBy": "scripts/compute-cli-closure.mjs",
+  "sourceClosure": "build/cli-runtime-closure.json",
+  "edges": [
+    {
+      "from": "core/engine.ts",
+      "to": "core/current-turn-native-media.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "Tracks native audio/media attachments for the closed-source desktop UI's current chat turn -- product surface, not generic host capability."
+    },
+    {
+      "from": "core/media/universal-media-manager.ts",
+      "to": "plugins/image-gen/builtin-adapters.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "core/media/universal-media-manager.ts",
+      "to": "plugins/image-gen/lib/image-task-runner.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "core/media/universal-media-manager.ts",
+      "to": "plugins/image-gen/lib/poller.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "core/media/universal-media-manager.ts",
+      "to": "plugins/image-gen/lib/submit-image.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "core/media/universal-media-manager.ts",
+      "to": "plugins/image-gen/lib/task-store.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "core/message-utils.ts",
+      "to": "core/desktop-session-submit.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "The closed-source desktop UI's unified message-submission entry point for local input and bridge takeover -- product surface, not generic host capability."
+    },
+    {
+      "from": "core/session-turn-actions.ts",
+      "to": "core/desktop-session-submit.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "The closed-source desktop UI's unified message-submission entry point for local input and bridge takeover -- product surface, not generic host capability."
+    },
+    {
+      "from": "desktop/src/shared/theme-registry.cjs",
+      "to": "desktop/src/shared/theme-registry-data.json",
+      "provenance": "server-bootstrap:require-call",
+      "classification": "provisional",
+      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
+    },
+    {
+      "from": "hub/index.ts",
+      "to": "core/desktop-session-submit.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "The closed-source desktop UI's unified message-submission entry point for local input and bridge takeover -- product surface, not generic host capability."
+    },
+    {
+      "from": "lib/session-collab/delivery.ts",
+      "to": "core/desktop-session-submit.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "The closed-source desktop UI's unified message-submission entry point for local input and bridge takeover -- product surface, not generic host capability."
+    },
+    {
+      "from": "lib/tools/update-settings-tool.ts",
+      "to": "desktop/src/shared/theme-registry.cjs",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "provisional",
+      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
+    },
+    {
+      "from": "plugins/image-gen/adapters/agnes.ts",
+      "to": "plugins/image-gen/adapters/common.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/common.ts",
+      "to": "plugins/image-gen/lib/download.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/dashscope.ts",
+      "to": "plugins/image-gen/adapters/common.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/gemini.ts",
+      "to": "plugins/image-gen/adapters/common.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/minimax.ts",
+      "to": "plugins/image-gen/adapters/common.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/openai-codex.ts",
+      "to": "plugins/image-gen/lib/download.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/openai-codex.ts",
+      "to": "plugins/image-gen/lib/resolution-tiers.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/openai.ts",
+      "to": "plugins/image-gen/lib/download.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/openai.ts",
+      "to": "plugins/image-gen/lib/model-catalog.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/openai.ts",
+      "to": "plugins/image-gen/lib/resolution-tiers.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/volcengine.ts",
+      "to": "plugins/image-gen/lib/download.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/adapters/volcengine.ts",
+      "to": "plugins/image-gen/lib/model-catalog.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/builtin-adapters.ts",
+      "to": "plugins/image-gen/adapters/agnes.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/builtin-adapters.ts",
+      "to": "plugins/image-gen/adapters/dashscope.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/builtin-adapters.ts",
+      "to": "plugins/image-gen/adapters/gemini.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/builtin-adapters.ts",
+      "to": "plugins/image-gen/adapters/minimax.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/builtin-adapters.ts",
+      "to": "plugins/image-gen/adapters/openai-codex.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/builtin-adapters.ts",
+      "to": "plugins/image-gen/adapters/openai.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/builtin-adapters.ts",
+      "to": "plugins/image-gen/adapters/volcengine.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/lib/poller.ts",
+      "to": "plugins/image-gen/lib/image-size.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/lib/poller.ts",
+      "to": "plugins/image-gen/lib/image-task-runner.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "plugins/image-gen/lib/submit-image.ts",
+      "to": "plugins/image-gen/lib/image-task-runner.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "server/block-extractors.ts",
+      "to": "server/suggestion-blocks.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "evidence-needed",
+      "note": "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed."
+    },
+    {
+      "from": "server/index.ts",
+      "to": "server/routes/avatar.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
+    },
+    {
+      "from": "server/index.ts",
+      "to": "server/routes/cards.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
+    },
+    {
+      "from": "server/index.ts",
+      "to": "server/routes/character-cards.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
+    },
+    {
+      "from": "server/index.ts",
+      "to": "server/routes/desk.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
+    },
+    {
+      "from": "server/index.ts",
+      "to": "server/routes/diary.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "Implements the closed-source avatar/card/desk/diary product surface, not generic redistributable host capability."
+    },
+    {
+      "from": "server/index.ts",
+      "to": "server/routes/mobile-workbench.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "evidence-needed",
+      "note": "Not yet classified as open host capability or closed product surface; this census supplies the evidence a future decision needs."
+    },
+    {
+      "from": "server/routes/character-cards.ts",
+      "to": "lib/character-cards/service.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "Implements the closed-source character-card content system."
+    },
+    {
+      "from": "server/routes/chat.ts",
+      "to": "core/desktop-session-submit.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "The closed-source desktop UI's unified message-submission entry point for local input and bridge takeover -- product surface, not generic host capability."
+    },
+    {
+      "from": "server/routes/chat.ts",
+      "to": "server/suggestion-blocks.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "evidence-needed",
+      "note": "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed."
+    },
+    {
+      "from": "server/routes/desk.ts",
+      "to": "plugins/beautify/lib/cover-gallery-assets.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "server/routes/desk.ts",
+      "to": "plugins/beautify/lib/cover-style-guide.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "server/routes/desk.ts",
+      "to": "plugins/beautify/lib/markdown-cover-service.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "server/routes/desk.ts",
+      "to": "plugins/image-gen/lib/image-task-runner.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-content",
+      "note": "Built-in plugins are closed-source product content shipped with the app, not part of the redistributable core."
+    },
+    {
+      "from": "server/routes/plugins.ts",
+      "to": "desktop/src/shared/theme-registry.cjs",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "provisional",
+      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
+    },
+    {
+      "from": "server/routes/sessions.ts",
+      "to": "core/desktop-session-submit.ts",
+      "provenance": "server-bootstrap:import-statement",
+      "classification": "closed-product",
+      "note": "The closed-source desktop UI's unified message-submission entry point for local input and bridge takeover -- product surface, not generic host capability."
+    }
+  ],
+  "evidenceNeeded": [
+    {
+      "path": "server/routes/mobile-workbench.ts",
+      "note": "Not yet classified as open host capability or closed product surface; this census supplies the evidence a future decision needs."
+    },
+    {
+      "path": "server/suggestion-blocks.ts",
+      "note": "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed."
+    }
+  ],
+  "provisional": [
+    {
+      "path": "desktop/src/shared/theme-registry-data.json",
+      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
+    },
+    {
+      "path": "desktop/src/shared/theme-registry.cjs",
+      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
+    }
+  ],
+  "staleClassificationReferences": [
+    {
+      "path": "core/card-archive-store.ts",
+      "note": "Named as closed-product by an earlier classification pass; no such file exists in core/ today."
+    },
+    {
+      "path": "core/card-face-store.ts",
+      "note": "Named as closed-product by an earlier classification pass; no such file exists in core/ today."
+    },
+    {
+      "path": "core/client-layout-profile-store.ts",
+      "note": "Named as closed-product by an earlier classification pass; no such file exists in core/ today."
+    },
+    {
+      "path": "core/card-document-ticket-service.ts",
+      "note": "Named as an open spec-facing file by an earlier classification pass; no such file exists in core/ today."
+    },
+    {
+      "path": "core/card-host-grant-store.ts",
+      "note": "Named as an open spec-facing file by an earlier classification pass; no such file exists in core/ today."
+    },
+    {
+      "path": "server/routes/suggestion-blocks.ts",
+      "note": "An earlier classification pass named 'suggestion-blocks'; the real file is server/suggestion-blocks.ts (no routes/ prefix)."
+    }
+  ],
+  "stats": {
+    "totalEdges": 50,
+    "byClassification": {
+      "closed-product": 13,
+      "closed-content": 31,
+      "provisional": 3,
+      "evidence-needed": 3
+    },
+    "uniqueCoupledFiles": 32
+  }
+}
