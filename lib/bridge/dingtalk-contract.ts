@@ -1,5 +1,6 @@
 export const DINGTALK_API_BASE_URL = "https://api.dingtalk.com/v1.0";
 export const DINGTALK_LEGACY_REST_API_BASE_URL = "https://api.dingtalk.io/v1.0";
+export const DINGTALK_LEGACY_AUTH_MODE = "legacy_app";
 // Compatibility export for callers that have not renamed the setting yet.
 export const DINGTALK_REST_API_BASE_URL = DINGTALK_API_BASE_URL;
 export const DINGTALK_STREAM_API_BASE_URL = DINGTALK_API_BASE_URL;
@@ -34,6 +35,7 @@ const CUSTOM_ROBOT_FIELDS: Record<string, string> = {
 };
 
 export interface DingTalkBridgeCredentials {
+  authMode: "current" | "legacy_app";
   corpId: string;
   clientId: string;
   clientSecret: string;
@@ -106,6 +108,13 @@ export function normalizeDingTalkApiBaseUrl(value: unknown) {
     : normalized;
 }
 
+function normalizeDingTalkAuthMode(value: unknown) {
+  const mode = cleanString(value);
+  if (!mode || mode === "current") return "current" as const;
+  if (mode === DINGTALK_LEGACY_AUTH_MODE) return DINGTALK_LEGACY_AUTH_MODE;
+  throw new Error("Unsupported DingTalk authMode");
+}
+
 export function normalizeDingTalkEndpointUrl(value: unknown, label: string) {
   const raw = cleanString(value);
   if (!raw) throw new Error(`${label} is required`);
@@ -140,17 +149,32 @@ export function assertNoUnsupportedDingTalkRobotFields(input: Record<string, any
  */
 export function canonicalizeDingTalkBridgeConfig(input: Record<string, any> = {}) {
   assertNoUnsupportedDingTalkRobotFields(input);
+  const corpId = cleanString(input.corpId);
+  const requestedAuthMode = normalizeDingTalkAuthMode(input.authMode);
+  // A real corpId is the explicit signal that the user completed the current
+  // credential contract. The persisted compatibility marker is removed then.
+  const authMode = corpId ? "current" : requestedAuthMode;
   const streamOpenUrl = cleanString(input.streamOpenUrl);
   const apiBaseUrl = hasOwn(input, "apiBaseUrl")
-    ? cleanString(input.apiBaseUrl) || DINGTALK_API_BASE_URL
-    : firstNonEmpty(input.restBaseUrl, DINGTALK_API_BASE_URL);
+    ? cleanString(input.apiBaseUrl) || (authMode === DINGTALK_LEGACY_AUTH_MODE
+      ? DINGTALK_LEGACY_REST_API_BASE_URL
+      : DINGTALK_API_BASE_URL)
+    : firstNonEmpty(
+      input.restBaseUrl,
+      authMode === DINGTALK_LEGACY_AUTH_MODE
+        ? DINGTALK_LEGACY_REST_API_BASE_URL
+        : DINGTALK_API_BASE_URL,
+    );
   const result: Record<string, any> = {
     ...input,
-    corpId: cleanString(input.corpId),
+    authMode: authMode === DINGTALK_LEGACY_AUTH_MODE ? DINGTALK_LEGACY_AUTH_MODE : null,
+    corpId,
     clientId: canonicalField(input, "clientId", "appKey"),
     clientSecret: canonicalField(input, "clientSecret", "appSecret"),
     robotCode: cleanString(input.robotCode),
-    apiBaseUrl: normalizeDingTalkApiBaseUrl(apiBaseUrl),
+    apiBaseUrl: authMode === DINGTALK_LEGACY_AUTH_MODE
+      ? normalizeDingTalkBaseUrl(apiBaseUrl, "DingTalk API base URL")
+      : normalizeDingTalkApiBaseUrl(apiBaseUrl),
     appKey: null,
     appSecret: null,
     restBaseUrl: null,
@@ -165,12 +189,15 @@ export function canonicalizeDingTalkBridgeConfig(input: Record<string, any> = {}
 
 export function normalizeDingTalkBridgeCredentials(input: Record<string, any> = {}): DingTalkBridgeCredentials {
   const canonical = canonicalizeDingTalkBridgeConfig(input);
+  const authMode = canonical.authMode === DINGTALK_LEGACY_AUTH_MODE
+    ? DINGTALK_LEGACY_AUTH_MODE
+    : "current";
   const corpId = canonical.corpId;
   const clientId = canonical.clientId;
   const clientSecret = canonical.clientSecret;
   const robotCode = canonical.robotCode;
   const missing = [];
-  if (!corpId) missing.push("organization corpId");
+  if (authMode === "current" && !corpId) missing.push("organization corpId");
   if (!clientId) missing.push("internal app clientId");
   if (!clientSecret) missing.push("internal app clientSecret");
   if (!robotCode) missing.push("enterprise robotCode");
@@ -179,6 +206,7 @@ export function normalizeDingTalkBridgeCredentials(input: Record<string, any> = 
   }
 
   return {
+    authMode,
     corpId,
     clientId,
     clientSecret,

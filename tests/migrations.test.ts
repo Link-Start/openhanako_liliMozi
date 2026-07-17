@@ -14,7 +14,7 @@ import { validateProviderModels } from "../shared/provider-model-validation.ts";
 
 // ── 测试工具 ────────────────────────────────────────────────────────────────
 
-const LATEST_DATA_VERSION = 46;
+const LATEST_DATA_VERSION = 47;
 
 function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hana-migrations-"));
@@ -1020,6 +1020,239 @@ describe("migration #46: repair legacy Provider Catalog model metadata", () => {
 
     expect(fs.readFileSync(catalogPath).equals(originalCatalogBytes)).toBe(true);
     expect(prefs.getPreferences()._dataVersion).toBe(45);
+  });
+});
+
+describe("migration #47: preserve stable DingTalk application authentication", () => {
+  let tmpDir, agentsDir, userDir;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    agentsDir = path.join(tmpDir, "agents");
+    userDir = path.join(tmpDir, "user");
+    fs.mkdirSync(agentsDir, { recursive: true });
+  });
+
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  function runFrom46(log: (line: any) => void = () => {}) {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 46 });
+    runMigrations({
+      hanakoHome: tmpDir,
+      agentsDir,
+      prefs,
+      providerRegistry: makeRegistry([]),
+      log,
+    });
+    return prefs;
+  }
+
+  it("marks and canonicalizes a stable config while preserving behavior and secrets", () => {
+    writeAgentConfig(agentsDir, "hana", {
+      bridge: {
+        dingtalk: {
+          enabled: true,
+          clientId: "stable-client",
+          clientSecret: "stable-secret",
+          robotCode: "stable-robot",
+          restBaseUrl: "https://legacy-gateway.example/dingtalk/v1.0/",
+          streamOpenUrl: "https://stream.example/v1.0/gateway/connections/open",
+          customSetting: { keep: true },
+        },
+      },
+    });
+
+    const prefs = runFrom46();
+    const migrated = readAgentConfig(agentsDir, "hana").bridge.dingtalk;
+    expect(migrated).toMatchObject({
+      enabled: true,
+      authMode: "legacy_app",
+      corpId: "",
+      clientId: "stable-client",
+      clientSecret: "stable-secret",
+      robotCode: "stable-robot",
+      apiBaseUrl: "https://legacy-gateway.example/dingtalk/v1.0",
+      streamOpenUrl: "https://stream.example/v1.0/gateway/connections/open",
+      customSetting: { keep: true },
+    });
+    expect(migrated).not.toHaveProperty("appKey");
+    expect(migrated).not.toHaveProperty("appSecret");
+    expect(migrated).not.toHaveProperty("restBaseUrl");
+    expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);
+
+    const firstBytes = fs.readFileSync(path.join(agentsDir, "hana", "config.yaml"));
+    const rerunPrefs = prefs.getPreferences();
+    rerunPrefs._dataVersion = 46;
+    prefs.savePreferences(rerunPrefs);
+    runMigrations({
+      hanakoHome: tmpDir,
+      agentsDir,
+      prefs,
+      providerRegistry: makeRegistry([]),
+      log: () => {},
+    });
+    expect(fs.readFileSync(path.join(agentsDir, "hana", "config.yaml")).equals(firstBytes)).toBe(true);
+  });
+
+  it("does not infer legacy mode for explicit or current-shaped configurations", () => {
+    const fixtures = {
+      "explicit-mode": {
+        authMode: "legacy_app",
+        appKey: "leave-alias-intact",
+        appSecret: "leave-secret-intact",
+        restBaseUrl: "https://api.dingtalk.io/v1.0",
+      },
+      "has-corp": {
+        corpId: "corp-1",
+        appKey: "leave-client-intact",
+        appSecret: "leave-secret-intact",
+        restBaseUrl: "https://api.dingtalk.io/v1.0",
+      },
+      "canonical-incomplete": {
+        clientId: "current-client",
+        clientSecret: "current-secret",
+        robotCode: "current-robot",
+        apiBaseUrl: "https://api.dingtalk.com/v1.0",
+      },
+    };
+    for (const [agentId, dingtalk] of Object.entries(fixtures)) {
+      writeAgentConfig(agentsDir, agentId, { bridge: { dingtalk } });
+    }
+    const before = new Map(Object.keys(fixtures).map((agentId) => [
+      agentId,
+      fs.readFileSync(path.join(agentsDir, agentId, "config.yaml")),
+    ]));
+
+    runFrom46();
+
+    for (const agentId of Object.keys(fixtures)) {
+      expect(fs.readFileSync(path.join(agentsDir, agentId, "config.yaml")).equals(before.get(agentId)!)).toBe(true);
+    }
+  });
+
+  it("isolates malformed configs without logging their secret contents", () => {
+    const badDir = path.join(agentsDir, "bad");
+    fs.mkdirSync(badDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(badDir, "config.yaml"),
+      "bridge:\n  dingtalk: [\n  clientSecret: secret-must-not-leak\n",
+      "utf-8",
+    );
+    writeAgentConfig(agentsDir, "good", {
+      bridge: {
+        dingtalk: {
+          appKey: "good-client",
+          appSecret: "good-secret",
+          robotCode: "good-robot",
+          restBaseUrl: "https://api.dingtalk.io/v1.0",
+        },
+      },
+    });
+    const logs: string[] = [];
+
+    const prefs = runFrom46((line) => { logs.push(String(line)); });
+
+    expect(readAgentConfig(agentsDir, "good").bridge.dingtalk.authMode).toBe("legacy_app");
+    expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);
+    expect(logs.join("\n")).toContain("skipped invalid config");
+    expect(logs.join("\n")).not.toContain("secret-must-not-leak");
+  });
+
+  it("isolates an invalid legacy URL and still migrates another Agent", () => {
+    writeAgentConfig(agentsDir, "bad-url", {
+      bridge: {
+        dingtalk: {
+          appKey: "bad-client",
+          appSecret: "secret-must-not-leak",
+          robotCode: "bad-robot",
+          restBaseUrl: "not-an-absolute-url",
+        },
+      },
+    });
+    writeAgentConfig(agentsDir, "good", {
+      bridge: {
+        dingtalk: {
+          appKey: "good-client",
+          appSecret: "good-secret",
+          robotCode: "good-robot",
+          restBaseUrl: "https://api.dingtalk.io/v1.0",
+        },
+      },
+    });
+    const badBytes = fs.readFileSync(path.join(agentsDir, "bad-url", "config.yaml"));
+    const logs: string[] = [];
+
+    const prefs = runFrom46((line) => { logs.push(String(line)); });
+
+    expect(fs.readFileSync(path.join(agentsDir, "bad-url", "config.yaml")).equals(badBytes)).toBe(true);
+    expect(readAgentConfig(agentsDir, "good").bridge.dingtalk.authMode).toBe("legacy_app");
+    expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);
+    expect(logs.join("\n")).toContain("stage=canonicalize");
+    expect(logs.join("\n")).toContain("code=INVALID_DINGTALK_CONFIG");
+    expect(logs.join("\n")).not.toContain("not-an-absolute-url");
+    expect(logs.join("\n")).not.toContain("secret-must-not-leak");
+  });
+
+  it("keeps the data version retryable when a valid migration cannot be written", () => {
+    writeAgentConfig(agentsDir, "readonly", {
+      bridge: {
+        dingtalk: {
+          appKey: "stable-client",
+          appSecret: "secret-must-not-leak",
+          robotCode: "stable-robot",
+          restBaseUrl: "https://api.dingtalk.io/v1.0",
+        },
+      },
+    });
+    const configPath = path.join(agentsDir, "readonly", "config.yaml");
+    const originalBytes = fs.readFileSync(configPath);
+    const originalRenameSync = fs.renameSync;
+    const renameSpy = vi.spyOn(fs, "renameSync").mockImplementation((source, destination) => {
+      if (destination === configPath) {
+        throw Object.assign(new Error("secret-must-not-leak"), { code: "EACCES" });
+      }
+      return originalRenameSync(source, destination);
+    });
+    const logs: string[] = [];
+
+    try {
+      const prefs = runFrom46((line) => { logs.push(String(line)); });
+      expect(prefs.getPreferences()._dataVersion).toBe(46);
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    expect(fs.readFileSync(configPath).equals(originalBytes)).toBe(true);
+    expect(logs.join("\n")).toContain("stage=write, code=EACCES");
+    expect(logs.join("\n")).not.toContain("secret-must-not-leak");
+  });
+
+  it.runIf(process.platform !== "win32")("does not follow linked agent directories or config files", () => {
+    const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-dingtalk-external-"));
+    try {
+      writeAgentConfig(externalDir, "outside", {
+        bridge: {
+          dingtalk: {
+            appKey: "outside-client",
+            appSecret: "outside-secret",
+            restBaseUrl: "https://api.dingtalk.io/v1.0",
+          },
+        },
+      });
+      const outsidePath = path.join(externalDir, "outside", "config.yaml");
+      const outsideBytes = fs.readFileSync(outsidePath);
+      fs.symlinkSync(path.join(externalDir, "outside"), path.join(agentsDir, "linked-agent"));
+      const linkedConfigDir = path.join(agentsDir, "linked-config");
+      fs.mkdirSync(linkedConfigDir, { recursive: true });
+      fs.symlinkSync(outsidePath, path.join(linkedConfigDir, "config.yaml"));
+
+      runFrom46();
+
+      expect(fs.readFileSync(outsidePath).equals(outsideBytes)).toBe(true);
+    } finally {
+      fs.rmSync(externalDir, { recursive: true, force: true });
+    }
   });
 });
 

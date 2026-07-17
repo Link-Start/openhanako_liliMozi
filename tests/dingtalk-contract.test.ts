@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   DINGTALK_API_BASE_URL,
+  DINGTALK_LEGACY_AUTH_MODE,
   DINGTALK_LEGACY_REST_API_BASE_URL,
   canonicalizeDingTalkBridgeConfig,
   normalizeDingTalkBridgeCredentials,
@@ -111,6 +112,40 @@ describe("DingTalk bridge credential contract", () => {
     })).toThrow(/corpId/i);
   });
 
+  it("allows missing corpId only with the persisted legacy application marker", () => {
+    expect(normalizeDingTalkBridgeCredentials({
+      authMode: DINGTALK_LEGACY_AUTH_MODE,
+      clientId: "client-1",
+      clientSecret: "secret-1",
+      robotCode: "robot-1",
+    })).toMatchObject({
+      authMode: "legacy_app",
+      corpId: "",
+      apiBaseUrl: DINGTALK_LEGACY_REST_API_BASE_URL,
+    });
+    expect(() => normalizeDingTalkBridgeCredentials({
+      authMode: "future-mode",
+      clientId: "client-1",
+      clientSecret: "secret-1",
+      robotCode: "robot-1",
+    })).toThrow(/unsupported.*authMode/i);
+  });
+
+  it("switches a legacy-marked config to the current contract when corpId is supplied", () => {
+    expect(canonicalizeDingTalkBridgeConfig({
+      authMode: DINGTALK_LEGACY_AUTH_MODE,
+      corpId: "corp-1",
+      clientId: "client-1",
+      clientSecret: "secret-1",
+      robotCode: "robot-1",
+      apiBaseUrl: DINGTALK_LEGACY_REST_API_BASE_URL,
+    })).toMatchObject({
+      authMode: null,
+      corpId: "corp-1",
+      apiBaseUrl: DINGTALK_API_BASE_URL,
+    });
+  });
+
   it("builds the current token request with an encoded corpId", () => {
     const request = buildDingTalkAccessTokenRequest({
       corpId: "corp/a",
@@ -126,6 +161,42 @@ describe("DingTalk bridge credential contract", () => {
       client_secret: "secret-1",
       grant_type: "client_credentials",
     });
+  });
+
+  it("builds and parses the stable application token contract without weakening current parsing", () => {
+    const credentials = normalizeDingTalkBridgeCredentials({
+      authMode: DINGTALK_LEGACY_AUTH_MODE,
+      clientId: "legacy-client",
+      clientSecret: "legacy-secret",
+      robotCode: "legacy-robot",
+      apiBaseUrl: "https://legacy-gateway.example/v1.0/",
+    });
+    const request = buildDingTalkAccessTokenRequest(credentials);
+
+    expect(request.url).toBe("https://legacy-gateway.example/v1.0/oauth2/accessToken");
+    expect(JSON.parse(request.init.body)).toEqual({
+      appKey: "legacy-client",
+      appSecret: "legacy-secret",
+    });
+    expect(parseDingTalkAccessTokenResponse({
+      response: { ok: true, status: 200 },
+      data: { accessToken: "legacy-token", expireIn: 7200 },
+      credentials,
+    })).toEqual({
+      token: "legacy-token",
+      expiresIn: 7200,
+      metadata: { httpStatus: 200 },
+    });
+    expect(parseDingTalkAccessTokenResponse({
+      response: { ok: true, status: 200 },
+      data: { access_token: "alias-token", expires_in: "3600" },
+      credentials,
+    })).toMatchObject({ token: "alias-token", expiresIn: 3600 });
+    expect(() => parseDingTalkAccessTokenResponse({
+      response: { ok: true, status: 200 },
+      data: { accessToken: "legacy-token", expireIn: DINGTALK_TOKEN_MAX_TTL_SECONDS + 1 },
+      credentials,
+    })).toThrow(/request failed/i);
   });
 
   it("accepts only the canonical token response fields", () => {

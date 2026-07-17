@@ -20,6 +20,9 @@ export interface DingTalkAccessTokenRequest {
     client_id: string;
     client_secret: string;
     grant_type: "client_credentials";
+  } | {
+    appKey: string;
+    appSecret: string;
   };
 }
 
@@ -58,16 +61,20 @@ export function buildDingTalkAccessTokenRequest(
   input: DingTalkBridgeCredentials | Record<string, any>,
 ): DingTalkAccessTokenRequest {
   const credentials = normalizeDingTalkBridgeCredentials(input);
-  const payload = {
-    client_id: credentials.clientId,
-    client_secret: credentials.clientSecret,
-    grant_type: "client_credentials" as const,
-  };
+  const payload: DingTalkAccessTokenRequest["payload"] = credentials.authMode === "legacy_app"
+    ? {
+      appKey: credentials.clientId,
+      appSecret: credentials.clientSecret,
+    }
+    : {
+      client_id: credentials.clientId,
+      client_secret: credentials.clientSecret,
+      grant_type: "client_credentials" as const,
+    };
   return {
-    url: buildDingTalkUrl(
-      credentials.apiBaseUrl,
-      `/oauth2/${encodeURIComponent(credentials.corpId)}/token`,
-    ),
+    url: buildDingTalkUrl(credentials.apiBaseUrl, credentials.authMode === "legacy_app"
+      ? "/oauth2/accessToken"
+      : `/oauth2/${encodeURIComponent(credentials.corpId)}/token`),
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -217,9 +224,15 @@ export function parseDingTalkAccessTokenResponse({
   credentials: DingTalkBridgeCredentials;
 }) {
   const code = data?.code ?? data?.errcode ?? data?.errorCode;
-  const token = typeof data?.access_token === "string" ? data.access_token.trim() : "";
-  const expiresIn = data?.expires_in;
-  const secrets = [credentials.clientSecret, token];
+  const rawToken = credentials.authMode === "legacy_app"
+    ? data?.accessToken ?? data?.access_token
+    : data?.access_token;
+  const token = typeof rawToken === "string" ? rawToken.trim() : "";
+  const rawExpiresIn = credentials.authMode === "legacy_app"
+    ? data?.expireIn ?? data?.expiresIn ?? data?.expires_in
+    : data?.expires_in;
+  const expiresIn = credentials.authMode === "legacy_app" ? Number(rawExpiresIn) : rawExpiresIn;
+  const secrets = [credentials.clientSecret, token, data?.accessToken, data?.access_token];
   if (
     !response?.ok
     || !responseCodeIsSuccess(code)

@@ -259,6 +259,41 @@ describe("DingTalk bridge adapter", () => {
     adapter.stop();
   });
 
+  it("uses the stable token payload and legacy/custom send base in explicit legacy mode", async () => {
+    FakeWebSocket.instances = [];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ endpoint: "wss://api.dingtalk.com/connect", ticket: "ticket-1" }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: "legacy-token", expireIn: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ processQueryKey: "dm-task" }));
+
+    const adapter = makeAdapter(fetchMock, vi.fn(), vi.fn(), {
+      authMode: "legacy_app",
+      corpId: "",
+      apiBaseUrl: "https://legacy-gateway.example/dingtalk/v1.0/",
+    });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+
+    await adapter.sendReply("manager1234", "legacy hello", { targetScope: "dm" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://legacy-gateway.example/dingtalk/v1.0/oauth2/accessToken",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ appKey: "dt-client", appSecret: "dt-secret" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "https://legacy-gateway.example/dingtalk/v1.0/robot/oToMessages/batchSend",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "x-acs-dingtalk-access-token": "legacy-token" }),
+      }),
+    );
+
+    adapter.stop();
+  });
+
   it("builds token and robot send requests from the DingTalk API base URL only", async () => {
     FakeWebSocket.instances = [];
     const fetchMock = vi.fn()

@@ -569,6 +569,50 @@ describe("secret custody across HTTP routes", () => {
     });
   });
 
+  it("projects an explicitly migrated stable DingTalk config as usable", async () => {
+    const { createBridgeRoute } = await import("../server/routes/bridge.ts");
+    const agent = {
+      id: "hana",
+      config: {
+        bridge: {
+          dingtalk: {
+            enabled: true,
+            authMode: "legacy_app",
+            clientId: "dt-client",
+            clientSecret: "dt-secret",
+            robotCode: "ding-robot",
+            apiBaseUrl: "https://api.dingtalk.io/v1.0",
+          },
+        },
+      },
+    };
+    const engine = {
+      currentAgentId: "hana",
+      getAgent: (id) => id === "hana" ? agent : null,
+      getBridgeIndex: () => ({}),
+      getBridgeReadOnly: () => false,
+      getBridgeReceiptEnabled: () => true,
+    };
+    const app = new Hono();
+    app.route("/api", createBridgeRoute(engine, {
+      getStatus: () => ({ dingtalk: { status: "connected", error: null } }),
+    }));
+
+    const res = await app.request("/api/bridge/status?agentId=hana");
+    const body = await res.json();
+
+    expect(body.dingtalk).toMatchObject({
+      enabled: true,
+      configured: true,
+      authMode: "legacy_app",
+      corpId: "",
+      apiBaseUrl: "https://api.dingtalk.io/v1.0",
+      status: "connected",
+      configError: null,
+      hasClientSecret: true,
+    });
+  });
+
   it("tests DingTalk credentials against the configured API base URL", async () => {
     const { createBridgeRoute } = await import("../server/routes/bridge.ts");
     const fetchMock = vi.fn().mockResolvedValue({
@@ -666,6 +710,114 @@ describe("secret custody across HTTP routes", () => {
         }),
       }),
     );
+  });
+
+  it("tests migrated stable DingTalk credentials through the legacy application endpoint", async () => {
+    const { createBridgeRoute } = await import("../server/routes/bridge.ts");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ accessToken: "dt-access-token", expireIn: 7200 }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = {
+      id: "hana",
+      config: {
+        bridge: {
+          dingtalk: {
+            authMode: "legacy_app",
+            clientId: "legacy-client",
+            clientSecret: "legacy-secret",
+            robotCode: "legacy-robot",
+            apiBaseUrl: "https://legacy-gateway.example/dingtalk/v1.0",
+          },
+        },
+      },
+    };
+    const app = new Hono();
+    app.route("/api", createBridgeRoute({
+      currentAgentId: "hana",
+      getAgent: (id) => id === "hana" ? agent : null,
+    }, { getStatus: () => ({}) }));
+
+    const res = await app.request("/api/bridge/test?agentId=hana", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "dingtalk", useSavedCredentials: true }),
+    });
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    expect(body.info.authMode).toBe("legacy_app");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://legacy-gateway.example/dingtalk/v1.0/oauth2/accessToken",
+      expect.objectContaining({
+        body: JSON.stringify({ appKey: "legacy-client", appSecret: "legacy-secret" }),
+      }),
+    );
+  });
+
+  it("preserves saved legacy mode when the UI omits it and exits it after corpId is supplied", async () => {
+    const { createBridgeRoute } = await import("../server/routes/bridge.ts");
+    const agent: any = {
+      id: "hana",
+      config: {
+        bridge: {
+          dingtalk: {
+            enabled: false,
+            authMode: "legacy_app",
+            corpId: "",
+            clientId: "legacy-client",
+            clientSecret: "legacy-secret",
+            robotCode: "legacy-robot",
+            apiBaseUrl: "https://api.dingtalk.io/v1.0",
+          },
+        },
+      },
+      updateConfig: vi.fn((partial) => {
+        const next = { ...agent.config.bridge.dingtalk, ...partial.bridge.dingtalk };
+        for (const [key, value] of Object.entries(next)) {
+          if (value === null) delete next[key];
+        }
+        agent.config.bridge.dingtalk = next;
+      }),
+    };
+    const app = new Hono();
+    app.route("/api", createBridgeRoute({
+      currentAgentId: "hana",
+      getAgent: (id) => id === "hana" ? agent : null,
+    }, { getStatus: () => ({}), stopPlatform: vi.fn() }));
+
+    const save = (corpId: string) => app.request("/api/bridge/config?agentId=hana", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platform: "dingtalk",
+        credentials: {
+          corpId,
+          clientId: "legacy-client",
+          robotCode: "legacy-robot",
+          apiBaseUrl: "https://api.dingtalk.io/v1.0",
+        },
+        enabled: false,
+      }),
+    });
+
+    expect((await save("")).status).toBe(200);
+    expect(agent.config.bridge.dingtalk).toMatchObject({
+      authMode: "legacy_app",
+      corpId: "",
+      apiBaseUrl: "https://api.dingtalk.io/v1.0",
+      clientSecret: "legacy-secret",
+    });
+
+    expect((await save("corp-1")).status).toBe(200);
+    expect(agent.config.bridge.dingtalk).not.toHaveProperty("authMode");
+    expect(agent.config.bridge.dingtalk).toMatchObject({
+      corpId: "corp-1",
+      apiBaseUrl: "https://api.dingtalk.com/v1.0",
+      clientSecret: "legacy-secret",
+    });
   });
 
   it("does not revive a legacy DingTalk secret when an existing canonical field is empty", async () => {

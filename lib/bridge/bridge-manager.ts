@@ -127,6 +127,7 @@ const ADAPTER_REGISTRY = {
   },
   dingtalk: {
     create: (creds, onMessage, hooks, agentId) => createDingTalkAdapter({
+      authMode: creds.authMode === "legacy_app" ? creds.authMode : undefined,
       corpId: creds.corpId,
       clientId: creds.clientId,
       clientSecret: creds.clientSecret,

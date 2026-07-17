@@ -37,6 +37,10 @@ import {
 } from "./session-permission-mode.ts";
 import { lookupKnown } from "../shared/known-models.ts";
 import { SESSION_PREFIX_MAP } from "../lib/bridge/session-key.ts";
+import {
+  DINGTALK_LEGACY_AUTH_MODE,
+  canonicalizeDingTalkBridgeConfig,
+} from "../lib/bridge/dingtalk-contract.ts";
 import { migrateLegacyApiKeyAuthToProviders } from "./provider-auth-migration.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import { patchAutomationJobForMigration } from "../lib/desk/automation-normalizer.ts";
@@ -153,6 +157,8 @@ const migrations = {
   45: recoverReferencedCodexOAuthModels,
   // 清理旧 Provider Catalog 中当前校验器明确拒绝的模型元数据，并先保存可恢复原件
   46: repairLegacyProviderModelMetadata,
+  // stable 钉钉配置使用旧应用 token 接口；显式标记后继续沿用旧契约
+  47: migrateStableDingTalkCredentialsToLegacyAuthMode,
 };
 
 // ── Runner ──────────────────────────────────────────────────────────────────
@@ -1837,6 +1843,110 @@ function repairLegacyProviderModelMetadata(ctx) {
   log?.(
     `[migrations] #46: repaired Provider Catalog model metadata (models=${result.repairs.length}, backup=${path.basename(backupDir)})`,
   );
+}
+
+/**
+ * #47 — stable 钉钉应用凭据继续使用旧 token 契约
+ *
+ * stable 保存的配置没有 corpId，并通过 appKey/appSecret/restBaseUrl 这组旧字段
+ * 或其中的 restBaseUrl 识别。只给这种明确的持久化形态写 compatibility marker；
+ * 当前 canonical 配置缺 corpId 仍由运行时显式报错，不能启发式降级。
+ */
+function migrateStableDingTalkCredentialsToLegacyAuthMode(ctx) {
+  const { agentsDir, log } = ctx;
+  const safeErrorCode = (error, fallback) => {
+    const code = typeof error?.code === "string" ? error.code : "";
+    return /^[A-Z0-9_]+$/.test(code) ? code : fallback;
+  };
+  let agentEntries;
+  try {
+    // Deliberately use native Dirent predicates here. Link-aware traversal is
+    // useful for reads elsewhere, but a migration must never rewrite a linked
+    // Agent directory or config file outside the owned data tree.
+    if (!fs.lstatSync(agentsDir).isDirectory()) {
+      log?.("[migrations] #47: no real agent directory");
+      return;
+    }
+    agentEntries = fs.readdirSync(agentsDir, { withFileTypes: true });
+  } catch {
+    log?.("[migrations] #47: no readable agent configs");
+    return;
+  }
+
+  let migrated = 0;
+  let invalid = 0;
+  for (const entry of agentEntries) {
+    if (!entry.isDirectory()) continue;
+    const configPath = path.join(agentsDir, entry.name, "config.yaml");
+    let stat;
+    try {
+      stat = fs.lstatSync(configPath);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+
+    let config;
+    try {
+      config = YAML.load(fs.readFileSync(configPath, "utf-8"));
+    } catch (error) {
+      invalid += 1;
+      log?.(
+        `[migrations] #47 skipped invalid config for "${entry.name}" ` +
+        `(stage=read_or_parse, code=${safeErrorCode(error, "INVALID_YAML")})`,
+      );
+      continue;
+    }
+    const dingtalk = config?.bridge?.dingtalk;
+    if (!dingtalk || typeof dingtalk !== "object" || Array.isArray(dingtalk)) continue;
+    if (Object.prototype.hasOwnProperty.call(dingtalk, "authMode")) continue;
+    if (typeof dingtalk.corpId === "string" && dingtalk.corpId.trim()) continue;
+    const hasLegacyPersistentKey = ["appKey", "appSecret", "restBaseUrl"]
+      .some((key) => Object.prototype.hasOwnProperty.call(dingtalk, key));
+    if (!hasLegacyPersistentKey) continue;
+
+    let canonical;
+    try {
+      canonical = canonicalizeDingTalkBridgeConfig({
+        ...dingtalk,
+        authMode: DINGTALK_LEGACY_AUTH_MODE,
+      });
+      delete canonical.appKey;
+      delete canonical.appSecret;
+      delete canonical.restBaseUrl;
+      config.bridge.dingtalk = canonical;
+    } catch (error) {
+      invalid += 1;
+      log?.(
+        `[migrations] #47 skipped invalid config for "${entry.name}" ` +
+        `(stage=canonicalize, code=${safeErrorCode(error, "INVALID_DINGTALK_CONFIG")})`,
+      );
+      continue;
+    }
+
+    try {
+      atomicWriteSync(
+        configPath,
+        YAML.dump(config, {
+          indent: 2,
+          lineWidth: -1,
+          sortKeys: false,
+          quotingType: "\"",
+        }),
+      );
+    } catch (error) {
+      const code = safeErrorCode(error, "WRITE_FAILED");
+      log?.(
+        `[migrations] #47 could not persist config for "${entry.name}" ` +
+        `(stage=write, code=${code})`,
+      );
+      throw new Error(`DingTalk config migration write failed for "${entry.name}" (code=${code})`);
+    }
+    migrated += 1;
+    log?.(`[migrations] #47 migrated DingTalk auth contract for "${entry.name}"`);
+  }
+
+  log?.(`[migrations] #47: DingTalk stable credentials migrated (configs=${migrated}, invalid=${invalid})`);
 }
 
 function removeCodexImageSizeDefault(providerDefaults) {

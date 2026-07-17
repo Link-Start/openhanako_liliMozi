@@ -4,7 +4,8 @@
  * 官方协议边界：
  * - Stream 注册：POST https://api.dingtalk.com/v1.0/gateway/connections/open
  * - Bot 回调 topic：/v1.0/im/bot/messages/get
- * - 应用 accessToken：POST https://api.dingtalk.com/v1.0/oauth2/{corpId}/token
+ * - 当前应用 accessToken：POST https://api.dingtalk.com/v1.0/oauth2/{corpId}/token
+ * - 旧应用 accessToken：POST https://api.dingtalk.io/v1.0/oauth2/accessToken
  * - 单聊发送：POST https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend
  * - 群聊发送：POST https://api.dingtalk.com/v1.0/robot/groupMessages/send
  */
@@ -222,6 +223,7 @@ function normalizeDingTalkInboundMessage(payload: Record<string, any>, agentId: 
 
 /**
  * @param {object} opts
+ * @param {"legacy_app"} [opts.authMode] - stable 升级配置的显式旧鉴权标记
  * @param {string} opts.corpId - 钉钉组织 ID
  * @param {string} opts.clientId - 钉钉应用 Client ID
  * @param {string} opts.clientSecret - 钉钉应用 Client Secret
@@ -235,6 +237,7 @@ function normalizeDingTalkInboundMessage(payload: Record<string, any>, agentId: 
  * @param {typeof WebSocket} [opts.WebSocketImpl]
  */
 export function createDingTalkAdapter({
+  authMode,
   corpId,
   appKey,
   appSecret,
@@ -252,7 +255,8 @@ export function createDingTalkAdapter({
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
   ...extraConfig
 }: {
-  corpId: string;
+  authMode?: "legacy_app";
+  corpId?: string;
   appKey?: string;
   appSecret?: string;
   clientId?: string;
@@ -271,6 +275,7 @@ export function createDingTalkAdapter({
 }) {
   const contract = normalizeDingTalkBridgeCredentials({
     ...extraConfig,
+    authMode,
     corpId,
     appKey,
     appSecret,
@@ -309,7 +314,9 @@ export function createDingTalkAdapter({
             beforeLabel: "normalized",
             before: contract.clientSecret,
             afterLabel: "outbound",
-            after: request.payload.client_secret,
+            after: "client_secret" in request.payload
+              ? request.payload.client_secret
+              : request.payload.appSecret,
           })}`,
         );
       },

@@ -128,13 +128,15 @@ function dingtalkStreamInfo() {
   };
 }
 
-function dingtalkTestInfo({ credentialOk, metadata, errorInfo }: {
+function dingtalkTestInfo({ credentialOk, authMode, metadata, errorInfo }: {
   credentialOk?: any;
+  authMode?: "current" | "legacy_app";
   metadata?: any;
   errorInfo?: any;
 } = {}) {
   return {
     credentialOk,
+    ...(authMode ? { authMode } : {}),
     ...dingtalkStreamInfo(),
     ...(metadata || {}),
     ...(errorInfo || {}),
@@ -202,6 +204,7 @@ export function buildBridgeStatus(engine: any, manager: any, agent: any) {
   const qqSecret = preferredQQSecret(bridge.qq);
   const dtRaw = bridge.dingtalk || {};
   let dtCorpId = cleanBridgeString(dtRaw.corpId);
+  let dtAuthMode = dtRaw.authMode === "legacy_app" ? "legacy_app" : "current";
   let dtClientId = firstBridgeString(dtRaw.clientId, dtRaw.appKey);
   let dtClientSecret = firstBridgeString(dtRaw.clientSecret, dtRaw.appSecret);
   let dtRobotCode = cleanBridgeString(dtRaw.robotCode);
@@ -209,6 +212,7 @@ export function buildBridgeStatus(engine: any, manager: any, agent: any) {
   const dtHasConfig = !!(
     dtRaw.enabled
     || dtCorpId
+    || dtRaw.authMode
     || dtClientId
     || dtClientSecret
     || dtRobotCode
@@ -230,6 +234,7 @@ export function buildBridgeStatus(engine: any, manager: any, agent: any) {
     try {
       const normalized = normalizeDingTalkBridgeCredentials(dtRaw);
       dtCorpId = normalized.corpId;
+      dtAuthMode = normalized.authMode;
       dtClientId = normalized.clientId;
       dtClientSecret = normalized.clientSecret;
       dtRobotCode = normalized.robotCode;
@@ -239,6 +244,7 @@ export function buildBridgeStatus(engine: any, manager: any, agent: any) {
       try {
         const canonical = canonicalizeDingTalkBridgeConfig(dtRaw);
         dtCorpId = canonical.corpId;
+        dtAuthMode = canonical.authMode === "legacy_app" ? "legacy_app" : "current";
         dtClientId = canonical.clientId;
         dtClientSecret = canonical.clientSecret;
         dtRobotCode = canonical.robotCode;
@@ -278,6 +284,7 @@ export function buildBridgeStatus(engine: any, manager: any, agent: any) {
     }),
     dingtalk: platformStatus("dingtalk", bridge.dingtalk, {
       configured: dtConfigured,
+      authMode: dtAuthMode,
       corpId: dtCorpId,
       clientId: dtClientId,
       clientSecret: maskSecretValue(dtClientSecret),
@@ -859,7 +866,9 @@ export function createBridgeRoute(engine: any, bridgeManagerRef: any) {
                   afterLabel: shouldUseSavedCredentials ? "effective" : "outbound",
                   after: shouldUseSavedCredentials
                     ? dingtalkCredentials.clientSecret
-                    : request.payload.client_secret,
+                    : "client_secret" in request.payload
+                      ? request.payload.client_secret
+                      : request.payload.appSecret,
                 })}`,
               );
             },
@@ -868,7 +877,11 @@ export function createBridgeRoute(engine: any, bridgeManagerRef: any) {
             ok: true,
             info: {
               msg: t("error.tokenSuccess"),
-              ...dingtalkTestInfo({ credentialOk: true, metadata: result.metadata }),
+              ...dingtalkTestInfo({
+                credentialOk: true,
+                authMode: dingtalkCredentials.authMode,
+                metadata: result.metadata,
+              }),
             },
           });
         } catch (err: any) {
@@ -877,7 +890,11 @@ export function createBridgeRoute(engine: any, bridgeManagerRef: any) {
           return c.json({
             ok: false,
             error: errorInfo?.dingtalkMessage || t("error.verifyFailed"),
-            info: dingtalkTestInfo({ credentialOk: false, errorInfo }),
+            info: dingtalkTestInfo({
+              credentialOk: false,
+              authMode: dingtalkCredentials.authMode,
+              errorInfo,
+            }),
           });
         }
       } else if (platform === "qq") {
