@@ -60,13 +60,6 @@
       "note": "Implements the closed-source desk product surface (named as closed product experience by the split classification principles)."
     },
     {
-      "from": "desktop/src/shared/theme-registry.cjs",
-      "to": "desktop/src/shared/theme-registry-data.json",
-      "provenance": "server-bootstrap:require-call",
-      "classification": "provisional",
-      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
-    },
-    {
       "from": "hub/index.ts",
       "to": "core/desktop-session-submit.ts",
       "provenance": "server-bootstrap:import-statement",
@@ -123,25 +116,11 @@
       "note": "Implements the closed-source desk product surface (named as closed product experience by the split classification principles)."
     },
     {
-      "from": "lib/tools/update-settings-tool.ts",
-      "to": "desktop/src/shared/theme-registry.cjs",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "provisional",
-      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
-    },
-    {
-      "from": "server/block-extractors.ts",
-      "to": "server/suggestion-blocks.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "evidence-needed",
-      "note": "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed."
-    },
-    {
       "from": "server/index.ts",
       "to": "server/routes/mobile-workbench.ts",
       "provenance": "server-bootstrap:import-statement",
       "classification": "evidence-needed",
-      "note": "Not yet classified as open host capability or closed product surface; this census supplies the evidence a future decision needs."
+      "note": "Superseded by the mobile-workspace route in ongoing development; this edge is expected to retire with that replacement rather than be re-cut here, so it stays recorded as evidence rather than acted on."
     },
     {
       "from": "server/routes/chat.ts",
@@ -149,20 +128,6 @@
       "provenance": "server-bootstrap:import-statement",
       "classification": "closed-product",
       "note": "The closed-source desktop UI's unified message-submission entry point for local input and bridge takeover -- product surface, not generic host capability."
-    },
-    {
-      "from": "server/routes/chat.ts",
-      "to": "server/suggestion-blocks.ts",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "evidence-needed",
-      "note": "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed."
-    },
-    {
-      "from": "server/routes/plugins.ts",
-      "to": "desktop/src/shared/theme-registry.cjs",
-      "provenance": "server-bootstrap:import-statement",
-      "classification": "provisional",
-      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
     },
     {
       "from": "server/routes/sessions.ts",
@@ -175,23 +140,10 @@
   "evidenceNeeded": [
     {
       "path": "server/routes/mobile-workbench.ts",
-      "note": "Not yet classified as open host capability or closed product surface; this census supplies the evidence a future decision needs."
-    },
-    {
-      "path": "server/suggestion-blocks.ts",
-      "note": "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed."
+      "note": "Superseded by the mobile-workspace route in ongoing development; this edge is expected to retire with that replacement rather than be re-cut here, so it stays recorded as evidence rather than acted on."
     }
   ],
-  "provisional": [
-    {
-      "path": "desktop/src/shared/theme-registry-data.json",
-      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
-    },
-    {
-      "path": "desktop/src/shared/theme-registry.cjs",
-      "note": "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified."
-    }
-  ],
+  "provisional": [],
   "staleClassificationReferences": [
     {
       "path": "core/card-archive-store.ts",
@@ -219,12 +171,11 @@
     }
   ],
   "stats": {
-    "totalEdges": 24,
+    "totalEdges": 19,
     "byClassification": {
       "closed-product": 18,
-      "provisional": 3,
-      "evidence-needed": 3
+      "evidence-needed": 1
     },
-    "uniqueCoupledFiles": 14
+    "uniqueCoupledFiles": 11
   }
 }

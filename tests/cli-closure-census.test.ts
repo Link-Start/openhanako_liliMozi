@@ -142,7 +142,16 @@ describe("compute-cli-closure: open/closed classification", () => {
 
   it("classifies evidence-needed and provisional paths distinctly from closed-product/closed-content", () => {
     expect(classifyRepoPath("server/routes/mobile-workbench.ts")).toMatchObject({ classification: "evidence-needed" });
-    expect(classifyRepoPath("desktop/src/shared/theme-registry.cjs")).toMatchObject({ classification: "provisional" });
+    expect(classifyRepoPath("desktop/src/shared/artifact-ota.cjs")).toMatchObject({ classification: "provisional" });
+  });
+
+  it("treats the resolved theme-registry and suggestion-blocks rulings as redistributable", () => {
+    // Resolved 2026-07-17: the theme registry manifest + lookup logic and
+    // the automation suggestion wire-format builder carry no closed
+    // product logic; both are listed in export-manifest.json.
+    expect(classifyRepoPath("desktop/src/shared/theme-registry.cjs")).toBeNull();
+    expect(classifyRepoPath("desktop/src/shared/theme-registry-data.json")).toBeNull();
+    expect(classifyRepoPath("server/suggestion-blocks.ts")).toBeNull();
   });
 
   it("does not classify ordinary open source files", () => {

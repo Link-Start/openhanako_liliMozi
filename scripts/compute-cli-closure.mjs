@@ -994,12 +994,13 @@ export const CLOSED_PRODUCT_PATTERNS = Object.freeze([
 export const EVIDENCE_NEEDED_PATTERNS = Object.freeze([
   {
     pattern: /^server\/routes\/mobile-workbench\.ts$/,
-    note: "Not yet classified as open host capability or closed product surface; this census supplies the evidence a future decision needs.",
+    note: "Superseded by the mobile-workspace route in ongoing development; this edge is expected to retire with that replacement rather than be re-cut here, so it stays recorded as evidence rather than acted on.",
   },
-  {
-    pattern: /^server\/suggestion-blocks\.ts$/,
-    note: "A chat-UX suggestion-blocks feature; likely closed-product but not yet confirmed.",
-  },
+  // server/suggestion-blocks.ts was resolved 2026-07-17: it is a plain
+  // wire-format builder for automation suggestion blocks with no product
+  // logic of its own, so it is classified redistributable (listed in
+  // export-manifest.json). The desk automation behavior behind those
+  // blocks remains closed.
 ]);
 
 // Reached by the closure but its open/closed boundary has not been drawn
@@ -1008,7 +1009,13 @@ export const EVIDENCE_NEEDED_PATTERNS = Object.freeze([
 // closed-content coupling yet, so not counted as a baseline edge.
 export const PROVISIONAL_PATTERNS = Object.freeze([
   {
-    pattern: /^desktop\/src\/shared\//,
+    // theme-registry.cjs and theme-registry-data.json were resolved
+    // 2026-07-17: the registry is a low-sensitivity manifest of theme ids,
+    // background colors and i18n keys plus its lookup logic, needed by the
+    // redistributable settings tool for validation, so both are classified
+    // redistributable (listed in export-manifest.json). The theme CSS
+    // itself lives under desktop/src/themes/ and stays closed.
+    pattern: /^desktop\/src\/shared\/(?!theme-registry\.cjs$|theme-registry-data\.json$)/,
     note: "Shared desktop-shell code mixing generic startup/update/error/preload plumbing with product-specific behavior; needs a dedicated pass to separate the two before it can be classified.",
   },
 ]);
