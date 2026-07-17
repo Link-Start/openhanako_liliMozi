@@ -10,10 +10,11 @@ import { runMigrations } from "../core/migrations.ts";
 import { ProviderRegistry } from "../core/provider-registry.ts";
 import { getAgentPhoneProjectionPath, safeConversationStem } from "../lib/conversations/agent-phone-projection.ts";
 import { SEARCH_CAPABILITY_PROVIDERS } from "../shared/search-providers.ts";
+import { validateProviderModels } from "../shared/provider-model-validation.ts";
 
 // ── 测试工具 ────────────────────────────────────────────────────────────────
 
-const LATEST_DATA_VERSION = 45;
+const LATEST_DATA_VERSION = 46;
 
 function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hana-migrations-"));
@@ -882,6 +883,143 @@ describe("migration #45: recover persisted Codex OAuth model references", () => 
     } finally {
       fs.rmSync(externalDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("migration #46: repair legacy Provider Catalog model metadata", () => {
+  let tmpDir, agentsDir, userDir;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    agentsDir = path.join(tmpDir, "agents");
+    userDir = path.join(tmpDir, "user");
+    fs.mkdirSync(agentsDir, { recursive: true });
+  });
+
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  function writeLegacyCatalog() {
+    writeJson(path.join(tmpDir, "provider-catalog.json"), {
+      catalogVersion: 2,
+      providers: {
+        custom: {
+          base_url: "https://provider.example/v1",
+          api_key: "provider-level-key-is-preserved",
+          models: [
+            "plain-model",
+            {
+              id: "legacy-model",
+              name: "Legacy Model",
+              context: 0,
+              maxOutputTokens: Number.NaN,
+              api: "",
+              API_KEY: "model-secret-must-not-appear-in-report",
+              HeAdErS: { Authorization: "another-model-secret" },
+              thinkingLevelMap: {
+                low: "medium",
+                high: " ",
+                ultra: "max",
+              },
+              customMetadata: { keep: true },
+            },
+            {
+              id: "valid-model",
+              context: 128000,
+              maxOutput: 8192,
+              thinkingLevelMap: { off: null, high: "high" },
+            },
+          ],
+        },
+      },
+      capabilities: { customCapability: { enabled: true } },
+      meta: { keep: "catalog-meta" },
+    });
+  }
+
+  function runFrom45(prefs, log: (line: any) => void = () => {}) {
+    runMigrations({
+      hanakoHome: tmpDir,
+      agentsDir,
+      prefs,
+      providerRegistry: { _entries: new Map() },
+      log,
+    });
+  }
+
+  it("backs up the complete catalog before removing only metadata rejected by current validation", () => {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 45 });
+    writeLegacyCatalog();
+    const catalogPath = path.join(tmpDir, "provider-catalog.json");
+    const originalCatalogBytes = fs.readFileSync(catalogPath);
+    const logs = [];
+
+    runFrom45(prefs, (line) => { logs.push(line); });
+
+    const catalog = readJson(catalogPath);
+    expect(catalog.providers.custom).toEqual({
+      base_url: "https://provider.example/v1",
+      api_key: "provider-level-key-is-preserved",
+      models: [
+        "plain-model",
+        {
+          id: "legacy-model",
+          name: "Legacy Model",
+          thinkingLevelMap: { low: "medium" },
+          customMetadata: { keep: true },
+        },
+        {
+          id: "valid-model",
+          context: 128000,
+          maxOutput: 8192,
+          thinkingLevelMap: { off: null, high: "high" },
+        },
+      ],
+    });
+    expect(catalog.capabilities.customCapability).toEqual({ enabled: true });
+    expect(catalog.meta.keep).toBe("catalog-meta");
+    validateProviderModels("custom", catalog.providers.custom.models, {
+      baseUrl: catalog.providers.custom.base_url,
+    });
+    expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);
+
+    const backupRoot = path.join(tmpDir, "migration-backups");
+    const backupDirs = fs.readdirSync(backupRoot);
+    expect(backupDirs).toHaveLength(1);
+    const backupDir = path.join(backupRoot, backupDirs[0]);
+    expect(
+      fs.readFileSync(path.join(backupDir, "provider-catalog.json")).equals(originalCatalogBytes),
+    ).toBe(true);
+    const reportText = fs.readFileSync(path.join(backupDir, "migration-report.json"), "utf-8");
+    expect(reportText).toContain('"field');
+    expect(reportText).toContain("API_KEY");
+    expect(reportText).toContain("thinkingLevelMap.ultra");
+    expect(reportText).not.toContain("model-secret-must-not-appear-in-report");
+    expect(reportText).not.toContain("another-model-secret");
+    expect(logs.join("\n")).not.toContain("model-secret-must-not-appear-in-report");
+    expect(logs.join("\n")).not.toContain("another-model-secret");
+
+    const firstCatalogBytes = fs.readFileSync(catalogPath);
+    const rerunPrefs = prefs.getPreferences();
+    rerunPrefs._dataVersion = 45;
+    prefs.savePreferences(rerunPrefs);
+    runFrom45(prefs);
+    expect(fs.readFileSync(catalogPath).equals(firstCatalogBytes)).toBe(true);
+    expect(fs.readdirSync(backupRoot)).toEqual(backupDirs);
+  });
+
+  it("leaves the catalog and data version untouched when the recovery backup cannot be created", () => {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 45 });
+    writeLegacyCatalog();
+    const catalogPath = path.join(tmpDir, "provider-catalog.json");
+    const originalCatalogBytes = fs.readFileSync(catalogPath);
+    fs.writeFileSync(path.join(tmpDir, "migration-backups"), "blocked", "utf-8");
+
+    runFrom45(prefs);
+
+    expect(fs.readFileSync(catalogPath).equals(originalCatalogBytes)).toBe(true);
+    expect(prefs.getPreferences()._dataVersion).toBe(45);
   });
 });
 

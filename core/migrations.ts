@@ -44,6 +44,7 @@ import { parseSkillMetadata } from "../lib/skills/skill-metadata.ts";
 import { safeConversationStem } from "../lib/conversations/agent-phone-projection.ts";
 import { DEFAULT_DISABLED_TOOL_NAMES } from "../shared/tool-categories.ts";
 import { ProviderCatalogStore } from "./provider-catalog.ts";
+import { repairProviderModelMetadata } from "./provider-model-metadata-migration.ts";
 import { sessionIdFromFilename } from "../lib/session-jsonl.ts";
 import {
   filesystemIdentityKeySync,
@@ -150,6 +151,8 @@ const migrations = {
   44: migrateOAuthModelsToProviderCatalog,
   // 保留旧版本已持久化的 Codex OAuth 模型引用，避免固定 allowlist 让旧会话失效
   45: recoverReferencedCodexOAuthModels,
+  // 清理旧 Provider Catalog 中当前校验器明确拒绝的模型元数据，并先保存可恢复原件
+  46: repairLegacyProviderModelMetadata,
 };
 
 // ── Runner ──────────────────────────────────────────────────────────────────
@@ -1778,6 +1781,62 @@ function recoverReferencedCodexOAuthModels(ctx) {
     providerRegistry._entries?.clear?.();
   }
   log?.(`[migrations] #45: recovered persisted Codex OAuth models (references=${referencedModels.length}, models=${nextModels.length})`);
+}
+
+function writeProviderModelMetadataMigrationBackup({ store, hanakoHome, repairs }) {
+  if (!fs.existsSync(store.catalogPath)) {
+    throw new Error("provider catalog source is missing before metadata repair");
+  }
+
+  const backupRoot = path.join(hanakoHome, "migration-backups");
+  fs.mkdirSync(backupRoot, { recursive: true });
+  const backupDir = fs.mkdtempSync(path.join(backupRoot, "provider-model-metadata-v46-"));
+  const backupPath = path.join(backupDir, path.basename(store.catalogPath));
+  fs.copyFileSync(store.catalogPath, backupPath);
+
+  const report = {
+    migration: 46,
+    createdAt: new Date().toISOString(),
+    sourceFile: path.basename(store.catalogPath),
+    repairs,
+  };
+  atomicWriteSync(
+    path.join(backupDir, "migration-report.json"),
+    JSON.stringify(report, null, 2) + "\n",
+  );
+  return backupDir;
+}
+
+function repairLegacyProviderModelMetadata(ctx) {
+  const { hanakoHome, providerRegistry, log } = ctx;
+  const store = providerRegistry?._catalog || new ProviderCatalogStore(hanakoHome);
+  const catalog = store.load();
+  const result = repairProviderModelMetadata(catalog.providers || {});
+  if (!result.changed) {
+    log?.("[migrations] #46: Provider Catalog model metadata already valid");
+    return;
+  }
+
+  const backupDir = writeProviderModelMetadataMigrationBackup({
+    store,
+    hanakoHome,
+    repairs: result.repairs,
+  });
+  store.saveProviders(result.providers);
+  if (providerRegistry) {
+    providerRegistry._addedModelsCache = null;
+    providerRegistry._addedModelsMtime = 0;
+    providerRegistry._entries?.clear?.();
+  }
+
+  for (const repair of result.repairs) {
+    log?.(
+      `[migrations] #46 repaired ${repair.providerId}/${repair.modelId} fields: ${repair.fields.join(", ")}`,
+    );
+  }
+  log?.(
+    `[migrations] #46: repaired Provider Catalog model metadata (models=${result.repairs.length}, backup=${path.basename(backupDir)})`,
+  );
 }
 
 function removeCodexImageSizeDefault(providerDefaults) {
