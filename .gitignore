@@ -38,6 +38,7 @@ dist-renderer-artifact/
 desktop/dist-splash/
 dist-server-bundle/
 dist-computer-use/
+dist-open-export/
 desktop/main.bundle.cjs
 desktop/preload.bundle.cjs
 .cache/

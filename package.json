@@ -1,6 +1,6 @@
 {
   "name": "hanako",
-  "version": "0.411.1",
+  "version": "0.412.0",
   "type": "module",
   "description": "HanaAgent - a personal AI agent with memory and soul",
   "license": "Apache-2.0",
@@ -55,6 +55,8 @@
     "build:server": "node scripts/build-server.mjs",
     "build:server:open": "node scripts/build-server-open.mjs",
     "smoke:server:open": "node scripts/smoke-open-server.mjs",
+    "export:open": "node scripts/export-open-tree.mjs",
+    "rehearse:open": "node scripts/rehearse-open-export.mjs",
     "lint": "eslint .",
     "lint:boundary": "node scripts/lint-open-boundary.mjs",
     "test:watch": "vitest --exclude '**/.claude/**' --exclude '**/.cache/**' --exclude '**/dist/**' --exclude '**/dist-server/**' --exclude '**/dist-computer-use/**' --exclude '**/dist-sandbox/**'",
