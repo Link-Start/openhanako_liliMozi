@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * build-server.mjs — 构建 server 独立分发包
+ * build-server.mjs — 构建 server 独立分发包（full/closed 产品）
  *
  * 策略：Vite bundle + 外部依赖 npm install + Node.js runtime
  * Vite 把 server/core/lib/shared/hub 源码打成几个 chunk，
@@ -9,6 +9,13 @@
  * 关键设计：用目标 Node.js runtime 来装依赖和编译 native addon，
  * 确保 better-sqlite3 的 ABI 跟运行时一致（系统 Node 版本可能不同）。
  * Vite build 用系统 Node 跑（构建时工具，不涉及 ABI）。
+ *
+ * 打包机制（Node runtime 获取、Vite/esbuild bundle、数据文件复制、external
+ * deps 派生与安装、nft prune、平台裁剪、wrapper 生成）全部来自
+ * scripts/build-server-phases.mjs 的参数化原语，与
+ * scripts/build-server-open.mjs（开源 composition 打包器）共用同一套函数。
+ * 本文件在原语之上追加 full 专属阶段：skills2set、内置 plugins、品牌/renderer
+ * 资产、签名 seed 装箱——这些阶段不属于开源产物。
  *
  * 产出结构：
  *   dist-server/{platform}-{arch}/
@@ -40,24 +47,24 @@
  */
 import fs from "fs";
 import path from "path";
-import { createHash } from "crypto";
-import { execSync } from "child_process";
 import { fileURLToPath } from "url";
-import { builtinModules } from "module";
 import {
-  buildBetterSqliteRuntimeSmokeScript,
-  buildJiebaRuntimeSmokeScript,
-  buildExternalPackage,
-  collectBareImportPackageNames,
-  collectInstalledOptionalDependencyDirs,
-  verifyExternalEntrypoints,
-} from "./build-server-deps.mjs";
+  applyPlatformPackageTrim,
+  buildCliBundle,
+  buildViteServerBundle,
+  copyServerBootstrap,
+  copyServerDataFiles,
+  finalizeServerPackageJsonVersion,
+  prepareNodeRuntime,
+  pruneServerNodeModulesViaNft,
+  resolveAndInstallExternalServerDeps,
+  writeServerWrapperScripts,
+} from "./build-server-phases.mjs";
 import {
   collectBundledPluginPackageDependencies,
   copyBundledPluginRuntimeDependencies,
 } from "./build-server-plugin-runtime-deps.mjs";
 import { copyServerRuntimeAssets } from "./build-server-runtime-assets.mjs";
-import { pruneRuntimeDeadFiles } from "./build-server-prune.mjs";
 import { packDualKindSeed } from "./build-server-artifact.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,178 +81,23 @@ console.log(`[build-server] Building for ${platform}-${arch}...`);
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 
-// ── 1. 下载 / 缓存 Node.js runtime ──
-// 先拿到目标 Node，后续 npm install 全用它跑，保证 ABI 一致
-const NODE_VERSION = "v24.15.0";
-const NODE_RUNTIME_SHA256 = {
-  [`node-${NODE_VERSION}-darwin-arm64.tar.gz`]: "372331b969779ab5d15b949884fc6eaf88d5afe87bde8ba881d6400b9100ffc4",
-  [`node-${NODE_VERSION}-darwin-x64.tar.gz`]: "ffd5ee293467927f3ee731a553eb88fd1f48cf74eebc2d74a6babe4af228673b",
-  [`node-${NODE_VERSION}-linux-arm64.tar.gz`]: "73afc234d558c24919875f51c2d1ea002a2ada4ea6f83601a383869fefa64eed",
-  [`node-${NODE_VERSION}-linux-x64.tar.gz`]: "44836872d9aec49f1e6b52a9a922872db9a2b02d235a616a5681b6a85fec8d89",
-  [`node-${NODE_VERSION}-win-x64.zip`]: "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62",
-};
-const cacheDir = path.join(ROOT, ".cache", "node-runtime");
-fs.mkdirSync(cacheDir, { recursive: true });
-
-const nodeMap = {
-  "darwin-arm64": `node-${NODE_VERSION}-darwin-arm64`,
-  "darwin-x64": `node-${NODE_VERSION}-darwin-x64`,
-  "linux-x64": `node-${NODE_VERSION}-linux-x64`,
-  "linux-arm64": `node-${NODE_VERSION}-linux-arm64`,
-  "win32-x64": `node-${NODE_VERSION}-win-x64`,
-};
-
-const nodeDirName = nodeMap[`${platform}-${arch}`];
-if (!nodeDirName) {
-  console.error(`[build-server] ⚠ 不支持的平台: ${platform}-${arch}`);
-  process.exit(1);
-}
-
-const isWin = platform === "win32";
-const ext = isWin ? "zip" : "tar.gz";
-const filename = `${nodeDirName}.${ext}`;
-const cachedArchive = path.join(cacheDir, filename);
-const cachedNodeBin = isWin
-  ? path.join(cacheDir, nodeDirName, "node.exe")
-  : path.join(cacheDir, nodeDirName, "bin", "node");
-const cachedNpmCli = isWin
-  ? path.join(cacheDir, nodeDirName, "node_modules", "npm", "bin", "npm-cli.js")
-  : path.join(cacheDir, nodeDirName, "lib", "node_modules", "npm", "bin", "npm-cli.js");
-
-function verifyNodeRuntimeArchive(archivePath, archiveName) {
-  const expected = NODE_RUNTIME_SHA256[archiveName];
-  if (!expected) {
-    throw new Error(`[build-server] missing pinned Node runtime checksum for ${archiveName}`);
-  }
-  const actual = createHash("sha256").update(fs.readFileSync(archivePath)).digest("hex");
-  if (actual !== expected) {
-    try { fs.rmSync(archivePath, { force: true }); } catch {
-      // Best-effort cleanup; the checksum error below is the actionable failure.
-    }
-    throw new Error(
-      `[build-server] node runtime archive checksum mismatch for ${archiveName}: expected ${expected}, got ${actual}`,
-    );
-  }
-  console.log(`[build-server] Node.js runtime checksum verified: ${archiveName}`);
-}
-
-if (!fs.existsSync(cachedNodeBin)) {
-  const url = `https://nodejs.org/dist/${NODE_VERSION}/${filename}`;
-  console.log(`[build-server] downloading Node.js ${NODE_VERSION} for ${platform}-${arch}...`);
-  execSync(`curl --fail --location --show-error -o "${cachedArchive}" "${url}"`, { stdio: "inherit" });
-  verifyNodeRuntimeArchive(cachedArchive, filename);
-
-  if (isWin) {
-    execSync(`powershell -command "Expand-Archive -Path '${cachedArchive}' -DestinationPath '${cacheDir}' -Force"`, { stdio: "inherit" });
-  } else {
-    execSync(`tar xzf "${cachedArchive}" -C "${cacheDir}"`, { stdio: "inherit" });
-  }
-
-  try { fs.unlinkSync(cachedArchive); } catch {
-    // Best-effort cache cleanup after a verified extraction.
-  }
-  console.log("[build-server] Node.js runtime cached");
-} else {
-  console.log(`[build-server] using cached Node.js ${NODE_VERSION}`);
-}
-
-// 复制 node 二进制到 dist
-// Windows 上改名为 hana-server.exe，让 main.cjs 的 bundled server 检测能命中，
-// 同时在任务管理器中显示为 hana-server.exe 而非 node.exe（便于 NSIS 安装脚本按名杀进程）
-const destNode = path.join(outDir, isWin ? "hana-server.exe" : "node");
-fs.copyFileSync(cachedNodeBin, destNode);
-if (!isWin) fs.chmodSync(destNode, 0o755);
-console.log("[build-server] Node.js runtime ready");
-
-// helper: 用目标 Node 跑命令
-// PATH 前置目标 Node 的 bin 目录，确保 lifecycle scripts（如 prebuild-install）
-// 也用目标 Node 而非系统 Node（两者 ABI 可能不同）
-const targetNodeDir = path.dirname(cachedNodeBin);
-const targetEnv = {
-  ...process.env,
-  NODE_ENV: "production",
-  PATH: `${targetNodeDir}${path.delimiter}${process.env.PATH}`,
-};
-function runWithTargetNode(cmd, opts = {}) {
-  execSync(`"${cachedNodeBin}" ${cmd}`, {
-    cwd: outDir,
-    stdio: "inherit",
-    env: targetEnv,
-    ...opts,
-  });
-}
-
-function ensureNodePtySpawnHelperExecutable(baseDir) {
-  if (isWin) return;
-  const nodePtyRoot = path.join(baseDir, "node_modules", "node-pty");
-  if (!fs.existsSync(nodePtyRoot)) return;
-  for (const helperPath of [
-    path.join(nodePtyRoot, "build", "Release", "spawn-helper"),
-    path.join(nodePtyRoot, "prebuilds", `${platform}-${arch}`, "spawn-helper"),
-  ]) {
-    if (!fs.existsSync(helperPath)) continue;
-    const mode = fs.statSync(helperPath).mode;
-    if ((mode & 0o111) === 0) {
-      fs.chmodSync(helperPath, mode | 0o755);
-      console.log(`[build-server] node-pty executable bit fixed: ${path.relative(baseDir, helperPath)}`);
-    }
-  }
-}
-
-function runJiebaRuntimeSmokeIfNeeded() {
-  if (!externalPkg.dependencies["@node-rs/jieba"]) return;
-  const smokeScript = path.join(outDir, ".jieba-smoke.mjs");
-  fs.writeFileSync(smokeScript, buildJiebaRuntimeSmokeScript());
-  try {
-    runWithTargetNode(path.basename(smokeScript));
-  } finally {
-    fs.rmSync(smokeScript, { force: true });
-  }
-}
-
-function runBetterSqliteRuntimeSmokeIfNeeded() {
-  if (!externalPkg.dependencies["better-sqlite3"]) return;
-  const smokeScript = path.join(outDir, ".better-sqlite3-smoke.mjs");
-  fs.writeFileSync(smokeScript, buildBetterSqliteRuntimeSmokeScript());
-  try {
-    runWithTargetNode(path.basename(smokeScript));
-  } finally {
-    fs.rmSync(smokeScript, { force: true });
-  }
-}
-
-// ── 2. Vite bundle ──
-// 用系统 Node 跑 Vite（构建时工具，不涉及 native addon ABI）
-// 产出到 dist-server-bundle/，然后复制到 outDir/bundle/
-console.log("[build-server] running Vite bundle...");
-const viteBundleDir = path.join(ROOT, "dist-server-bundle");
-execSync("npx vite build --config vite.config.server.js", {
-  cwd: ROOT,
-  stdio: "inherit",
+// ── 1. Node.js runtime ──
+const { isWin, cachedNpmCli, runWithTargetNode } = prepareNodeRuntime({
+  rootDir: ROOT,
+  platform,
+  arch,
+  outDir,
 });
 
-// 复制 bundle 产出
+// ── 2. Vite + CLI bundle（entry = server/main-full.ts，vite.config.server.js 的默认值）──
+const viteBundleDir = path.join(ROOT, "dist-server-bundle");
 const bundleOutDir = path.join(outDir, "bundle");
-fs.cpSync(viteBundleDir, bundleOutDir, { recursive: true });
-console.log("[build-server] Vite bundle copied to bundle/");
-
-console.log("[build-server] running CLI bundle...");
-execSync(
-  `npx esbuild "${path.join(ROOT, "cli", "entry.ts")}" --bundle --platform=node --format=esm --target=node24 --external:ws --outfile="${path.join(bundleOutDir, "cli.js")}"`,
-  {
-    cwd: ROOT,
-    stdio: "inherit",
-  },
-);
-console.log("[build-server] CLI bundle copied to bundle/cli.js");
-
-fs.copyFileSync(path.join(ROOT, "server", "bootstrap.ts"), path.join(outDir, "bootstrap.js"));
-console.log("[build-server] bootstrap copied");
+buildViteServerBundle({ rootDir: ROOT, viteBundleDir, bundleOutDir });
+buildCliBundle({ rootDir: ROOT, bundleOutDir });
+copyServerBootstrap({ rootDir: ROOT, outDir });
 
 // ── 3. 复制运行时数据文件 ──
 // 这些文件由 fromRoot() / fs.readFileSync() 在运行时读取，无法打进 bundle
-
-// lib/ 下的数据文件（json, yaml, md）
 const LIB_DATA_GLOBS = [
   "known-models.json",
   "known-model-fallbacks.json",
@@ -255,47 +107,27 @@ const LIB_DATA_GLOBS = [
   "ishiki.example.md",
   "pinned.example.md",
 ];
-const libOutDir = path.join(outDir, "lib");
-fs.mkdirSync(libOutDir, { recursive: true });
-for (const file of LIB_DATA_GLOBS) {
-  const src = path.join(ROOT, "lib", file);
-  if (fs.existsSync(src)) {
-    fs.copyFileSync(src, path.join(libOutDir, file));
-    console.log(`[build-server]   lib/${file}`);
-  } else {
-    console.warn(`[build-server] ⚠ lib/${file} not found, skipping`);
-  }
-}
-
-// lib/ 下的模板目录（递归复制）
 const LIB_TEMPLATE_DIRS = [
   "identity-templates",
   "ishiki-templates",
   "public-ishiki-templates",
   "yuan",
 ];
-for (const dir of LIB_TEMPLATE_DIRS) {
-  const src = path.join(ROOT, "lib", dir);
-  if (fs.existsSync(src)) {
-    fs.cpSync(src, path.join(libOutDir, dir), { recursive: true });
-    console.log(`[build-server]   lib/${dir}/`);
-  } else {
-    console.warn(`[build-server] ⚠ lib/${dir}/ not found, skipping`);
-  }
-}
+copyServerDataFiles({
+  rootDir: ROOT,
+  outDir,
+  libFiles: LIB_DATA_GLOBS,
+  libDirs: LIB_TEMPLATE_DIRS,
+  // i18n locales（lib/i18n.js 通过 fromRoot("desktop","src","locales") 引用）
+  extraDirs: [{ relSource: path.join("desktop", "src", "locales") }],
+});
 
-// skills2set（运行时复制到用户数据目录）
+// skills2set（运行时复制到用户数据目录）——full 专属，开源产物不携带内容包
 const skillsSrc = path.join(ROOT, "skills2set");
 if (fs.existsSync(skillsSrc)) {
   fs.cpSync(skillsSrc, path.join(outDir, "skills2set"), { recursive: true });
   console.log("[build-server]   skills2set/");
 }
-
-// i18n locales（lib/i18n.js 通过 fromRoot("desktop","src","locales") 引用）
-const localesSrc = path.join(ROOT, "desktop", "src", "locales");
-fs.mkdirSync(path.join(outDir, "desktop", "src", "locales"), { recursive: true });
-fs.cpSync(localesSrc, path.join(outDir, "desktop", "src", "locales"), { recursive: true });
-console.log("[build-server]   desktop/src/locales/");
 
 // Theme CSS：不再单独复制 desktop/src/themes/。
 // dist-renderer/themes/ 由 copyServerRuntimeAssets 复制（内容完全一致），
@@ -305,11 +137,12 @@ console.log("[build-server]   desktop/src/locales/");
 // 角色卡导入/导出预览由 server 读取默认头像、卡背和 Yuan 图标。
 // PWA /mobile/* 静态文件也由独立 server 进程读取。
 // 打包模式下 HANA_ROOT 指向 resources/server，不能依赖 renderer asar 里的 assets。
+// full 专属：品牌资产 + renderer 静态树，开源产物不携带。
 for (const copiedAsset of copyServerRuntimeAssets({ rootDir: ROOT, outDir })) {
   console.log(`[build-server]   ${copiedAsset}`);
 }
 
-// 系统插件（内嵌到 app，运行时 fromRoot("plugins") 读取）
+// 系统插件（内嵌到 app，运行时 fromRoot("plugins") 读取）——full 专属
 const pluginsSrc = path.join(ROOT, "plugins");
 if (fs.existsSync(pluginsSrc)) {
   fs.cpSync(pluginsSrc, path.join(outDir, "plugins"), { recursive: true });
@@ -324,387 +157,46 @@ for (const copiedDependency of await copyBundledPluginRuntimeDependencies({ root
 
 console.log("[build-server] resource files copied");
 
-// ── 4. External dependencies ──
-// 从 vite.config.server.js 的 external 列表自动派生需要安装的包。
-// 规则：string external 必须在 rootPkg.dependencies 中显式声明；RegExp external
-// 从 root dependencies 中匹配派生。这样打包产物的根 node_modules 解析契约是显式的，
-// 不依赖上游包嵌套依赖的安装形态。
-const rootPkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
-
-// defineConfig 是纯 identity 函数，import 安全无副作用
-const viteConfig = (await import("../vite.config.server.js")).default;
-const viteExternals = viteConfig.build?.rollupOptions?.external;
-if (!Array.isArray(viteExternals)) {
-  throw new Error("[build-server] vite.config.server.js external must be an array");
-}
-
-const builtinSet = new Set(builtinModules.flatMap(m => [m, `node:${m}`]));
-const deps = rootPkg.dependencies || {};
-const externalDeps = {};
-
-for (const ext of viteExternals) {
-  if (typeof ext === "string") {
-    if (builtinSet.has(ext)) continue;
-    if (deps[ext]) externalDeps[ext] = deps[ext];
-  } else if (ext instanceof RegExp) {
-    for (const dep of Object.keys(deps)) {
-      if (ext.test(dep)) externalDeps[dep] = deps[dep];
-    }
-  }
-}
-
+// ── 4-6. External dependencies 派生 + 安装 + 校验 ──
+// pluginPackageDeps：内置插件源码 import 的 npm 包，必须补进 external 依赖集，
+// 否则打包产物的根 node_modules 解析不到插件运行时需要的包。开源产物不携带
+// plugins/，因此 build-server-open.mjs 不传这份清单。
 const pluginPackageDeps = await collectBundledPluginPackageDependencies({ rootDir: ROOT });
-for (const packageName of pluginPackageDeps) {
-  if (deps[packageName]) {
-    externalDeps[packageName] = deps[packageName];
-  }
-}
-const undeclaredPluginDeps = pluginPackageDeps.filter((packageName) => !deps[packageName]);
-if (undeclaredPluginDeps.length > 0) {
-  throw new Error(
-    "[build-server] bundled plugin imports npm packages missing from root dependencies: "
-      + undeclaredPluginDeps.join(", "),
-  );
-}
-
-const bundleExternalImports = collectBareImportPackageNames(
-  fs.readFileSync(path.join(bundleOutDir, "index.js"), "utf-8"),
-)
-  .filter((packageName) => !builtinSet.has(packageName));
-const missingBundleExternalDeps = bundleExternalImports
-  .filter((packageName) => !externalDeps[packageName]);
-if (missingBundleExternalDeps.length > 0) {
-  throw new Error(
-    "[build-server] server bundle imports external packages missing from packaged dependencies: "
-      + missingBundleExternalDeps.join(", ")
-      + ". Add them to root package.json dependencies.",
-  );
-}
-
-console.log(`[build-server] derived external deps: ${Object.keys(externalDeps).join(", ")}`);
-
-const rootLock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf-8"));
-// jsdom is externalized and loads lru-cache at runtime. Keep this transitive
-// dependency on the same exact version validated by the root lockfile, so a
-// fresh packaging install cannot float to a broken package export.
-const PINNED_RUNTIME_TRANSITIVES = ["lru-cache"];
-const externalPkg = buildExternalPackage(rootPkg, externalDeps, {
-  rootLock,
-  pinnedTransitiveDeps: PINNED_RUNTIME_TRANSITIVES,
+const { externalPkg, rootPkg } = await resolveAndInstallExternalServerDeps({
+  rootDir: ROOT,
+  outDir,
+  bundleOutDir,
+  platform,
+  arch,
+  isWin,
+  runWithTargetNode,
+  cachedNpmCli,
+  extraPackageNames: pluginPackageDeps,
 });
-const pinnedDeps = Object.entries(externalPkg.dependencies)
-  .map(([name, version]) => `${name}@${version}`)
-  .join(", ");
-console.log(`[build-server] pinned server deps: ${pinnedDeps}`);
 
-fs.writeFileSync(
-  path.join(outDir, "package.json"),
-  JSON.stringify(externalPkg, null, 2) + "\n",
-);
+// ── 7. @vercel/nft 追踪：只保留运行时实际需要的文件 ──
+await pruneServerNodeModulesViaNft({
+  outDir,
+  nftRoots: ["bundle/index.js"],
+  externalPackageNames: Object.keys(externalPkg.dependencies),
+  runWithTargetNode,
+});
 
-// ── 5. 用目标 Node 的 npm 安装 external deps ──
-// 不加 --ignore-scripts：better-sqlite3 的 install 脚本需要跑
-// （prebuild-install 下载正确 ABI 的预编译二进制）
-// package.json 中的 server external 依赖来自根 lockfile 的精确版本，避免
-// CI fresh install 把直接 external 依赖解析到尚未验证的新版本。
-console.log("[build-server] installing external dependencies...");
-runWithTargetNode(`"${cachedNpmCli}" install --omit=dev --no-audit --no-fund --ignore-scripts=false`);
-ensureNodePtySpawnHelperExecutable(outDir);
-
-// ── 5b. 验证所有 Vite external 在 node_modules 中可达 ──
-// 遍历 string 类型的 external，检查 node_modules 中是否存在。
-// RegExp external（如 /^@mariozechner\// 与 /^@earendil-works\//）不在此检查范围内，
-// 因为匹配的包已通过派生逻辑显式安装或作为 transitive dep 存在。
-// platform-optional（fsevents）允许缺失，其余缺失说明 transitive 链断了。
-const OPTIONAL_EXTERNALS = new Set(["fsevents"]);
-const missing = [];
-for (const ext of viteExternals) {
-  if (typeof ext !== "string" || builtinSet.has(ext)) continue;
-  if (!fs.existsSync(path.join(outDir, "node_modules", ext))) {
-    if (OPTIONAL_EXTERNALS.has(ext)) continue;
-    missing.push(ext);
-  }
-}
-if (missing.length > 0) {
-  console.error(`[build-server] ❌ Vite externals missing from node_modules: ${missing.join(", ")}`);
-  console.error(`[build-server]   These packages are external in the bundle but not installed.`);
-  console.error(`[build-server]   Fix: add them to root package.json dependencies, or check transitive dep chains.`);
-  process.exit(1);
-}
-
-try {
-  verifyExternalEntrypoints(outDir, Object.keys(externalPkg.dependencies));
-} catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-}
-
-// ── 6. PI SDK verification ──
-// 精简 package.json 安装 external deps 后没有 root postinstall，
-// 这里手动跑同一个只读验证脚本，确保打包产物里的 Pi SDK 版本和结构也受保护。
-const patchScript = path.join(ROOT, "scripts", "patch-pi-sdk.cjs");
-if (fs.existsSync(patchScript)) {
-  fs.mkdirSync(path.join(outDir, "scripts"), { recursive: true });
-  fs.copyFileSync(patchScript, path.join(outDir, "scripts", "patch-pi-sdk.cjs"));
-  runWithTargetNode("scripts/patch-pi-sdk.cjs");
-  fs.rmSync(path.join(outDir, "scripts"), { recursive: true });
-}
-
-// ── 7. 清理 node_modules/.bin ──
-// 符号链接指向构建机器的绝对路径，codesign 会报错
-// server 运行时不需要这些 CLI 工具
-function removeBinDirs(nmDir) {
-  let removedDirs = 0;
-
-  function walk(dir) {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-
-      const full = path.join(dir, entry.name);
-      if (entry.name === ".bin" && path.basename(dir) === "node_modules") {
-        fs.rmSync(full, { recursive: true, force: true });
-        removedDirs++;
-        continue;
-      }
-
-      walk(full);
-    }
-  }
-
-  walk(nmDir);
-  return removedDirs;
-}
-const removedBinDirs = removeBinDirs(path.join(outDir, "node_modules"));
-if (removedBinDirs > 0) {
-  console.log(`[build-server] cleanup: removed ${removedBinDirs} node_modules/.bin director${removedBinDirs === 1 ? "y" : "ies"}`);
-}
-
-console.log("[build-server] dependencies installed");
-
-// ── 8. @vercel/nft 追踪：只保留运行时实际需要的文件 ──
-// 从 bundle 入口出发，静态分析所有 import/require 链，
-// 删除 node_modules 里没被追踪到的文件（.d.ts、.map、多余平台二进制等）
-console.log("[build-server] running nft trace...");
-
-// nft 是 ESM，用动态 import
-const { nodeFileTrace } = await import("@vercel/nft");
-let fileList;
-try {
-  ({ fileList } = await nodeFileTrace(
-    [path.join(outDir, "bundle", "index.js")],
-    { base: outDir, conditions: ["node", "import"] },
-  ));
-} catch (e) {
-  // Windows CI 上 nft 可能因用户目录不存在而报错，跳过裁剪
-  console.warn(`[build-server] nft trace failed (${e.message}), skipping prune`);
-  fileList = null;
-}
-
-const nmDir = path.join(outDir, "node_modules");
-
-if (fileList) {
-// 把追踪结果转成绝对路径 Set
-const tracedFiles = new Set();
-for (const f of fileList) {
-  tracedFiles.add(path.resolve(outDir, f));
-}
-
-// Server package.json 里的依赖都是显式运行时入口，nft 不一定能正确追踪
-// 条件导出和 CJS/ESM 交叉解析，整个包目录跳过裁剪。
-const protectedDirs = new Set();
-for (const packageName of Object.keys(externalPkg.dependencies)) {
-  // path.join 自动处理 scoped 包（@scope/pkg → node_modules/@scope/pkg）
-  const pkgDir = path.resolve(nmDir, packageName);
-  if (fs.existsSync(pkgDir)) {
-    protectedDirs.add(pkgDir);
-  }
-}
-for (const pkgDir of collectInstalledOptionalDependencyDirs(nmDir, Object.keys(externalPkg.dependencies))) {
-  protectedDirs.add(pkgDir);
-}
-
-if (protectedDirs.size > 0) {
-  const names = [...protectedDirs].map(d => path.relative(nmDir, d));
-  console.log(`[build-server] nft: protecting ${protectedDirs.size} server deps from pruning: ${names.join(", ")}`);
-}
-
-// 遍历 node_modules，删除未追踪的文件（跳过受保护的包）
-let removedFiles = 0;
-let removedSize = 0;
-
-function pruneDir(dir) {
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (protectedDirs.has(path.resolve(full))) continue;
-      pruneDir(full);
-      // 删完子文件后如果目录空了，也删掉
-      try {
-        const remaining = fs.readdirSync(full);
-        if (remaining.length === 0) fs.rmdirSync(full);
-      } catch {}
-    } else if (entry.isFile() || entry.isSymbolicLink()) {
-      if (!tracedFiles.has(full)) {
-        const size = entry.isFile() ? (fs.statSync(full).size || 0) : 0;
-        fs.unlinkSync(full);
-        removedFiles++;
-        removedSize += size;
-      }
-    }
-  }
-}
-
-pruneDir(nmDir);
-
-const keptFiles = fileList.size;
-const MB = (n) => (n / 1024 / 1024).toFixed(0);
-console.log(`[build-server] nft: kept ${keptFiles} files, removed ${removedFiles} files (${MB(removedSize)}MB)`);
-} // end if (fileList)
-
-try {
-  verifyExternalEntrypoints(outDir, Object.keys(externalPkg.dependencies));
-} catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-}
-runBetterSqliteRuntimeSmokeIfNeeded();
-runJiebaRuntimeSmokeIfNeeded();
-
-// ── 8b. 删除 koffi 多余平台二进制 ──
-// koffi 带了 18 个平台的 .node 文件，nft 全部追踪到了（因为 require 路径指向包根）。
-// 非当前平台的二进制在 macOS 上无法被 codesign 签名（ELF/PE 格式），会导致签名卡死。
-const koffiBuilds = path.join(nmDir, "koffi", "build", "koffi");
-if (fs.existsSync(koffiBuilds)) {
-  const target = `${platform === "darwin" ? "darwin" : platform === "win32" ? "win32" : "linux"}_${arch}`;
-  let koffiRemoved = 0;
-  for (const entry of fs.readdirSync(koffiBuilds)) {
-    if (entry !== target) {
-      fs.rmSync(path.join(koffiBuilds, entry), { recursive: true, force: true });
-      koffiRemoved++;
-    }
-  }
-  if (koffiRemoved > 0) {
-    console.log(`[build-server] koffi: kept ${target}, removed ${koffiRemoved} other platform binaries`);
-  }
-}
-
-// ── 8c. 删除 node-pty 多余平台 prebuilt ──
-// node-pty prebuilds/ 下按 {platform}-{arch} 放置 prebuilt 二进制。
-// macOS 包含 win32-x64/arm64 各 ~30MB（含 .pdb 调试符号），Windows 包含 darwin 的。
-// 运行时只从 prebuilds/{process.platform}-{process.arch}/ 加载，其余是死重。
-// 且非当前平台的 PE/ELF 二进制无法被 codesign 签名。
-const nodePtyPrebuilds = path.join(nmDir, "node-pty", "prebuilds");
-if (fs.existsSync(nodePtyPrebuilds)) {
-  const target = `${platform}-${arch}`;
-  let nodePtyRemoved = 0;
-  for (const entry of fs.readdirSync(nodePtyPrebuilds)) {
-    if (entry !== target) {
-      fs.rmSync(path.join(nodePtyPrebuilds, entry), { recursive: true, force: true });
-      nodePtyRemoved++;
-    }
-  }
-  if (nodePtyRemoved > 0) {
-    console.log(`[build-server] node-pty: kept prebuilds/${target}, removed ${nodePtyRemoved} other platform prebuilds`);
-  }
-}
-
-// ── 8d. 清理 npm 包中运行时不需要的大体积文件 ──
-// protectedDirs 跳过了 nft 裁剪，以下是已确认安全的手动清理。
-
-// @larksuiteoapi/node-sdk: types/ 是 ~15MB 的 .d.ts 类型声明，运行时不加载
-const larkTypes = path.join(nmDir, "@larksuiteoapi", "node-sdk", "types");
-if (fs.existsSync(larkTypes)) {
-  fs.rmSync(larkTypes, { recursive: true, force: true });
-  console.log("[build-server] cleanup: removed @larksuiteoapi/node-sdk/types/ (~15MB .d.ts)");
-}
-
-// exceljs: dist/ 是 ~21MB 的 browser bundle + source map。
-// Node.js 入口是 excel.js → lib/exceljs.nodejs.js，不经过 dist/
-const exceljsDist = path.join(nmDir, "exceljs", "dist");
-if (fs.existsSync(exceljsDist)) {
-  fs.rmSync(exceljsDist, { recursive: true, force: true });
-  console.log("[build-server] cleanup: removed exceljs/dist/ (~21MB browser bundle)");
-}
-
-// ── 8e. 删除 node_modules 运行时死重文件 ──
-// nft 的 protectedDirs（Pi SDK 等 server 直接依赖）跳过了未追踪文件裁剪，
-// 其内嵌 vendored node_modules 带来数千个 .ts/.map/.md。这些扩展名在
-// node_modules 内运行时必然不读（Node 拒绝对 node_modules 做 type stripping，
-// 无 --enable-source-maps，SDK 运行时只读用户目录的 .md），按扩展名整体删除，
-// license/notice 类文件保留（第三方协议合规）。Windows NSIS 逐文件解压 +
-// Defender 逐文件扫描，文件数直接决定安装时长。
-{
-  const { removedFiles: prunedFiles, removedSize: prunedSize } = pruneRuntimeDeadFiles(nmDir);
-  const prunedMB = (prunedSize / 1024 / 1024).toFixed(1);
-  console.log(`[build-server] prune: removed ${prunedFiles} runtime-dead files from node_modules (${prunedMB}MB)`);
-}
+// ── 8. 平台裁剪 + node_modules 死重清理 ──
+applyPlatformPackageTrim({ outDir, platform, arch });
 
 // ── 9. 更新 package.json ──
-// npm ci 之后 package.json 仍在，确保它包含 version 字段
 // fromRoot("package.json") 在运行时读取版本号
-// 保留 dependencies 字段（node_modules 解析需要）
-const installedPkg = JSON.parse(fs.readFileSync(path.join(outDir, "package.json"), "utf-8"));
-installedPkg.version = rootPkg.version;
-fs.writeFileSync(
-  path.join(outDir, "package.json"),
-  JSON.stringify(installedPkg, null, 2) + "\n",
-);
+finalizeServerPackageJsonVersion({ outDir, version: rootPkg.version });
 
 // ── 10. Wrapper 脚本 ──
-if (isWin) {
-  fs.writeFileSync(
-    path.join(outDir, "hana-server.cmd"),
-    '@echo off\r\nset "HANA_ROOT=%~dp0"\r\nset "HANA_SERVER_ENTRY=%~dp0bundle\\index.js"\r\n"%~dp0hana-server.exe" "%~dp0bootstrap.js" %*\r\n',
-  );
-  fs.writeFileSync(
-    path.join(outDir, "hana.cmd"),
-    '@echo off\r\nset "HANA_ROOT=%~dp0"\r\nset "HANA_SERVER_ENTRY=%~dp0bundle\\index.js"\r\n"%~dp0hana-server.exe" "%~dp0bundle\\cli.js" %*\r\n',
-  );
-} else {
-  const wrapper = path.join(outDir, "hana-server");
-  fs.writeFileSync(wrapper, [
-    "#!/bin/sh",
-    'DIR="$(cd "$(dirname "$0")" && pwd)"',
-    'export HANA_ROOT="$DIR"',
-    'export HANA_SERVER_ENTRY="$DIR/bundle/index.js"',
-    "# Raise file descriptor limit. Server got split out of Electron in v0.67",
-    "# (see #765 / #787 root-cause); standalone Node loses Electron's implicit",
-    "# fd raise (macOS default 256 → not enough for chokidar + DB + WS + plugins).",
-    "# Best-effort: silently fall back if hard limit is lower.",
-    "ulimit -n 65536 2>/dev/null || ulimit -n 8192 2>/dev/null || true",
-    'exec "$DIR/node" "$DIR/bootstrap.js" "$@"',
-    "",
-  ].join("\n"));
-  fs.chmodSync(wrapper, 0o755);
-
-  const cliWrapper = path.join(outDir, "hana");
-  fs.writeFileSync(cliWrapper, [
-    "#!/bin/sh",
-    'DIR="$(cd "$(dirname "$0")" && pwd)"',
-    'export HANA_ROOT="$DIR"',
-    'export HANA_SERVER_ENTRY="$DIR/bundle/index.js"',
-    'exec "$DIR/node" "$DIR/bundle/cli.js" "$@"',
-    "",
-  ].join("\n"));
-  fs.chmodSync(cliWrapper, 0o755);
-}
-console.log("[build-server] wrapper created");
+writeServerWrapperScripts({ outDir, isWin });
 
 // ── 11. server + renderer 树 → 一份签名 seed 归档（双 artifact 管线）──
 // ⚠️ 顺序铁律：先签名，后装箱。Apple notary
 // 会递归解包 tar.gz 校验箱内每个 Mach-O，而 electron-builder 阶段的签名看
 // 不进归档内部；packDualKindSeed 在 packTree 之前对 server 树内 Mach-O 做
-// 签名（本地 ad-hoc codesign；æ­£å¼ CI 换 Developer ID 时必须保持同一顺序——
+// 签名（本地 ad-hoc codesign；æ­£å¼ CI 换 Developer ID 时必须保持同一顺序——
 // 把 Developer ID 签名步骤插到 packDualKindSeed 之前或替换其签名器实现，
 // 绝不允许"先装箱再签外壳"）。这一步必须是 build-server 的最后一步：server
 // 树在装箱后不允许再被任何步骤触碰。renderer 树（desktop/dist-renderer/）
@@ -712,6 +204,7 @@ console.log("[build-server] wrapper created");
 // 保证顺序）；纯 web 静态资源，不需要签名，只做"不含 Mach-O"的断言。
 // HANA_SIGN_KEY 未设置时这里硬报错（安装包必须携带签名 seed）；本地验证用
 // artifact-keygen.mjs 生成一次性密钥对，配 HANA_SIGN_KEYSET 指向其 keyset。
+// full 专属：开源产物不装箱、不签名、全程不读 HANA_SIGN_KEY。
 await packDualKindSeed({
   outDir,
   rendererDistDir: path.join(ROOT, "desktop", "dist-renderer"),

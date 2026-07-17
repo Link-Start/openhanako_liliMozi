@@ -75,7 +75,10 @@ describe("quality gates", () => {
 
   it("keeps build host, bundled server runtime, and bundle targets aligned on Node 24", () => {
     const packageJson = readJson("package.json");
-    const buildServer = readText("scripts/build-server.mjs");
+    // Node-runtime pinning and the CLI esbuild bundle step were extracted
+    // onto scripts/build-server-phases.mjs's shared primitives (also used
+    // by the open-composition builder).
+    const buildServerPhases = readText("scripts/build-server-phases.mjs");
     const serverConfig = readText("vite.config.server.js");
     const mainConfig = readText("vite.config.main.js");
     const preloadConfig = readText("vite.config.preload.js");
@@ -83,8 +86,8 @@ describe("quality gates", () => {
     const build = readYaml(".github/workflows/build.yml");
 
     expect(packageJson.engines.node).toBe(">=24.12.0 <25");
-    expect(buildServer).toContain('const NODE_VERSION = "v24.15.0"');
-    expect(buildServer).toContain("--target=node24");
+    expect(buildServerPhases).toContain('DEFAULT_NODE_VERSION = "v24.15.0"');
+    expect(buildServerPhases).toContain("--target=node24");
     expect(serverConfig).toContain('target: "node24"');
     expect(mainConfig).toContain('target: "node24"');
     expect(preloadConfig).toContain('target: "node24"');
@@ -99,12 +102,14 @@ describe("quality gates", () => {
   });
 
   it("verifies downloaded Node runtime archives before extraction", () => {
-    const buildServer = readText("scripts/build-server.mjs");
+    // Same extraction as above: this logic now lives in
+    // scripts/build-server-phases.mjs's prepareNodeRuntime primitive.
+    const buildServerPhases = readText("scripts/build-server-phases.mjs");
 
-    expect(buildServer).toContain("NODE_RUNTIME_SHA256");
-    expect(buildServer).toContain("verifyNodeRuntimeArchive");
-    expect(buildServer).toContain("createHash(\"sha256\")");
-    expect(buildServer).toContain("node runtime archive checksum mismatch");
+    expect(buildServerPhases).toContain("NODE_RUNTIME_SHA256");
+    expect(buildServerPhases).toContain("verifyNodeRuntimeArchive");
+    expect(buildServerPhases).toContain("createHash(\"sha256\")");
+    expect(buildServerPhases).toContain("node runtime archive checksum mismatch");
   });
 
   it("declares every required server string external as a root production dependency", () => {

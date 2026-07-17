@@ -380,9 +380,14 @@ describe("server startup diagnostics contract", () => {
     expect(mainSource).toContain("if (removeServerInfo)");
   });
 
-  it("starts packaged and dev server through an early bootstrap entry", () => {
+  it("starts packaged and dev server through an early bootstrap entry", async () => {
     const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
-    const buildSource = fs.readFileSync(path.join(root, "scripts", "build-server.mjs"), "utf-8");
+    // scripts/build-server.mjs's Node-runtime-copy, bootstrap-copy, and
+    // wrapper-generation steps were extracted onto shared parameterized
+    // primitives in scripts/build-server-phases.mjs (shared with the
+    // open-composition builder) — those literal source shapes now live
+    // there instead of inline in build-server.mjs.
+    const phasesSource = fs.readFileSync(path.join(root, "scripts", "build-server-phases.mjs"), "utf-8");
     const bootstrapPath = path.join(root, "server", "bootstrap.ts");
 
     expect(fs.existsSync(bootstrapPath)).toBe(true);
@@ -397,9 +402,23 @@ describe("server startup diagnostics contract", () => {
 
     expect(mainSource).toContain("bootstrap.js");
     expect(mainSource).toContain("HANA_SERVER_ENTRY");
-    expect(buildSource).toContain('path.join(outDir, "bootstrap.js")');
-    expect(buildSource).toContain('"$DIR/bootstrap.js"');
-    expect(buildSource).toContain("bundle\\\\index.js");
+    expect(phasesSource).toContain('path.join(outDir, "bootstrap.js")');
+    expect(phasesSource).toContain('"$DIR/bootstrap.js"');
+
+    // The Windows wrapper's HANA_SERVER_ENTRY path used to be a hardcoded
+    // "bundle\\index.js" literal; writeServerWrapperScripts now derives it
+    // from a parameterized serverEntryRelPath (default "bundle/index.js"),
+    // so the backslash form is verified by actually generating the .cmd
+    // file rather than grepping for a literal that no longer exists in source.
+    const { writeServerWrapperScripts } = await import("../scripts/build-server-phases.mjs");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-wrapper-contract-"));
+    try {
+      writeServerWrapperScripts({ outDir: tmp, isWin: true });
+      const cmdSource = fs.readFileSync(path.join(tmp, "hana-server.cmd"), "utf-8");
+      expect(cmdSource).toContain("bundle\\index.js");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it("resolves packaged bootstrap default root to the bootstrap directory", () => {

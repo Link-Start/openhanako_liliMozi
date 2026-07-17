@@ -1,7 +1,15 @@
+import process from "node:process";
 import { defineConfig } from "vite";
 import { builtinModules } from "module";
 
 const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
+
+// HANA_SERVER_BUNDLE_ENTRY lets a caller (scripts/build-server-phases.mjs's
+// buildViteServerBundle) override which composition entry gets bundled,
+// without this config file knowing anything about "open" vs "full" —
+// scripts/build-server.mjs (full) never sets it, so the default below is
+// unchanged; scripts/build-server-open.mjs sets it to server/main-open.ts.
+const bundleEntry = process.env.HANA_SERVER_BUNDLE_ENTRY || "server/main-full.ts";
 
 export default defineConfig({
   build: {
@@ -10,8 +18,9 @@ export default defineConfig({
       // imports server/index.ts's open startServer() plus
       // composition/full-root.ts's registerClosedRoutes hook, so the
       // packaged bundle still ships the full product (open + closed-product
-      // routes).
-      entry: "server/main-full.ts",
+      // routes). HANA_SERVER_BUNDLE_ENTRY overrides this for other
+      // compositions (see the comment above).
+      entry: bundleEntry,
       formats: ["es"],
       fileName: () => "index.js",
     },

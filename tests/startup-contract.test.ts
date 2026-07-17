@@ -92,18 +92,30 @@ describe("local startup contract", () => {
   });
 
   it("server-only packaging emits a bundled CLI and wrapper", () => {
-    const buildServer = fs.readFileSync(path.join(ROOT, "scripts", "build-server.mjs"), "utf-8");
+    // The CLI bundle step and wrapper-generation step were extracted onto
+    // shared parameterized primitives in scripts/build-server-phases.mjs
+    // (shared with the open-composition builder); build-server.mjs
+    // now just calls them with rootDir=ROOT/outDir.
+    const buildServerPhases = fs.readFileSync(path.join(ROOT, "scripts", "build-server-phases.mjs"), "utf-8");
 
-    expect(buildServer).toContain("bundle/cli.js");
-    expect(buildServer).toContain('path.join(ROOT, "cli", "entry.ts")');
-    expect(buildServer).toContain('path.join(outDir, "hana")');
-    expect(buildServer).toContain('path.join(outDir, "hana.cmd")');
+    expect(buildServerPhases).toContain("bundle/cli.js");
+    expect(buildServerPhases).toContain('path.join(rootDir, "cli", "entry.ts")');
+    expect(buildServerPhases).toContain('path.join(outDir, "hana")');
+    expect(buildServerPhases).toContain('path.join(outDir, "hana.cmd")');
   });
 
   it("server dependency install explicitly enables native package scripts", () => {
-    const buildServer = fs.readFileSync(path.join(ROOT, "scripts", "build-server.mjs"), "utf-8");
+    // External dependency install + the better-sqlite3 runtime smoke test
+    // were extracted onto scripts/build-server-phases.mjs's
+    // resolveAndInstallExternalServerDeps / pruneServerNodeModulesViaNft
+    // primitives; the smoke test is invoked inline (conditional on
+    // "better-sqlite3" being in the resolved external package set) rather
+    // than through the old runBetterSqliteRuntimeSmokeIfNeeded() wrapper
+    // function, which no longer exists.
+    const buildServerPhases = fs.readFileSync(path.join(ROOT, "scripts", "build-server-phases.mjs"), "utf-8");
 
-    expect(buildServer).toContain("--ignore-scripts=false");
-    expect(buildServer).toContain("runBetterSqliteRuntimeSmokeIfNeeded()");
+    expect(buildServerPhases).toContain("--ignore-scripts=false");
+    expect(buildServerPhases).toContain('externalPackageNames.includes("better-sqlite3")');
+    expect(buildServerPhases).toContain("buildBetterSqliteRuntimeSmokeScript()");
   });
 });

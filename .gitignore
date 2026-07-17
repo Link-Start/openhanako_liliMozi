@@ -32,6 +32,7 @@ TODO.md
 # ═══════════════════════════════════════════
 dist/
 dist-server/
+dist-server-open/
 dist-server-artifact/
 dist-renderer-artifact/
 desktop/dist-splash/

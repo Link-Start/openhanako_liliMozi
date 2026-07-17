@@ -518,6 +518,7 @@
     "server/http/security-audit.ts",
     "server/http/transport-context.ts",
     "server/index.ts",
+    "server/main-open.ts",
     "server/plugin-chat-surface.ts",
     "server/resource-events-ws.ts",
     "server/routes/access.ts",
