@@ -2,8 +2,8 @@
  * 数据迁移 runner
  *
  * 所有用户数据格式变更集中在此文件。
- * preferences.json._dataVersion 记录已执行到的版本号（整数），
- * 启动时只跑 > _dataVersion 的条目。
+ * preferences.json._dataVersion 保留为连续完成的高水位。
+ * 高水位之后的成功条目会单独记录，不会因为前面某条失败而重跑。
  *
  * 添加新迁移：在 migrations 对象末尾加一条，key 为递增整数。
  */
@@ -166,6 +166,87 @@ const migrations = {
   49: repairPollutedCodexEventIdModels,
 };
 
+const migrationDependencies = {
+  8: [5],
+  21: [16, 20],
+  37: [36],
+  39: [38],
+  44: [42],
+  45: [42, 44],
+  46: [42],
+  49: [42, 45],
+};
+
+const migrationIds = Object.keys(migrations).map(Number).sort((a, b) => a - b);
+const latestMigrationId = migrationIds.at(-1) || 0;
+
+function normalizeMigrationState(preferences) {
+  const highWaterMark = Number.isInteger(preferences?._dataVersion) && preferences._dataVersion > 0
+    ? preferences._dataVersion
+    : 0;
+  const rawState = preferences?._migrationState;
+  const completedIds: number[] = Array.isArray(rawState?.completedIds)
+    ? rawState.completedIds.filter((id) => Number.isInteger(id) && migrationIds.includes(id) && id > highWaterMark)
+    : [];
+  const lastFailedIds: number[] = Array.isArray(rawState?.lastFailedIds)
+    ? rawState.lastFailedIds.filter((id) => Number.isInteger(id) && migrationIds.includes(id) && id > highWaterMark)
+    : [];
+  return {
+    highWaterMark,
+    completedIds: [...new Set(completedIds)].sort((a, b) => a - b),
+    lastFailedIds: [...new Set(lastFailedIds)].sort((a, b) => a - b),
+  };
+}
+
+function completedMigrationIds(state) {
+  const completed = new Set(state.completedIds);
+  for (const id of migrationIds) {
+    if (id <= state.highWaterMark) completed.add(id);
+  }
+  return completed;
+}
+
+function compactMigrationState(state, completed) {
+  let highWaterMark = state.highWaterMark;
+  for (const id of migrationIds) {
+    if (id <= highWaterMark) continue;
+    if (id !== highWaterMark + 1 || !completed.has(id)) break;
+    highWaterMark = id;
+  }
+  return {
+    highWaterMark,
+    completedIds: [...completed].filter((id) => id > highWaterMark).sort((a, b) => a - b),
+    lastFailedIds: state.lastFailedIds.filter((id) => id > highWaterMark).sort((a, b) => a - b),
+  };
+}
+
+function saveMigrationState(prefs, state) {
+  const fresh = prefs.getPreferences();
+  fresh._dataVersion = state.highWaterMark;
+  fresh._migrationState = {
+    completedIds: state.completedIds,
+    lastFailedIds: state.lastFailedIds,
+  };
+  prefs.savePreferences(fresh);
+}
+
+/**
+ * Returns legacy migration readiness without changing preferences or user data.
+ * Accepts either a PreferencesManager-like object or an already-read preferences object.
+ */
+export function getMigrationStatus(prefsOrPreferences) {
+  const preferences = typeof prefsOrPreferences?.getPreferences === "function"
+    ? prefsOrPreferences.getPreferences()
+    : (prefsOrPreferences || {});
+  const state = normalizeMigrationState(preferences);
+  const completed = completedMigrationIds(state);
+  return {
+    registryLatestId: latestMigrationId,
+    pendingIds: migrationIds.filter((id) => !completed.has(id)),
+    lastFailedIds: state.lastFailedIds.filter((id) => !completed.has(id)),
+  };
+}
+
 // ── Runner ──────────────────────────────────────────────────────────────────
 
 /**
@@ -179,31 +260,47 @@ const migrations = {
 export function runMigrations(ctx) {
   const { prefs, log } = ctx;
   const preferences = prefs.getPreferences();
-  const currentVersion = preferences._dataVersion || 0;
+  let state = normalizeMigrationState(preferences);
+  const completed = completedMigrationIds(state);
+  const pending = migrationIds.filter((id) => !completed.has(id));
 
-  const pending = Object.keys(migrations)
-    .map(Number)
-    .filter(v => v > currentVersion)
-    .sort((a, b) => a - b);
+  if (!pending.length) return getMigrationStatus(prefs);
 
-  if (!pending.length) return;
-
-  log(`[migrations] _dataVersion=${currentVersion}，待执行 ${pending.length} 条迁移`);
+  log(`[migrations] _dataVersion=${state.highWaterMark}，待执行 ${pending.length} 条迁移`);
 
   for (const v of pending) {
+    const unmetDependencies = (migrationDependencies[v] || []).filter((id) => !completed.has(id));
+    if (unmetDependencies.length > 0) {
+      log(`[migrations] #${v} 等待前置迁移 #${unmetDependencies.join(", #")}`);
+      continue;
+    }
+
     try {
       migrations[v](ctx);
       log(`[migrations] #${v} 完成`);
+      completed.add(v);
+      state.lastFailedIds = state.lastFailedIds.filter((id) => id !== v);
     } catch (err) {
       moduleLog.error(`#${v} 失败: ${err.message}`);
-      // 失败则停在当前版本，不继续后续迁移
-      break;
+      if (!state.lastFailedIds.includes(v)) state.lastFailedIds.push(v);
     }
-    // 每跑完一条就持久化版本号，防止中途崩溃导致重跑已成功的迁移
-    const fresh = prefs.getPreferences();
-    fresh._dataVersion = v;
-    prefs.savePreferences(fresh);
+
+    // 每次尝试后立即持久化收据，防止后续崩溃导致重跑已成功的迁移。
+    state = compactMigrationState(state, completed);
+    try {
+      saveMigrationState(prefs, state);
+    } catch (err) {
+      // The migration's own result and the receipt write are separate
+      // failure domains. A read-only disk or a transient atomic-rename
+      // failure must not turn maintenance bookkeeping into a global startup
+      // failure. Without a durable receipt the successful migration remains
+      // pending and will be retried on the next launch.
+      moduleLog.error(`迁移收据保存失败: ${err.message}`);
+      log(`[migrations] 收据保存失败，应用将继续启动；未落盘的迁移会在下次启动重试`);
+    }
   }
+
+  return getMigrationStatus(prefs);
 }
 
 // ── 迁移实现 ─────────────────────────────────────────────────────────────────

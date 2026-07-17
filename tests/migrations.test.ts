@@ -6,7 +6,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import YAML from "js-yaml";
-import { runMigrations } from "../core/migrations.ts";
+import { getMigrationStatus, runMigrations } from "../core/migrations.ts";
 import { ProviderRegistry } from "../core/provider-registry.ts";
 import { getAgentPhoneProjectionPath, safeConversationStem } from "../lib/conversations/agent-phone-projection.ts";
 import { SEARCH_CAPABILITY_PROVIDERS } from "../shared/search-providers.ts";
@@ -179,6 +179,114 @@ describe("runMigrations runner", () => {
     // config 不应被修改（ghost-provider 应原样保留）
     const config = readAgentConfig(agentsDir, "hana");
     expect(config.api.provider).toBe("ghost-provider");
+  });
+
+  it("兼容只有 _dataVersion 的旧偏好，并且状态查询不写盘", () => {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 47, keep: "unchanged" });
+    const before = fs.readFileSync(path.join(userDir, "preferences.json"));
+
+    expect(getMigrationStatus(prefs)).toEqual({
+      registryLatestId: LATEST_DATA_VERSION,
+      pendingIds: [48, 49],
+      lastFailedIds: [],
+    });
+    expect(fs.readFileSync(path.join(userDir, "preferences.json")).equals(before)).toBe(true);
+  });
+
+  it("失败后继续尝试无关迁移，已成功条目不重跑，高水位不跨过缺口", () => {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 17 });
+    fs.writeFileSync(path.join(tmpDir, "users.json"), "{ broken json", "utf-8");
+    const firstLogs: string[] = [];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      runMigrations({
+        hanakoHome: tmpDir,
+        agentsDir,
+        prefs,
+        providerRegistry: makeRegistry([]),
+        log: (line) => { firstLogs.push(String(line)); },
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    const afterFailure = prefs.getPreferences();
+    expect(afterFailure._dataVersion).toBe(17);
+    expect(afterFailure._migrationState.completedIds).toContain(19);
+    expect(afterFailure._migrationState.lastFailedIds).toContain(18);
+    expect(firstLogs).toContain("[migrations] #19 完成");
+    expect(getMigrationStatus(prefs).pendingIds).toContain(18);
+
+    fs.rmSync(path.join(tmpDir, "users.json"));
+    const retryLogs: string[] = [];
+    runMigrations({
+      hanakoHome: tmpDir,
+      agentsDir,
+      prefs,
+      providerRegistry: makeRegistry([]),
+      log: (line) => { retryLogs.push(String(line)); },
+    });
+
+    expect(retryLogs).not.toContain("[migrations] #19 完成");
+    expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);
+    expect(getMigrationStatus(prefs)).toEqual({
+      registryLatestId: LATEST_DATA_VERSION,
+      pendingIds: [],
+      lastFailedIds: [],
+    });
+  });
+
+  it("前置迁移失败时跳过依赖项，但仍执行后面无关的迁移", () => {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 35 });
+    fs.writeFileSync(path.join(tmpDir, "subagent-runs.json"), "{ broken json", "utf-8");
+    const logs: string[] = [];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      runMigrations({
+        hanakoHome: tmpDir,
+        agentsDir,
+        prefs,
+        providerRegistry: makeRegistry([]),
+        log: (line) => { logs.push(String(line)); },
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    expect(logs).toContain("[migrations] #37 等待前置迁移 #36");
+    expect(logs).toContain("[migrations] #38 完成");
+    expect(getMigrationStatus(prefs).pendingIds).toEqual(expect.arrayContaining([36, 37]));
+    expect(getMigrationStatus(prefs).pendingIds).not.toContain(38);
+  });
+
+  it("迁移收据暂时无法落盘时不阻塞启动，并让该迁移保持待重试", () => {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 48 });
+    const originalSave = prefs.savePreferences;
+    prefs.savePreferences = () => { throw new Error("disk temporarily read-only"); };
+    const logs: string[] = [];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      expect(() => runMigrations({
+        hanakoHome: tmpDir,
+        agentsDir,
+        prefs,
+        providerRegistry: makeRegistry([]),
+        log: (line) => { logs.push(String(line)); },
+      })).not.toThrow();
+    } finally {
+      prefs.savePreferences = originalSave;
+      errorSpy.mockRestore();
+    }
+
+    expect(logs).toContain("[migrations] 收据保存失败，应用将继续启动；未落盘的迁移会在下次启动重试");
+    expect(getMigrationStatus(prefs).pendingIds).toEqual([49]);
   });
 });
 

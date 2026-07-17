@@ -1929,13 +1929,19 @@ export class HanaEngine {
     this._models.providerRegistry.migrateOverridesToAddedModels(this.agentsDir, log);
 
     // 0d. 统一数据迁移（版本号驱动，新迁移统一加在 migrations.js）
-    runMigrations({
+    const migrationStatus = runMigrations({
       hanakoHome: this.hanakoHome,
       agentsDir: this.agentsDir,
       prefs: this._prefs,
       providerRegistry: this._models.providerRegistry,
       log,
     });
+    if (migrationStatus.pendingIds.length > 0) {
+      log(
+        `[migrations] 应用继续启动；仍有 ${migrationStatus.pendingIds.length} 条迁移待重试：`
+        + `#${migrationStatus.pendingIds.join(", #")}`,
+      );
+    }
     this._runtimeContext = createServerRuntimeContext({
       hanakoHome: this.hanakoHome,
       appVersion: this.appVersion,
