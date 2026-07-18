@@ -166,9 +166,10 @@
       "builderEntry": "vendor/mingit -> git",
       "platform": "win",
       "kind": "vendoredBinary",
-      "producedBy": "external/manual provisioning — no script in this repo downloads or builds it",
-      "sourcePaths": ["vendor/mingit"],
-      "note": "scripts/smoke-mingit.mjs documents the runtime contract vendor/mingit must satisfy but does not provision it. Windows-only; not exercised by build:shell on this (darwin) host. Guard test does not require vendor/mingit to exist on non-Windows hosts."
+      "producedBy": "scripts/download-mingit.js (Windows pack CI)",
+      "buildScript": "scripts/download-mingit.js",
+      "sourcePaths": ["scripts/download-mingit.js"],
+      "note": "vendor/mingit is gitignored and only extracted by Windows pack CI (build.yml runs download-mingit.js then smoke-mingit.mjs). The forward guard asserts the downloader script exists — never the extracted tree — so plain npm test on windows-latest does not require a provisioned MinGit checkout. scripts/smoke-mingit.mjs documents the runtime contract the extracted tree must satisfy at pack time."
     },
     {
       "builderEntry": "dist-sandbox/win-${arch}/ -> sandbox/windows/",

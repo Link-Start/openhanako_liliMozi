@@ -89,6 +89,22 @@ describe("shell-surface-manifest.json: forward (declared sources exist)", () => 
     });
   }
 
+  // MinGit is gitignored under vendor/ and only extracted by Windows pack CI
+  // (scripts/download-mingit.js). The forward check must point at the
+  // downloader script — never at vendor/mingit itself — otherwise plain
+  // `npm test` on windows-latest fails even though the pack pipeline is fine.
+  it("win mingit vendoredBinary declares the downloader script, not the gitignored extracted tree", () => {
+    const mingit = manifest.extraResources.find(
+      (e: { builderEntry: string }) => e.builderEntry === "vendor/mingit -> git",
+    );
+    expect(mingit).toBeTruthy();
+    expect(mingit.kind).toBe("vendoredBinary");
+    expect(mingit.platform).toBe("win");
+    expect(mingit.sourcePaths).toEqual(["scripts/download-mingit.js"]);
+    expect(mingit.buildScript).toBe("scripts/download-mingit.js");
+    expect(mingit.sourcePaths).not.toContain("vendor/mingit");
+  });
+
   for (const hook of manifest.buildHooks) {
     it(`buildHooks "${hook.hook}" script exists at ${hook.script}`, () => {
       expect(fs.existsSync(path.join(ROOT, hook.script))).toBe(true);
