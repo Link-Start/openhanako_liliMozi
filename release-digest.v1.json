@@ -1,151 +1,151 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.407.15",
-  "version": "0.407.15",
-  "previousTag": "v0.407.8",
-  "generatedAt": "2026-07-17T05:33:51.000Z",
+  "tag": "v0.412.7",
+  "version": "0.412.7",
+  "previousTag": "v0.407.15",
+  "generatedAt": "2026-07-18T07:57:18.524Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "本版集中加固从 stable 升级到最新版的兼容性：会在接收新输入前刷新已变化的工具快照，保留历史会话引用的 Codex OAuth 模型，修复旧供应商模型元数据，并迁移钉钉旧版应用认证与项目技能发现策略；同时移除频道中已经失效的私信工具提示。",
-    "en": "This release hardens upgrades from stable: changed tool snapshots are refreshed before new input, Codex OAuth models referenced by existing data are preserved, legacy provider metadata is repaired, and older DingTalk application authentication and project skill-discovery policies are migrated. It also removes obsolete direct-message tool guidance from channels."
+    "zh": "本版重点修启动与升级体验：自动更新进度条会连续走完服务端与渲染层两段下载；修复误把会话事件 ID 当成 Codex 模型写进列表的问题；迁移失败或输入不完整时不再整链卡死，并保留待重试的原始数据；损坏的早期元数据也不会再拦启动。媒体生成运行时并入核心，旧 image-gen 插件会话的展示方式有变化。",
+    "en": "This release hardens startup and upgrades: the update progress bar now runs continuously across both server and renderer downloads; session event IDs are no longer mistaken for Codex model IDs in the catalog; failed or incomplete migrations no longer halt the whole chain, and source bytes are preserved for retry; corrupt early-epoch metadata no longer blocks launch. Media generation runtime moves into core, with a display change for sessions that used the retired image-gen plugin."
   },
   "counts": {
     "feature": 0,
-    "fix": 2,
-    "improvement": 0,
-    "migration": 4
+    "fix": 5,
+    "improvement": 1,
+    "migration": 0
   },
   "source": {
     "owner": "liliMozi",
     "repo": "openhanako",
-    "commitRange": "v0.407.8..v0.407.15",
-    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.407.15",
+    "commitRange": "v0.407.15..v0.412.7",
+    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.412.7",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "refresh-frozen-tool-snapshots",
+      "id": "cumulative-update-progress",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "输入前刷新变化的工具快照",
-        "en": "Refresh changed tool snapshots before input"
+        "zh": "更新进度跨两段产物连续显示",
+        "en": "Continuous update progress across both artifacts"
       },
       "summary": {
-        "zh": "插件、MCP 或内置工具发生变化后，已有会话会在接收下一条输入前完成刷新，避免继续使用过期工具定义。",
-        "en": "Existing sessions now refresh changed plugin, MCP, and built-in tool snapshots before accepting the next input instead of continuing with stale definitions."
+        "zh": "服务端与渲染层两段下载合并为一条 0–100 进度，中间校验不再误闪「正在应用」。",
+        "en": "Server and renderer downloads share one continuous 0–100 progress bar, and the verify gap no longer flashes an applying state."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "ffff66f63",
-          "title": "fix(sessions): preflight frozen tool drift before input (#2156)"
+          "ref": "5b9dce70e",
+          "title": "fix(updater): report cumulative progress across both update artifacts"
         }
       ]
     },
     {
-      "id": "preserve-codex-oauth-model-references",
-      "kind": "migration",
-      "importance": "high",
-      "title": {
-        "zh": "保留历史数据引用的 Codex OAuth 模型",
-        "en": "Preserve Codex OAuth models referenced by existing data"
-      },
-      "summary": {
-        "zh": "升级时会扫描现有 Agent、会话、定时任务和频道配置，把仍被引用的官方 Codex OAuth 模型保留在可用列表中。",
-        "en": "Upgrades scan existing agents, sessions, scheduled tasks, and channel settings so referenced official Codex OAuth models remain available."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "c9c30a219",
-          "title": "fix(models): preserve referenced Codex OAuth models on upgrade"
-        }
-      ]
-    },
-    {
-      "id": "repair-provider-model-metadata",
-      "kind": "migration",
-      "importance": "high",
-      "title": {
-        "zh": "修复旧版供应商模型元数据",
-        "en": "Repair legacy provider model metadata"
-      },
-      "summary": {
-        "zh": "升级会先备份供应商目录，再修复不兼容的数字、API、推理和凭证字段；有效模型、排序与自定义信息保持不变。",
-        "en": "The provider catalog is backed up before incompatible numeric, API, reasoning, and credential fields are repaired, while valid models, ordering, and custom metadata stay intact."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "f1f356fbc",
-          "title": "fix(models): repair incompatible catalog metadata on upgrade"
-        }
-      ]
-    },
-    {
-      "id": "remove-obsolete-channel-dm-guidance",
+      "id": "repair-codex-event-id-models",
       "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "移除频道中的失效私信提示",
-        "en": "Remove obsolete direct-message guidance from channels"
-      },
-      "summary": {
-        "zh": "频道不再引导 Agent 调用已经移除的私信工具，避免生成无法执行的操作。",
-        "en": "Channels no longer instruct agents to call a removed direct-message tool, preventing actions that cannot be executed."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "4abdf464f",
-          "title": "fix(channels): remove stale direct-message tool guidance"
-        }
-      ]
-    },
-    {
-      "id": "migrate-dingtalk-application-auth",
-      "kind": "migration",
       "importance": "high",
       "title": {
-        "zh": "迁移钉钉旧版应用认证",
-        "en": "Migrate legacy DingTalk application authentication"
+        "zh": "修正误写入的 Codex 模型 ID",
+        "en": "Stop treating session event IDs as Codex model IDs"
       },
       "summary": {
-        "zh": "从 stable 升级后，既有钉钉应用凭证会明确标记为旧版认证并继续使用对应令牌与发送接口；补齐 corpId 后会自动切换到当前模式。",
-        "en": "Existing DingTalk application credentials are explicitly migrated to legacy authentication with matching token and send endpoints; adding a corpId switches them to the current mode."
+        "zh": "不再把会话事件 ID 当成模型 ID；升级会清理因此污染的目录条目。",
+        "en": "Session event IDs are no longer treated as model IDs, and an upgrade repair removes the polluted catalog entries."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "1fb072d9e",
-          "title": "fix(dingtalk): preserve stable application auth on upgrade"
+          "ref": "5b5abafdd",
+          "title": "fix(models): stop treating session event ids as Codex model ids"
         }
       ]
     },
     {
-      "id": "preserve-project-skill-discovery-policy",
-      "kind": "migration",
-      "importance": "medium",
+      "id": "migrations-survive-partial-failure",
+      "kind": "fix",
+      "importance": "high",
       "title": {
-        "zh": "保留旧 Agent 的项目技能发现行为",
-        "en": "Preserve project skill discovery for existing agents"
+        "zh": "部分迁移失败时仍可启动",
+        "en": "Keep startup available across partial migration failures"
       },
       "summary": {
-        "zh": "旧 Agent 缺少显式设置时会继续发现兼容的项目技能；已经明确开启或关闭的设置保持原样，新建 Agent 的默认策略也不变。",
-        "en": "Existing agents without an explicit setting keep discovering compatible project skills; explicit choices and the default for newly created agents remain unchanged."
+        "zh": "单项迁移失败不再阻断后续迁移，失败项下次启动再试。",
+        "en": "One failed migration no longer stops the rest of the chain; failed items retry on the next launch."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "50707271c",
-          "title": "fix(skills): preserve stable project discovery policy"
+          "ref": "21a853be1",
+          "title": "fix(migrations): keep startup available across partial failures"
+        }
+      ]
+    },
+    {
+      "id": "preserve-migration-sources-on-retry",
+      "kind": "fix",
+      "importance": "high",
+      "title": {
+        "zh": "迁移重试时保留原始数据",
+        "en": "Preserve legacy sources during migration retries"
+      },
+      "summary": {
+        "zh": "偏好、配置范围、供应商与注册表迁移在输入不可读或不完整时会保留源数据并推迟依赖工作，不再清理后卡死启动。",
+        "en": "Preference, config-scope, provider, and registry migrations keep source bytes and defer dependent work when inputs are unreadable or incomplete, instead of cleaning up and blocking startup."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "32b08808b",
+          "title": "fix(migrations): preserve legacy sources during retries"
+        }
+      ]
+    },
+    {
+      "id": "tolerate-epoch-one-metadata-faults",
+      "kind": "fix",
+      "importance": "high",
+      "title": {
+        "zh": "容忍早期元数据损坏",
+        "en": "Tolerate corrupt early-epoch metadata"
+      },
+      "summary": {
+        "zh": "无更高 epoch 证据时，损坏的早期元数据只告警，不拦普通启动。",
+        "en": "Without higher-epoch evidence, corrupt early-epoch metadata is logged and ordinary startup continues."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "75773c1e8",
+          "title": "fix(startup): tolerate unproven epoch-one metadata faults"
+        }
+      ]
+    },
+    {
+      "id": "media-runtime-into-core",
+      "kind": "improvement",
+      "importance": "medium",
+      "title": {
+        "zh": "媒体生成并入核心运行时",
+        "en": "Move media generation runtime into core"
+      },
+      "summary": {
+        "zh": "旧 image-gen 插件退役；其历史会话不再内联展示生成图，改为普通工具结果；错误码同步更名。",
+        "en": "The legacy image-gen plugin is retired; its historical sessions show plain tool results instead of inline images, and the unavailable error code is renamed."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "94275ae74",
+          "title": "refactor(media): retire legacy image-gen plugin, move media runtime into core"
         }
       ]
     }

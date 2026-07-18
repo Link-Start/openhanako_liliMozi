@@ -3,6 +3,159 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.412.7",
+      "version": "0.412.7",
+      "previousTag": "v0.407.15",
+      "generatedAt": "2026-07-18T07:57:18.524Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "本版重点修启动与升级体验：自动更新进度条会连续走完服务端与渲染层两段下载；修复误把会话事件 ID 当成 Codex 模型写进列表的问题；迁移失败或输入不完整时不再整链卡死，并保留待重试的原始数据；损坏的早期元数据也不会再拦启动。媒体生成运行时并入核心，旧 image-gen 插件会话的展示方式有变化。",
+        "en": "This release hardens startup and upgrades: the update progress bar now runs continuously across both server and renderer downloads; session event IDs are no longer mistaken for Codex model IDs in the catalog; failed or incomplete migrations no longer halt the whole chain, and source bytes are preserved for retry; corrupt early-epoch metadata no longer blocks launch. Media generation runtime moves into core, with a display change for sessions that used the retired image-gen plugin."
+      },
+      "counts": {
+        "feature": 0,
+        "fix": 5,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "liliMozi",
+        "repo": "openhanako",
+        "commitRange": "v0.407.15..v0.412.7",
+        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.412.7",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "cumulative-update-progress",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "更新进度跨两段产物连续显示",
+            "en": "Continuous update progress across both artifacts"
+          },
+          "summary": {
+            "zh": "服务端与渲染层两段下载合并为一条 0–100 进度，中间校验不再误闪「正在应用」。",
+            "en": "Server and renderer downloads share one continuous 0–100 progress bar, and the verify gap no longer flashes an applying state."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "5b9dce70e",
+              "title": "fix(updater): report cumulative progress across both update artifacts"
+            }
+          ]
+        },
+        {
+          "id": "repair-codex-event-id-models",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "修正误写入的 Codex 模型 ID",
+            "en": "Stop treating session event IDs as Codex model IDs"
+          },
+          "summary": {
+            "zh": "不再把会话事件 ID 当成模型 ID；升级会清理因此污染的目录条目。",
+            "en": "Session event IDs are no longer treated as model IDs, and an upgrade repair removes the polluted catalog entries."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "5b5abafdd",
+              "title": "fix(models): stop treating session event ids as Codex model ids"
+            }
+          ]
+        },
+        {
+          "id": "migrations-survive-partial-failure",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "部分迁移失败时仍可启动",
+            "en": "Keep startup available across partial migration failures"
+          },
+          "summary": {
+            "zh": "单项迁移失败不再阻断后续迁移，失败项下次启动再试。",
+            "en": "One failed migration no longer stops the rest of the chain; failed items retry on the next launch."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "21a853be1",
+              "title": "fix(migrations): keep startup available across partial failures"
+            }
+          ]
+        },
+        {
+          "id": "preserve-migration-sources-on-retry",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "迁移重试时保留原始数据",
+            "en": "Preserve legacy sources during migration retries"
+          },
+          "summary": {
+            "zh": "偏好、配置范围、供应商与注册表迁移在输入不可读或不完整时会保留源数据并推迟依赖工作，不再清理后卡死启动。",
+            "en": "Preference, config-scope, provider, and registry migrations keep source bytes and defer dependent work when inputs are unreadable or incomplete, instead of cleaning up and blocking startup."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "32b08808b",
+              "title": "fix(migrations): preserve legacy sources during retries"
+            }
+          ]
+        },
+        {
+          "id": "tolerate-epoch-one-metadata-faults",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "容忍早期元数据损坏",
+            "en": "Tolerate corrupt early-epoch metadata"
+          },
+          "summary": {
+            "zh": "无更高 epoch 证据时，损坏的早期元数据只告警，不拦普通启动。",
+            "en": "Without higher-epoch evidence, corrupt early-epoch metadata is logged and ordinary startup continues."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "75773c1e8",
+              "title": "fix(startup): tolerate unproven epoch-one metadata faults"
+            }
+          ]
+        },
+        {
+          "id": "media-runtime-into-core",
+          "kind": "improvement",
+          "importance": "medium",
+          "title": {
+            "zh": "媒体生成并入核心运行时",
+            "en": "Move media generation runtime into core"
+          },
+          "summary": {
+            "zh": "旧 image-gen 插件退役；其历史会话不再内联展示生成图，改为普通工具结果；错误码同步更名。",
+            "en": "The legacy image-gen plugin is retired; its historical sessions show plain tool results instead of inline images, and the unavailable error code is renamed."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "94275ae74",
+              "title": "refactor(media): retire legacy image-gen plugin, move media runtime into core"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.407.15",
       "version": "0.407.15",
       "previousTag": "v0.407.8",
