@@ -798,6 +798,7 @@ export class SessionCoordinator {
    * @param {() => Map} deps.getAgents
    * @param {(agentId) => object} deps.getActivityStore
    * @param {(agentId) => object|null} deps.getAgentById
+   * @param {(agentId: string, options?: object) => Promise<object>} [deps.ensureAgentRuntime]
    * @param {() => object} deps.listAgents - 列出所有 agent
    * @param {(cwd: string, context: {agent: object, agentId: string}) => Promise<{workspacePaths?: object[]}|void>} [deps.onBeforeSessionCreate]
    * @param {(sessionPath: string, reason: string) => void|Promise<void>} [deps.onSessionRuntimeDiscarded]
@@ -1259,6 +1260,48 @@ export class SessionCoordinator {
 
   // ── Session 创建 / 切换 ──
 
+  async _ensureAgentRuntimeReady(ownerAgentId: any, {
+    agent = null,
+    reason = "session",
+  }: any = {}) {
+    if (!ownerAgentId) {
+      throw new Error(`${reason}: target agent identity unavailable`);
+    }
+    if (agent?.id && agent.id !== ownerAgentId) {
+      throw new Error(
+        `${reason}: Agent runtime identity mismatch (`
+        + `${agent.id} !== ${ownerAgentId})`,
+      );
+    }
+    if (agent?.id === ownerAgentId && agent.runtimeInitialized === true) {
+      return agent;
+    }
+    if (typeof this._d.ensureAgentRuntime !== "function") {
+      if (!agent || agent.runtimeInitialized === false) {
+        throw new Error(t("error.agentNotInitialized", { id: ownerAgentId }));
+      }
+      return agent;
+    }
+
+    const readyAgent = await this._d.ensureAgentRuntime(ownerAgentId, {
+      priority: "foreground",
+      reason,
+    });
+    if (!readyAgent) {
+      throw new Error(t("error.agentNotInitialized", { id: ownerAgentId }));
+    }
+    if (readyAgent.id !== ownerAgentId) {
+      throw new Error(
+        `${reason}: Agent runtime identity mismatch (`
+        + `${readyAgent.id || "(missing)"} !== ${ownerAgentId})`,
+      );
+    }
+    if (readyAgent.runtimeInitialized !== true) {
+      throw new Error(t("error.agentNotInitialized", { id: ownerAgentId }));
+    }
+    return readyAgent;
+  }
+
   async createSession(sessionMgr: any, cwd: any, memoryEnabled = true, model: any = null, {
     restore = false,
     agent: explicitAgent = null,
@@ -1279,13 +1322,21 @@ export class SessionCoordinator {
     reminderState = null,
   }: any = {}) {
     const t0 = Date.now();
-    const agent = explicitAgent
+    let agent = explicitAgent
       || (explicitAgentId ? this._d.getAgentById?.(explicitAgentId) : null)
       || this._d.getAgent();
     if (!agent) {
       throw new Error("createSession: target agent unavailable");
     }
     const ownerAgentId = explicitAgentId || agent.id || this._d.getActiveAgentId();
+
+    // Session 能力快照只能从已就绪的 Agent runtime 读取。创建栅栏放在所有
+    // workspace hook、SessionManager 和 prompt/tool 快照之前，初始化失败时不会留下半成品 session。
+    agent = await this._ensureAgentRuntimeReady(ownerAgentId, {
+      agent,
+      reason: "createSession",
+    });
+
     const configuredHomeCwd = this._d.getHomeCwd(agent.id);
     const effectiveCwd = cwd || configuredHomeCwd || process.cwd();
     if (!restore && !cwd && isDefaultWorkspacePath(configuredHomeCwd) && isDefaultWorkspacePath(effectiveCwd)) {
@@ -2581,14 +2632,14 @@ export class SessionCoordinator {
     }
     this._assertCurrentActiveSessionLocator(sessionPath, "switchSession");
 
-    // 切到已有 session 时清空 pendingModel（用户的临时选择不应跟到别的 session）
-    this._pendingModel = null;
-
     const targetAgentId = this.resolveSessionOwnership(sessionPath).agentId;
     if (targetAgentId && targetAgentId !== this._d.getActiveAgentId()) {
       // Phase 1: 跨 agent 切换只切指针，不清旧 session
       await this._d.switchAgentOnly(targetAgentId);
     }
+
+    // 切到已有 session 时清空 pendingModel（用户的临时选择不应跟到别的 session）
+    this._pendingModel = null;
 
     // 从 session-owned state 恢复记忆开关（model 由 PI SDK 从 JSONL 恢复，不在此处读取）
     const memoryEnabled = this.getSessionMemoryEnabled(sessionPath);
@@ -2615,6 +2666,14 @@ export class SessionCoordinator {
       return existing.session;
     }
 
+    const ownerAgentId = targetAgentId || this._d.getActiveAgentId();
+    let targetAgent = this._d.getAgentById?.(ownerAgentId)
+      || (ownerAgentId === this._d.getActiveAgentId() ? this._d.getAgent() : null);
+    targetAgent = await this._ensureAgentRuntimeReady(ownerAgentId, {
+      agent: targetAgent,
+      reason: "switchSession",
+    });
+
     // 不在 map 中，先触发旧 session 的 memory flush（后台跑），再新建
     if (this._session) {
       const oldSp = this._session.sessionManager?.getSessionFile?.();
@@ -2638,12 +2697,12 @@ export class SessionCoordinator {
 
     // 冷启动恢复：model 由 PI SDK 从 session JSONL 恢复（单一数据源），不从 session-meta.json 读
     const reminderState = this._getRuntimeValueForPath(this._hibernatedSessionMeta, sessionPath);
-    const sessionMgr = SessionManager.open(sessionPath, this._d.getAgent().sessionDir);
+    const sessionMgr = SessionManager.open(sessionPath, targetAgent.sessionDir);
     const cwd = sessionMgr.getCwd?.() || undefined;
     const result = await this.createSession(sessionMgr, cwd, memoryEnabled, null, {
       restore: true,
-      agent: this._d.getAgent(),
-      agentId: targetAgentId || this._d.getActiveAgentId(),
+      agent: targetAgent,
+      agentId: ownerAgentId,
       reminderState,
     });
     return result.session;
@@ -4206,12 +4265,19 @@ export class SessionCoordinator {
     }
 
     const oldEntry = this._getSessionEntryByPath(sessionPath);
-    const hibernatedEntry = this._getRuntimeValueForPath(this._hibernatedSessionMeta, sessionPath);
-    const reminderState = oldEntry || hibernatedEntry || null;
     if (oldEntry) {
       if (oldEntry.session?.isStreaming || oldEntry.session?.isCompacting || oldEntry._switching) {
         throw new Error("reloadSessionRuntime: session is busy");
       }
+    }
+    const readyAgent = await this._ensureAgentRuntimeReady(targetAgentId, {
+      agent,
+      reason: "reloadSessionRuntime",
+    });
+
+    const hibernatedEntry = this._getRuntimeValueForPath(this._hibernatedSessionMeta, sessionPath);
+    const reminderState = oldEntry || hibernatedEntry || null;
+    if (oldEntry) {
       await this._teardownSessionEntry(oldEntry, sessionPath, "reload");
       this._deleteRuntimeValueForPath(this._sessions, sessionPath);
     }
@@ -4225,11 +4291,11 @@ export class SessionCoordinator {
     // #1285: 在 open 前修复坏会话的孤儿 toolResult（必须早于 SessionManager.open）
     this._repairOrphanToolHistory(sessionPath);
     this._repairInlineMediaHistory(sessionPath);
-    const sessionMgr = SessionManager.open(sessionPath, agent.sessionDir);
+    const sessionMgr = SessionManager.open(sessionPath, readyAgent.sessionDir);
     const cwd = sessionMgr.getCwd?.() || undefined;
     const result = await this.createSession(sessionMgr, cwd, memoryEnabled, null, {
       restore: true,
-      agent,
+      agent: readyAgent,
       agentId: targetAgentId,
       preserveAgentMemoryState: true,
       refreshCapabilitySnapshots,
@@ -4271,6 +4337,10 @@ export class SessionCoordinator {
     if (!agent) {
       throw new Error(`ensureSessionLoaded: agent "${targetAgentId}" not found`);
     }
+    const readyAgent = await this._ensureAgentRuntimeReady(targetAgentId, {
+      agent,
+      reason: "ensureSessionLoaded",
+    });
 
     // memoryEnabled 从 session-owned state 恢复（跟 switchSession 同一份数据源）
     const memoryEnabled = this.getSessionMemoryEnabled(sessionPath);
@@ -4288,11 +4358,11 @@ export class SessionCoordinator {
       // #1285: 在 open 前修复坏会话的孤儿 toolResult（必须早于 SessionManager.open）
       this._repairOrphanToolHistory(sessionPath);
       this._repairInlineMediaHistory(sessionPath);
-      const sessionMgr = SessionManager.open(sessionPath, agent.sessionDir);
+      const sessionMgr = SessionManager.open(sessionPath, readyAgent.sessionDir);
       const cwd = sessionMgr.getCwd?.() || undefined;
       await this.createSession(sessionMgr, cwd, memoryEnabled, null, {
         restore: true,
-        agent,
+        agent: readyAgent,
         agentId: targetAgentId,
         preserveAgentMemoryState: true,
         reminderState,

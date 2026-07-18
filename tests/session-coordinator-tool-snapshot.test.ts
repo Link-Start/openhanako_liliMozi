@@ -181,6 +181,326 @@ describe("session-coordinator tool snapshot (createSession)", () => {
 
   // ── Case C tests ─────────────────────────────────────────────
 
+  it("waits for the active Agent runtime before creating a session or reading capability snapshots", async () => {
+    const callOrder = [];
+    const runtimeWebSearch = makeTool("web_search");
+    const coldAgent = {
+      ...focusAgent,
+      runtimeInitialized: false,
+      buildSystemPrompt: vi.fn(() => {
+        callOrder.push("prompt");
+        return "cold prompt must not be read";
+      }),
+      tools: [],
+    };
+    const readyAgent = {
+      ...focusAgent,
+      runtimeInitialized: true,
+      buildSystemPrompt: vi.fn(() => {
+        callOrder.push("prompt");
+        return "ready prompt";
+      }),
+      getToolsSnapshot: vi.fn(() => {
+        callOrder.push("tools");
+        return [runtimeWebSearch];
+      }),
+    };
+    let resolveRuntime;
+    const runtimeReady = new Promise((resolve) => {
+      resolveRuntime = resolve;
+    });
+    const ensureAgentRuntime = vi.fn(() => {
+      callOrder.push("ensure");
+      return runtimeReady;
+    });
+    sessionManagerCreateMock.mockImplementation(() => {
+      callOrder.push("session-manager");
+      return { getCwd: () => tmpDir };
+    });
+    const buildTools = vi.fn((_cwd, customTools) => {
+      callOrder.push("build-tools");
+      return { tools: SDK_BUILTIN_OBJS, customTools };
+    });
+    coord._d.getAgent = () => coldAgent;
+    coord._d.getAgentById = (agentId) => agentId === "test" ? coldAgent : null;
+    coord._d.ensureAgentRuntime = ensureAgentRuntime;
+    coord._d.buildTools = buildTools;
+    const createManifest = vi.fn();
+    coord._sessionManifestStore = {
+      resolveByLocatorPath: vi.fn(() => null),
+      createForPath: createManifest,
+    };
+
+    const creation = coord.createSession(null, tmpDir, true);
+    await Promise.resolve();
+
+    expect(ensureAgentRuntime).toHaveBeenCalledWith("test", {
+      priority: "foreground",
+      reason: "createSession",
+    });
+    expect(onBeforeSessionCreateSpy).not.toHaveBeenCalled();
+    expect(sessionManagerCreateMock).not.toHaveBeenCalled();
+    expect(coldAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(readyAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(buildTools).not.toHaveBeenCalled();
+    expect(createAgentSessionMock).not.toHaveBeenCalled();
+    expect(createManifest).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(sessionDir, "session-meta.json"))).toBe(false);
+
+    coord._sessionManifestStore = null;
+    resolveRuntime(readyAgent);
+    const { sessionPath } = await creation;
+
+    expect(onBeforeSessionCreateSpy).toHaveBeenCalledWith(tmpDir, {
+      agent: readyAgent,
+      agentId: "test",
+    });
+    expect(coldAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(readyAgent.buildSystemPrompt).toHaveBeenCalledOnce();
+    expect(readyAgent.getToolsSnapshot).toHaveBeenCalledOnce();
+    expect(buildTools.mock.calls[0][1]).toEqual([runtimeWebSearch]);
+    expect(callOrder).toEqual([
+      "ensure",
+      "session-manager",
+      "prompt",
+      "tools",
+      "build-tools",
+    ]);
+    const meta = JSON.parse(await fsp.readFile(path.join(sessionDir, "session-meta.json"), "utf-8"));
+    expect(meta[path.basename(sessionPath)].toolNames).toContain("web_search");
+  });
+
+  it("fails without creating session state when active Agent runtime initialization fails", async () => {
+    const coldAgent = {
+      ...focusAgent,
+      runtimeInitialized: false,
+      buildSystemPrompt: vi.fn(() => "must not be read"),
+      getToolsSnapshot: vi.fn(() => []),
+    };
+    let rejectRuntime;
+    const runtimeReady = new Promise((_resolve, reject) => {
+      rejectRuntime = reject;
+    });
+    const ensureAgentRuntime = vi.fn(() => runtimeReady);
+    const buildTools = vi.fn(() => ({ tools: SDK_BUILTIN_OBJS, customTools: [] }));
+    coord._d.getAgent = () => coldAgent;
+    coord._d.getAgentById = (agentId) => agentId === "test" ? coldAgent : null;
+    coord._d.ensureAgentRuntime = ensureAgentRuntime;
+    coord._d.buildTools = buildTools;
+    const createManifest = vi.fn();
+    coord._sessionManifestStore = {
+      resolveByLocatorPath: vi.fn(() => null),
+      createForPath: createManifest,
+    };
+
+    const creation = coord.createSession(null, tmpDir, true);
+    const settled = creation.catch((error) => error);
+    await Promise.resolve();
+
+    expect(sessionManagerCreateMock).not.toHaveBeenCalled();
+    expect(onBeforeSessionCreateSpy).not.toHaveBeenCalled();
+    expect(coldAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(coldAgent.getToolsSnapshot).not.toHaveBeenCalled();
+    expect(buildTools).not.toHaveBeenCalled();
+    expect(createAgentSessionMock).not.toHaveBeenCalled();
+    expect(createManifest).not.toHaveBeenCalled();
+
+    rejectRuntime(new Error("runtime init failed"));
+    const error = await settled;
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("runtime init failed");
+
+    expect(createManifest).not.toHaveBeenCalled();
+    expect(fs.existsSync(fakeSessionPath)).toBe(false);
+    expect(fs.existsSync(path.join(sessionDir, "session-meta.json"))).toBe(false);
+  });
+
+  it("refuses to create from a known-cold Agent when runtime activation is unavailable", async () => {
+    const coldAgent = {
+      ...focusAgent,
+      runtimeInitialized: false,
+      buildSystemPrompt: vi.fn(() => "must not be read"),
+      getToolsSnapshot: vi.fn(() => []),
+    };
+    coord._d.getAgent = () => coldAgent;
+    coord._d.getAgentById = (agentId) => agentId === "test" ? coldAgent : null;
+
+    await expect(coord.createSession(null, tmpDir, true)).rejects.toThrow(/test/);
+
+    expect(sessionManagerCreateMock).not.toHaveBeenCalled();
+    expect(onBeforeSessionCreateSpy).not.toHaveBeenCalled();
+    expect(coldAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(coldAgent.getToolsSnapshot).not.toHaveBeenCalled();
+    expect(createAgentSessionMock).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(sessionDir, "session-meta.json"))).toBe(false);
+  });
+
+  it("rejects a runtime instance that belongs to a different Agent", async () => {
+    const coldAgent = {
+      ...focusAgent,
+      runtimeInitialized: false,
+      buildSystemPrompt: vi.fn(() => "must not be read"),
+    };
+    const wrongAgent = {
+      ...focusAgent,
+      id: "other-agent",
+      runtimeInitialized: true,
+      buildSystemPrompt: vi.fn(() => "wrong owner prompt"),
+    };
+    coord._d.getAgent = () => coldAgent;
+    coord._d.getAgentById = (agentId) => agentId === "test" ? coldAgent : null;
+    coord._d.ensureAgentRuntime = vi.fn(async () => wrongAgent);
+
+    await expect(coord.createSession(null, tmpDir, true)).rejects.toThrow(/identity mismatch/);
+
+    expect(sessionManagerCreateMock).not.toHaveBeenCalled();
+    expect(coldAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(wrongAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(createAgentSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mismatched supplied Agent before requesting runtime activation", async () => {
+    const wrongAgent = {
+      ...focusAgent,
+      id: "other-agent",
+      runtimeInitialized: false,
+      buildSystemPrompt: vi.fn(() => "wrong owner prompt"),
+    };
+    const ensureAgentRuntime = vi.fn(async () => focusAgent);
+    coord._d.ensureAgentRuntime = ensureAgentRuntime;
+
+    await expect(coord.createSession(null, tmpDir, true, null, {
+      agent: wrongAgent,
+      agentId: "test",
+    })).rejects.toThrow(/identity mismatch/);
+
+    expect(ensureAgentRuntime).not.toHaveBeenCalled();
+    expect(sessionManagerCreateMock).not.toHaveBeenCalled();
+    expect(wrongAgent.buildSystemPrompt).not.toHaveBeenCalled();
+    expect(createAgentSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps cached session switches as pure pointer changes without runtime activation", async () => {
+    const cachedSession = {
+      sessionManager: { getSessionFile: () => fakeSessionPath },
+    };
+    const cachedEntry = {
+      session: cachedSession,
+      sessionPath: fakeSessionPath,
+      agentId: "test",
+      memoryEnabled: true,
+      lastTouchedAt: 0,
+    };
+    coord._sessions.set(fakeSessionPath, cachedEntry);
+    focusAgent.runtimeInitialized = false;
+    coord._d.getAgentById = (agentId) => agentId === "test" ? focusAgent : null;
+    const ensureAgentRuntime = vi.fn(async () => {
+      throw new Error("cached switch must not initialize runtime");
+    });
+    coord._d.ensureAgentRuntime = ensureAgentRuntime;
+
+    const result = await coord.switchSession(fakeSessionPath);
+
+    expect(result).toBe(cachedSession);
+    expect(coord._session).toBe(cachedSession);
+    expect(coord._currentSessionPath).toBe(fakeSessionPath);
+    expect(ensureAgentRuntime).not.toHaveBeenCalled();
+    expect(sessionManagerOpenMock).not.toHaveBeenCalled();
+  });
+
+  it("preflights runtime readiness before reload tears down the existing runtime", async () => {
+    const originalJsonl = `${JSON.stringify({ type: "session", id: "reload-original", cwd: tmpDir })}\n`;
+    fs.writeFileSync(fakeSessionPath, originalJsonl, "utf-8");
+    const originalSession = {
+      sessionManager: { getSessionFile: () => fakeSessionPath },
+      isStreaming: false,
+      isCompacting: false,
+    };
+    const originalEntry = {
+      session: originalSession,
+      sessionPath: fakeSessionPath,
+      agentId: "test",
+      memoryEnabled: true,
+      unsub: vi.fn(),
+    };
+    coord._sessions.set(fakeSessionPath, originalEntry);
+    coord._session = originalSession;
+    coord._currentSessionPath = fakeSessionPath;
+    focusAgent.runtimeInitialized = false;
+    coord._d.getAgentById = (agentId) => agentId === "test" ? focusAgent : null;
+    let rejectRuntime;
+    const runtimeReady = new Promise((_resolve, reject) => {
+      rejectRuntime = reject;
+    });
+    const ensureAgentRuntime = vi.fn(() => runtimeReady);
+    coord._d.ensureAgentRuntime = ensureAgentRuntime;
+    const teardown = vi.spyOn(coord as any, "_teardownSessionEntry").mockResolvedValue(undefined);
+    const health = vi.spyOn(coord as any, "_emitSessionHealthWarning").mockImplementation(() => {});
+    const repairOrphans = vi.spyOn(coord as any, "_repairOrphanToolHistory").mockImplementation(() => {});
+    const repairMedia = vi.spyOn(coord as any, "_repairInlineMediaHistory").mockImplementation(() => {});
+
+    const reload = coord.reloadSessionRuntime(fakeSessionPath);
+    const settled = reload.catch((error) => error);
+    await vi.waitFor(() => expect(ensureAgentRuntime).toHaveBeenCalled());
+
+    expect(teardown).not.toHaveBeenCalled();
+    expect(health).not.toHaveBeenCalled();
+    expect(repairOrphans).not.toHaveBeenCalled();
+    expect(repairMedia).not.toHaveBeenCalled();
+    expect(sessionManagerOpenMock).not.toHaveBeenCalled();
+    expect(coord._sessions.get(fakeSessionPath)).toBe(originalEntry);
+    expect(coord._session).toBe(originalSession);
+    expect(fs.readFileSync(fakeSessionPath, "utf-8")).toBe(originalJsonl);
+
+    rejectRuntime(new Error("reload runtime failed"));
+    const error = await settled;
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("reload runtime failed");
+    expect(teardown).not.toHaveBeenCalled();
+    expect(coord._sessions.get(fakeSessionPath)).toBe(originalEntry);
+    expect(coord._session).toBe(originalSession);
+    expect(fs.readFileSync(fakeSessionPath, "utf-8")).toBe(originalJsonl);
+  });
+
+  it.each([
+    ["switch restore", (coordinator, sessionPath) => coordinator.switchSession(sessionPath)],
+    ["background attach", (coordinator, sessionPath) => coordinator.ensureSessionLoaded(sessionPath)],
+  ])("preflights runtime readiness before %s repairs or opens JSONL", async (_label, restoreSession) => {
+    const originalJsonl = `${JSON.stringify({ type: "session", id: "restore-original", cwd: tmpDir })}\n`;
+    fs.writeFileSync(fakeSessionPath, originalJsonl, "utf-8");
+    focusAgent.runtimeInitialized = false;
+    coord._d.getAgentById = (agentId) => agentId === "test" ? focusAgent : null;
+    let rejectRuntime;
+    const runtimeReady = new Promise((_resolve, reject) => {
+      rejectRuntime = reject;
+    });
+    const ensureAgentRuntime = vi.fn(() => runtimeReady);
+    coord._d.ensureAgentRuntime = ensureAgentRuntime;
+    const health = vi.spyOn(coord as any, "_emitSessionHealthWarning").mockImplementation(() => {});
+    const repairOversized = vi.spyOn(coord as any, "_repairOversizedSessionHistory").mockImplementation(() => {});
+    const repairOrphans = vi.spyOn(coord as any, "_repairOrphanToolHistory").mockImplementation(() => {});
+    const repairMedia = vi.spyOn(coord as any, "_repairInlineMediaHistory").mockImplementation(() => {});
+
+    const restoring = restoreSession(coord, fakeSessionPath);
+    const settled = restoring.catch((error) => error);
+    await vi.waitFor(() => expect(ensureAgentRuntime).toHaveBeenCalled());
+
+    expect(health).not.toHaveBeenCalled();
+    expect(repairOversized).not.toHaveBeenCalled();
+    expect(repairOrphans).not.toHaveBeenCalled();
+    expect(repairMedia).not.toHaveBeenCalled();
+    expect(sessionManagerOpenMock).not.toHaveBeenCalled();
+    expect(fs.readFileSync(fakeSessionPath, "utf-8")).toBe(originalJsonl);
+
+    rejectRuntime(new Error("restore runtime failed"));
+    const error = await settled;
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("restore runtime failed");
+    expect(sessionManagerOpenMock).not.toHaveBeenCalled();
+    expect(coord._sessions.size).toBe(0);
+    expect(fs.readFileSync(fakeSessionPath, "utf-8")).toBe(originalJsonl);
+  });
+
   it("selects workspace skills with the explicit non-focus Agent identity", async () => {
     const targetAgent = {
       ...focusAgent,

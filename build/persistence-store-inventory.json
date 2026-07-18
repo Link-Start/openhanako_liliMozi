@@ -4474,7 +4474,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 2223,
+      "line": 2274,
       "kind": "remove-path",
       "excerpt": "fsp.rm(createdSessionPath, { force: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4483,7 +4483,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4492,
+      "line": 4562,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(titlePath, JSON.stringify(titles, null, 2), \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4492,7 +4492,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4600,
+      "line": 4670,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(titlePath, JSON.stringify(titles, null, 2), \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4501,7 +4501,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4913,
+      "line": 4983,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(metaPath, JSON.stringify(compactedMeta, null, 2))",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4510,7 +4510,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4921,
+      "line": 4991,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(metaPath), { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4519,7 +4519,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4969,
+      "line": 5039,
       "kind": "rename",
       "excerpt": "fsp.rename(metaPath, backupPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4528,7 +4528,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4996,
+      "line": 5066,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(metaPath, JSON.stringify(budgeted, null, 2))",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4537,7 +4537,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5068,
+      "line": 5138,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(absPath), { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4546,7 +4546,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5069,
+      "line": 5139,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(absPath, encoded, \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4555,7 +4555,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5244,
+      "line": 5314,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(agent.sessionDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4564,7 +4564,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5245,
+      "line": 5315,
       "kind": "rename",
       "excerpt": "fs.renameSync(oldPath, newPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4573,7 +4573,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5261,
+      "line": 5331,
       "kind": "rename",
       "excerpt": "fs.renameSync(newPath, oldPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4582,7 +4582,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5352,
+      "line": 5422,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(sp)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4591,7 +4591,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5363,
+      "line": 5433,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(candidate)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4600,7 +4600,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5368,
+      "line": 5438,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(sessionDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
