@@ -110898,7 +110898,7 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "core/migrate-providers.ts",
+          "from": "shared/migrate-config-scope.ts",
           "kind": "import-statement"
         },
         {
@@ -111167,7 +111167,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/migrate-providers.ts (import-statement); core/provider-media-config.ts (import-statement); core/device-registry.ts (import-statement); +51 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by shared/migrate-config-scope.ts (import-statement); core/provider-media-config.ts (import-statement); core/device-registry.ts (import-statement); +51 more importer(s)."
     },
     {
       "path": "shared/safe-parse.ts",
