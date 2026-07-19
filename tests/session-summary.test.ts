@@ -17,6 +17,7 @@ vi.mock("../lib/pii-guard.js", () => ({
 
 import { SessionSummaryManager } from "../lib/memory/session-summary.ts";
 import { callText } from "../core/llm-client.ts";
+import { readCurrentSessionBranch } from "../lib/session-jsonl.ts";
 
 describe("SessionSummaryManager._buildConversationText", () => {
   function createManager() {
@@ -343,6 +344,228 @@ describe("SessionSummaryManager.rollingSummary prompt contract", () => {
       expect(request.messages[0].content).toContain("## 本次摘要预算");
     } finally {
       cleanup();
+    }
+  });
+});
+
+describe("SessionSummaryManager branch cursor", () => {
+  const MODEL = { model: "m", api: "openai-completions", api_key: "k", base_url: "http://x" };
+  const VALID_SUMMARY = "### 重要事实\n- 无\n\n### 事情经过\n- [2026-07-16 16:00] 用户讨论记忆系统。";
+
+  function createHarness(entries: any[]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-summary-branch-"));
+    const sessionPath = path.join(root, "tree.jsonl");
+    const header = { type: "session", version: 3, id: "tree", timestamp: "2026-07-16T08:00:00.000Z", cwd: root };
+    fs.writeFileSync(sessionPath, [header, ...entries].map((item) => JSON.stringify(item)).join("\n") + "\n");
+    return {
+      root,
+      sessionPath,
+      manager: new SessionSummaryManager(path.join(root, "summaries")),
+      cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+    };
+  }
+
+  function msg(id: string, parentId: string | null, role: "user" | "assistant", content: string, second: number) {
+    return {
+      type: "message",
+      id,
+      parentId,
+      timestamp: `2026-07-16T08:00:${String(second).padStart(2, "0")}.000Z`,
+      message: { role, content },
+    };
+  }
+
+  it("rebuilds a legacy messageCount summary once without feeding it back as previous summary", async () => {
+    const harness = createHarness([
+      msg("u1", null, "user", "完整新分支问题", 1),
+      msg("a1", "u1", "assistant", "完整新分支回答", 2),
+    ]);
+    try {
+      harness.manager.saveSummary("s1", {
+        session_id: "s1",
+        created_at: "2026-07-16T07:00:00.000Z",
+        updated_at: "2026-07-16T07:00:00.000Z",
+        summary: "旧版摘要不得进入 replacement prompt",
+        messageCount: 2,
+        snapshot: "旧版摘要不得进入 replacement prompt",
+      });
+      const projection = readCurrentSessionBranch(harness.sessionPath);
+      (callText as any).mockResolvedValueOnce(VALID_SUMMARY);
+
+      const draft = await harness.manager.createRollingSummaryDraft("s1", projection.messages, MODEL, { projection });
+      const requestText = (callText as any).mock.calls.at(-1)[0].messages[0].content;
+
+      expect(draft.mode).toBe("replace");
+      expect(draft.data.factReplacementRequired).toBe(true);
+      expect(requestText).toContain("完整新分支问题");
+      expect(requestText).toContain("完整新分支回答");
+      expect(requestText).not.toContain("旧版摘要不得进入 replacement prompt");
+      expect(draft.data.cursor).toEqual({
+        coveredLeafId: projection.selectedLeafId,
+        lineageHash: projection.lineageHash,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("uses only the delta for a verified ancestor append", async () => {
+    const harness = createHarness([
+      msg("u1", null, "user", "already summarized user", 1),
+      msg("a1", "u1", "assistant", "already summarized assistant", 2),
+      msg("u2", "a1", "user", "new delta user", 3),
+      msg("a2", "u2", "assistant", "new delta assistant", 4),
+    ]);
+    try {
+      const prefix = readCurrentSessionBranch(harness.sessionPath, {
+        branchHead: {
+          sessionId: "s1",
+          leafId: "a1",
+          observedTailLeafId: "a2",
+          revision: 1,
+          reason: "explicit_test",
+        },
+      });
+      const current = readCurrentSessionBranch(harness.sessionPath);
+      harness.manager.saveSummary("s1", {
+        session_id: "s1",
+        created_at: "2026-07-16T07:00:00.000Z",
+        updated_at: "2026-07-16T07:00:00.000Z",
+        summary: "verified previous summary",
+        messageCount: 2,
+        cursor: { coveredLeafId: prefix.selectedLeafId, lineageHash: prefix.lineageHash },
+        snapshot: "verified previous summary",
+      });
+      (callText as any).mockResolvedValueOnce(VALID_SUMMARY);
+
+      const draft = await harness.manager.createRollingSummaryDraft("s1", current.messages, MODEL, { projection: current });
+      const requestText = (callText as any).mock.calls.at(-1)[0].messages[0].content;
+
+      expect(draft.mode).toBe("append");
+      expect(requestText).toContain("verified previous summary");
+      expect(requestText).toContain("new delta user");
+      expect(requestText).toContain("new delta assistant");
+      expect(requestText).not.toContain("already summarized user");
+      expect(draft.data.factReplacementRequired).toBe(false);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("treats an explicit root cursor as the ancestor of the first append", async () => {
+    const harness = createHarness([msg("u1", null, "user", "first message", 1)]);
+    try {
+      const root = readCurrentSessionBranch(harness.sessionPath, {
+        branchHead: { sessionId: "s1", leafId: null, observedTailLeafId: "u1", revision: 1, reason: "root" },
+      });
+      const current = readCurrentSessionBranch(harness.sessionPath);
+      harness.manager.saveSummary("s1", {
+        session_id: "s1",
+        created_at: "2026-07-16T07:00:00.000Z",
+        updated_at: "2026-07-16T07:00:00.000Z",
+        summary: "",
+        cursor: { coveredLeafId: null, lineageHash: root.lineageHash },
+        snapshot: "",
+      });
+      (callText as any).mockResolvedValueOnce(VALID_SUMMARY);
+
+      const draft = await harness.manager.createRollingSummaryDraft("s1", current.messages, MODEL, { projection: current });
+
+      expect(draft.mode).toBe("append");
+      expect(draft.data.factReplacementRequired).toBe(false);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("fully rebuilds a same-message-count sibling branch", async () => {
+    const harness = createHarness([
+      msg("u1", null, "user", "root", 1),
+      msg("a-old", "u1", "assistant", "discarded sibling", 2),
+      msg("a-new", "u1", "assistant", "current sibling", 3),
+    ]);
+    try {
+      const oldBranch = readCurrentSessionBranch(harness.sessionPath, {
+        branchHead: { sessionId: "s1", leafId: "a-old", observedTailLeafId: "a-new", revision: 1, reason: "test" },
+      });
+      const newBranch = readCurrentSessionBranch(harness.sessionPath);
+      harness.manager.saveSummary("s1", {
+        session_id: "s1",
+        created_at: "2026-07-16T07:00:00.000Z",
+        updated_at: "2026-07-16T07:00:00.000Z",
+        summary: "discarded summary must not be merged",
+        messageCount: oldBranch.messages.length,
+        cursor: { coveredLeafId: oldBranch.selectedLeafId, lineageHash: oldBranch.lineageHash },
+        snapshot: "discarded summary must not be merged",
+      });
+      expect(newBranch.messages).toHaveLength(oldBranch.messages.length);
+      (callText as any).mockResolvedValueOnce(VALID_SUMMARY);
+
+      const draft = await harness.manager.createRollingSummaryDraft("s1", newBranch.messages, MODEL, { projection: newBranch });
+      const requestText = (callText as any).mock.calls.at(-1)[0].messages[0].content;
+
+      expect(draft.mode).toBe("replace");
+      expect(requestText).toContain("current sibling");
+      expect(requestText).not.toContain("discarded sibling");
+      expect(requestText).not.toContain("discarded summary must not be merged");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("discards an LLM draft when revalidation observes a sibling switch", async () => {
+    const harness = createHarness([
+      msg("u1", null, "user", "root", 1),
+      msg("a-old", "u1", "assistant", "old", 2),
+      msg("a-new", "u1", "assistant", "new", 3),
+    ]);
+    try {
+      const oldBranch = readCurrentSessionBranch(harness.sessionPath, {
+        branchHead: { sessionId: "s1", leafId: "a-old", observedTailLeafId: "a-new", revision: 1, reason: "test" },
+      });
+      const newBranch = readCurrentSessionBranch(harness.sessionPath);
+      (callText as any).mockResolvedValueOnce(VALID_SUMMARY);
+
+      const draft = await harness.manager.createRollingSummaryDraft("s1", oldBranch.messages, MODEL, {
+        projection: oldBranch,
+        revalidateProjection: () => newBranch,
+      });
+
+      expect(draft).toMatchObject({ changed: false, data: null, reason: "branch_changed" });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("persists an empty replacement tombstone so old facts can be cleared", async () => {
+    const harness = createHarness([msg("u-old", null, "user", "discarded", 1)]);
+    try {
+      const oldBranch = readCurrentSessionBranch(harness.sessionPath);
+      harness.manager.saveSummary("s1", {
+        session_id: "s1",
+        created_at: "2026-07-16T07:00:00.000Z",
+        updated_at: "2026-07-16T07:00:00.000Z",
+        summary: "old summary",
+        cursor: { coveredLeafId: oldBranch.selectedLeafId, lineageHash: oldBranch.lineageHash },
+        snapshot: "old summary",
+      });
+      const root = readCurrentSessionBranch(harness.sessionPath, {
+        branchHead: { sessionId: "s1", leafId: null, observedTailLeafId: "u-old", revision: 2, reason: "reset" },
+      });
+      const callsBefore = (callText as any).mock.calls.length;
+
+      const draft = await harness.manager.createRollingSummaryDraft("s1", root.messages, MODEL, { projection: root });
+
+      expect(draft.mode).toBe("replace");
+      expect(draft.data).toMatchObject({
+        session_id: "s1",
+        summary: "",
+        factReplacementRequired: true,
+        cursor: { coveredLeafId: null, lineageHash: root.lineageHash },
+      });
+      expect((callText as any).mock.calls).toHaveLength(callsBefore);
+    } finally {
+      harness.cleanup();
     }
   });
 });

@@ -23,6 +23,7 @@ vi.mock("../lib/pi-sdk/index.js", () => ({
 import { callText } from "../core/llm-client.ts";
 import { generateSummary } from "../lib/pi-sdk/index.ts";
 import { writeDiary } from "../lib/diary/diary-writer.ts";
+import { readCurrentSessionBranch } from "../lib/session-jsonl.ts";
 
 let tempRoot;
 
@@ -143,6 +144,10 @@ describe("writeDiary hybrid material collection", () => {
         expect.objectContaining({ role: "user", content: "今天想把日记链路改成摘要优先。" }),
       ]),
       opts.resolvedModel,
+      expect.objectContaining({
+        projection: expect.objectContaining({ selectedLeafId: "enabled-session-1" }),
+        revalidateProjection: expect.any(Function),
+      }),
     );
     expect(opts.generateTemporarySummary).not.toHaveBeenCalled();
     expect(diaryPrompt()).toContain("## 事情经过");
@@ -220,7 +225,7 @@ describe("writeDiary hybrid material collection", () => {
     expect(diaryPrompt()).toContain("不会落回摘要库");
   });
 
-  it("keeps an in-range stale summary and adds a temporary compaction supplement", async () => {
+  it("rebuilds a legacy in-range summary before using temporary fallback material", async () => {
     const staleSummary = {
       session_id: "stale-session",
       created_at: "2026-05-07T03:00:00.000Z",
@@ -245,17 +250,17 @@ describe("writeDiary hybrid material collection", () => {
     const result = await writeDiary(opts);
 
     expect(result.error).toBeUndefined();
-    expect(opts.summaryManager.rollingSummary).not.toHaveBeenCalled();
+    expect(opts.summaryManager.rollingSummary).toHaveBeenCalledOnce();
     expect(opts.generateTemporarySummary).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "stale-session",
       previousSummary: staleSummary.summary,
     }));
-    expect(diaryPrompt()).toContain("用户开始讨论日记链路");
+    expect(diaryPrompt()).not.toContain("用户开始讨论日记链路");
     expect(diaryPrompt()).toContain("临时补齐");
     expect(diaryPrompt()).toContain("不要落回 session");
   });
 
-  it("keeps a stale summary when its temporary supplement fails", async () => {
+  it("does not trust a legacy summary when rebuild and temporary fallback both fail", async () => {
     const staleSummary = {
       session_id: "stale-supplement-fails",
       created_at: "2026-05-07T03:00:00.000Z",
@@ -279,16 +284,54 @@ describe("writeDiary hybrid material collection", () => {
 
     const result = await writeDiary(opts);
 
-    expect(result.error).toBeUndefined();
+    expect(result.error).toContain("日记材料准备失败");
     expect(result.warnings).toEqual(expect.arrayContaining([
       expect.objectContaining({
         sessionId: "stale-supplement-fails",
-        stage: "temporary-supplement",
+        stage: "temporary-summary",
         message: "simulated supplement failure",
       }),
     ]));
-    expect(diaryPrompt()).toContain("用户开始讨论日记链路");
-    expect(diaryPrompt()).not.toContain("后面这句补齐失败也不能毁掉已有摘要");
+    expect(callText).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds diary material from the current sibling branch only", async () => {
+    const sessionDir = path.join(tempRoot, "sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    const sessionPath = path.join(sessionDir, "branch-session.jsonl");
+    const entries = [
+      { type: "session", version: 3, id: "branch-session", timestamp: "2026-05-07T04:00:00.000Z", cwd: tempRoot },
+      { type: "message", id: "u1", parentId: null, timestamp: "2026-05-07T04:10:00.000Z", message: { role: "user", content: "共同问题" } },
+      { type: "message", id: "a-old", parentId: "u1", timestamp: "2026-05-07T04:11:00.000Z", message: { role: "assistant", content: "废弃回答" } },
+      { type: "message", id: "a-new", parentId: "u1", timestamp: "2026-05-07T04:12:00.000Z", message: { role: "assistant", content: "当前回答" } },
+    ];
+    fs.writeFileSync(sessionPath, entries.map((item) => JSON.stringify(item)).join("\n") + "\n");
+    const oldProjection = readCurrentSessionBranch(sessionPath, {
+      branchHead: { sessionId: "branch-session", leafId: "a-old", observedTailLeafId: "a-new", revision: 1, reason: "test" },
+    });
+    const oldSummary = {
+      session_id: "branch-session",
+      created_at: "2026-05-07T04:11:00.000Z",
+      updated_at: "2026-05-07T04:11:00.000Z",
+      summary: "废弃分支摘要",
+      cursor: { coveredLeafId: oldProjection.selectedLeafId, lineageHash: oldProjection.lineageHash },
+    };
+    const opts = baseOpts({
+      summaryManager: {
+        getSummariesInRange: vi.fn().mockReturnValue([oldSummary]),
+        getSummary: vi.fn().mockReturnValue(oldSummary),
+        rollingSummary: vi.fn().mockResolvedValue("### 事情经过\n- [2026-05-07 12:12] 当前回答已生效。"),
+      },
+    });
+
+    const result = await writeDiary(opts);
+
+    expect(result.error).toBeUndefined();
+    const messages = opts.summaryManager.rollingSummary.mock.calls[0][1];
+    expect(messages.map((message) => message.content)).toEqual(["共同问题", "当前回答"]);
+    expect(messages.map((message) => message.content)).not.toContain("废弃回答");
+    expect(diaryPrompt()).toContain("当前回答已生效");
+    expect(diaryPrompt()).not.toContain("废弃分支摘要");
   });
 
   it("slices cross-day sessions before using them as diary material", async () => {

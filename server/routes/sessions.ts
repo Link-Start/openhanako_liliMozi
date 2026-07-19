@@ -53,8 +53,8 @@ import {
 import { stripSessionReminderBlocks } from "../../core/session-reminders.ts";
 import { sessionFileRevision } from "../../core/session-list-projection-cache.ts";
 import {
+  extractLatestTodoSnapshot,
   extractLatestTodos,
-  loadLatestTodoSnapshotFromSessionFile,
 } from "../../lib/tools/todo-compat.ts";
 import { SessionManager } from "../../lib/pi-sdk/index.ts";
 import { TODO_STATE_CUSTOM_TYPE } from "../../lib/tools/todo-constants.ts";
@@ -114,6 +114,9 @@ function completeTodoItems(todos) {
 function getWritableSessionManager(engine, sessionPath) {
   const liveSession = engine.getSessionByPath?.(sessionPath);
   if (liveSession?.sessionManager) return liveSession.sessionManager;
+  if (typeof engine.openSessionManagerAtCurrentBranch === "function") {
+    return engine.openSessionManagerAtCurrentBranch(sessionPath, path.dirname(sessionPath));
+  }
   return SessionManager.open(sessionPath, path.dirname(sessionPath));
 }
 
@@ -1906,10 +1909,12 @@ export function createSessionsRoute(engine, hub = null) {
         return c.json({ error: "Cannot complete todos while session is streaming" }, 409);
       }
 
-      const snapshot = await loadLatestTodoSnapshotFromSessionFile(sessionPath);
+      const manager = getWritableSessionManager(engine, sessionPath);
+      const snapshot = extractLatestTodoSnapshot(
+        manager.buildSessionContext?.().messages || [],
+      );
       const completedTodos = completeTodoItems(snapshot?.todos || []);
       if (!snapshot?.removed && completedTodos.length > 0) {
-        const manager = getWritableSessionManager(engine, sessionPath);
         manager.appendCustomMessageEntry(
           TODO_STATE_CUSTOM_TYPE,
           TODO_COMPLETE_MESSAGE,
@@ -1921,6 +1926,7 @@ export function createSessionsRoute(engine, hub = null) {
             todos: completedTodos,
           },
         );
+        engine.syncSessionBranchHead?.(sessionPath, manager, "todo_complete_append");
       }
 
       engine.emitEvent?.({ type: "todo_update", todos: [] }, sessionPath);
@@ -2246,7 +2252,8 @@ export function createSessionsRoute(engine, hub = null) {
       // master && session 的临时组合态；否则现有 session 的缓存前缀身份
       // 会被全局 gate 混淆。
       // agentId/agentName 已从 sessionPath 解析，不依赖焦点。
-      const activeModel = engine.activeSessionModel ?? engine.currentModel;
+      const activeModel = session?.model ?? engine.currentModel;
+      const modelAvailability = engine.getSessionModelAvailability?.(sessionPath) || null;
       const frozenSessionMemoryEnabled = typeof engine.getSessionMemoryEnabled === "function"
         ? engine.getSessionMemoryEnabled(sessionPath)
         : (switchedAgent?.isSessionMemoryEnabledFor?.(sessionPath) ?? engine.memoryEnabled);
@@ -2284,6 +2291,10 @@ export function createSessionsRoute(engine, hub = null) {
         currentModelThinkingLevels: activeModel ? getModelThinkingLevels(activeModel) : null,
         currentModelDefaultThinkingLevel: activeModel ? resolveModelDefaultThinkingLevel(activeModel) : null,
         currentModelContextWindow: activeModel?.contextWindow ?? null,
+        currentModelAvailable: modelAvailability?.available !== false,
+        currentModelUnavailableReason: modelAvailability?.available === false
+          ? (modelAvailability.reason || "temporarily_unavailable")
+          : null,
         // #1624：restore 时算好的工具/prompt 漂移提示（无漂移或已 dismiss → null）
         capabilityDrift: engine.getSessionCapabilityDriftNotice?.(sessionPath) || null,
       });

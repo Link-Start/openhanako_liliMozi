@@ -6,6 +6,29 @@ const MODEL = { id: "gpt-5.6-sol", provider: "openai-codex" };
 
 function makeCoordinator( overrides: any = {}) {
   const models = overrides.models || { availableModels: [MODEL] };
+  const manifestByPath = new Map<string, any>();
+  const branchHeads = new Map<string, any>();
+  const sessionManifestStore = {
+    resolveByLocatorPath: vi.fn((sessionPath) => manifestByPath.get(sessionPath) || null),
+    createForPath: vi.fn(({ sessionPath, ownerAgentId }) => {
+      const manifest = {
+        sessionId: `sess:${sessionPath}`,
+        ownerAgentId,
+        locator: { path: sessionPath },
+      };
+      manifestByPath.set(sessionPath, manifest);
+      return manifest;
+    }),
+    getBySessionId: vi.fn((sessionId) => (
+      [...manifestByPath.values()].find((manifest) => manifest.sessionId === sessionId) || null
+    )),
+    getBranchHead: vi.fn((sessionId) => branchHeads.get(sessionId) || null),
+    setBranchHead: vi.fn((sessionId, state) => {
+      const head = { sessionId, ...state };
+      branchHeads.set(sessionId, head);
+      return head;
+    }),
+  };
   const coordinator = new SessionCoordinator({
     agentsDir: "/tmp/fake/agents",
     getAgent: () => ({ id: "test-agent" }),
@@ -24,6 +47,7 @@ function makeCoordinator( overrides: any = {}) {
     getAgentById: () => ({ id: "test-agent" }),
     listAgents: () => [],
     getPrefs: () => ({ getThinkingLevel: () => "medium" }),
+    sessionManifestStore,
     ...overrides,
   });
   coordinator.preflightSessionInput = vi.fn();
@@ -34,6 +58,11 @@ function makeSession({ isStreaming }) {
   return {
     isStreaming,
     model: MODEL,
+    sessionManager: {
+      getEntries: vi.fn(() => []),
+      getLeafId: vi.fn(() => null),
+      getEntry: vi.fn(() => null),
+    },
     sendCustomMessage: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -388,9 +417,7 @@ describe("SessionCoordinator deferred custom delivery", () => {
   it("records non-context custom entries on a live session manager without sending a custom message", () => {
     const coord = makeCoordinator();
     const session = makeSession({ isStreaming: false });
-    (session as any).sessionManager = {
-      appendCustomEntry: vi.fn(),
-    };
+    (session as any).sessionManager.appendCustomEntry = vi.fn();
     const sessionPath = "/tmp/fake/agents/test-agent/sessions/a.jsonl";
     coord.sessions.set(sessionPath, {
       session,

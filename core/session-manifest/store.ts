@@ -9,7 +9,7 @@ import {
 } from "../session-permission-mode.ts";
 
 export const SESSION_MANIFEST_SCHEMA_VERSION = 1;
-export const SESSION_MANIFEST_DB_USER_VERSION = 3;
+export const SESSION_MANIFEST_DB_USER_VERSION = 4;
 
 const require = createRequire(import.meta.url);
 let BetterSqliteDatabase = null;
@@ -221,6 +221,18 @@ function toExecutorMetadata(row) {
   };
 }
 
+function toBranchHead(row) {
+  if (!row) return null;
+  return {
+    sessionId: row.session_id,
+    leafId: row.leaf_id ?? null,
+    observedTailLeafId: row.observed_tail_leaf_id ?? null,
+    revision: Number(row.revision) || 1,
+    reason: row.reason || null,
+    updatedAt: row.updated_at,
+  };
+}
+
 export class SessionManifestStore {
   declare db: any;
   declare _stmts: any;
@@ -333,6 +345,16 @@ export class SessionManifestStore {
         updated_at TEXT NOT NULL,
         FOREIGN KEY(session_id) REFERENCES session_manifests(session_id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS session_branch_heads (
+        session_id TEXT PRIMARY KEY,
+        leaf_id TEXT,
+        observed_tail_leaf_id TEXT,
+        revision INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES session_manifests(session_id) ON DELETE CASCADE
+      );
     `);
   }
 
@@ -345,6 +367,19 @@ export class SessionManifestStore {
       while (version < SESSION_MANIFEST_DB_USER_VERSION) {
         switch (version) {
           case 0:
+            break;
+          case 3:
+            this.db.exec(`
+              CREATE TABLE IF NOT EXISTS session_branch_heads (
+                session_id TEXT PRIMARY KEY,
+                leaf_id TEXT,
+                observed_tail_leaf_id TEXT,
+                revision INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES session_manifests(session_id) ON DELETE CASCADE
+              )
+            `);
             break;
         }
         version++;
@@ -581,6 +616,32 @@ export class SessionManifestStore {
           executor_agent_name_snapshot = excluded.executor_agent_name_snapshot,
           executor_meta_version = excluded.executor_meta_version,
           source = excluded.source,
+          updated_at = excluded.updated_at
+      `),
+      getBranchHead: this.db.prepare(`
+        SELECT * FROM session_branch_heads WHERE session_id = ?
+      `),
+      upsertBranchHead: this.db.prepare(`
+        INSERT INTO session_branch_heads (
+          session_id,
+          leaf_id,
+          observed_tail_leaf_id,
+          revision,
+          reason,
+          updated_at
+        ) VALUES (
+          @sessionId,
+          @leafId,
+          @observedTailLeafId,
+          1,
+          @reason,
+          @updatedAt
+        )
+        ON CONFLICT(session_id) DO UPDATE SET
+          leaf_id = excluded.leaf_id,
+          observed_tail_leaf_id = excluded.observed_tail_leaf_id,
+          revision = session_branch_heads.revision + 1,
+          reason = excluded.reason,
           updated_at = excluded.updated_at
       `),
       list: this.db.prepare("SELECT * FROM session_manifests ORDER BY updated_at DESC"),
@@ -982,6 +1043,51 @@ export class SessionManifestStore {
       updatedAt,
     });
     return this.getExecutorMetadata(sessionId);
+  }
+
+  getBranchHead(sessionId) {
+    return toBranchHead(this._stmts.getBranchHead.get(sessionId));
+  }
+
+  setBranchHead(sessionId, state: any = {}) {
+    const reason = pickString(state.reason) || "session_update";
+    const leafId = state.leafId == null ? null : pickString(state.leafId);
+    const observedTailLeafId = state.observedTailLeafId == null
+      ? null
+      : pickString(state.observedTailLeafId);
+    if (state.leafId != null && !leafId) {
+      throw new SessionManifestError(
+        "session_branch_leaf_invalid",
+        "Session branch leaf id must be a non-empty string or null.",
+        { sessionId, leafId: state.leafId },
+      );
+    }
+    if (state.observedTailLeafId != null && !observedTailLeafId) {
+      throw new SessionManifestError(
+        "session_branch_tail_invalid",
+        "Session branch observed tail id must be a non-empty string or null.",
+        { sessionId, observedTailLeafId: state.observedTailLeafId },
+      );
+    }
+
+    return this.db.transaction(() => {
+      const manifest = this.getBySessionId(sessionId);
+      if (!manifest) {
+        throw new SessionManifestError(
+          "session_manifest_not_found",
+          `Session manifest not found: ${sessionId}`,
+          { sessionId },
+        );
+      }
+      this._stmts.upsertBranchHead.run({
+        sessionId,
+        leafId,
+        observedTailLeafId,
+        reason,
+        updatedAt: this._now(),
+      });
+      return this.getBranchHead(sessionId);
+    })();
   }
 
   list() {

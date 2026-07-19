@@ -121,6 +121,12 @@ import {
   normalizeProviderCacheAffinityKey,
   withProviderCacheAffinity,
 } from "../lib/llm/provider-cache-affinity.ts";
+import {
+  applyStoredSessionBranchHead,
+  persistExplicitSessionBranchHead,
+  readManifestSessionBranch,
+  syncSessionBranchHeadAfterAppend,
+} from "./session-branch-head.ts";
 
 const log = createModuleLogger("session");
 const SESSION_META_PAYLOAD_DIR = "session-meta-payloads";
@@ -128,6 +134,82 @@ const SESSION_META_PAYLOAD_FIELDS = ["promptSnapshot", "memoryReflectionSnapshot
 const SESSION_META_PAYLOAD_INLINE_LIMIT_BYTES = 256 * 1024;
 const SESSION_META_INDEX_MAX_BYTES = 1024 * 1024;
 const REMINDER_HEADER_RE = /^\[hana_reminder at \d{4}-\d{2}-\d{2} \d{2}:\d{2}\]$/;
+const SESSION_MODEL_UNAVAILABLE_API = "hana-unavailable-model";
+
+type SessionModelAvailability = {
+  available: boolean;
+  reason: "model_removed" | "provider_not_configured" | "temporarily_unavailable" | null;
+  modelRef: string;
+};
+
+function modelEntryId(entry: any) {
+  if (typeof entry === "string") return entry;
+  return typeof entry?.id === "string" ? entry.id : null;
+}
+
+function sessionModelRef(provider: any, modelId: any) {
+  return provider && modelId ? `${provider}/${modelId}` : "unknown";
+}
+
+function classifySessionModelAvailability(models: any, provider: string, modelId: string): SessionModelAvailability {
+  const modelRef = sessionModelRef(provider, modelId);
+  const availableModel = Array.isArray(models?.availableModels)
+    ? findModel(models.availableModels, modelId, provider)
+    : null;
+  if (availableModel) return { available: true, reason: null, modelRef };
+
+  const registry = models?.providerRegistry;
+  if (!registry) return { available: false, reason: "temporarily_unavailable", modelRef };
+  const chatProvider = registry.resolveChatProvider?.(provider) || null;
+  if (!chatProvider) return { available: false, reason: "provider_not_configured", modelRef };
+
+  const selection = registry.getChatModelSelection?.(provider) || null;
+  if (selection?.configError) {
+    return { available: false, reason: "provider_not_configured", modelRef };
+  }
+  const credentials = registry.getCredentials?.(provider) || null;
+  const allowsMissingApiKey = registry.allowsMissingApiKey?.(
+    provider,
+    credentials?.baseUrl || chatProvider?.entry?.baseUrl || "",
+  ) === true;
+  const hasCredentialHeaders = credentials?.headers
+    && Object.keys(credentials.headers).length > 0;
+  if (!allowsMissingApiKey && !credentials?.apiKey && !hasCredentialHeaders) {
+    return { available: false, reason: "provider_not_configured", modelRef };
+  }
+
+  const selectedModelIds = Array.isArray(selection?.models)
+    ? selection.models.map(modelEntryId).filter(Boolean)
+    : [];
+  // Both an explicit allowlist and a non-empty provider default catalog are
+  // authoritative enough to say that an absent historical ID was removed.
+  // An empty implicit catalog may still be waiting on runtime discovery, so
+  // keep that case classified as temporarily unavailable.
+  if (
+    !selectedModelIds.includes(modelId)
+    && (selection?.hasExplicitModels === true || selectedModelIds.length > 0)
+  ) {
+    return { available: false, reason: "model_removed", modelRef };
+  }
+  return { available: false, reason: "temporarily_unavailable", modelRef };
+}
+
+function createUnavailableSessionModel(models: any, provider: string, modelId: string) {
+  const registryModel = models?.modelRegistry?.find?.(provider, modelId) || null;
+  return {
+    ...(registryModel || {}),
+    id: modelId,
+    name: registryModel?.name || modelId,
+    provider,
+    api: SESSION_MODEL_UNAVAILABLE_API,
+    baseUrl: "",
+    reasoning: registryModel?.reasoning === true,
+    input: Array.isArray(registryModel?.input) ? registryModel.input : ["text"],
+    cost: registryModel?.cost || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: Number.isFinite(registryModel?.contextWindow) ? registryModel.contextWindow : 0,
+    maxTokens: Number.isFinite(registryModel?.maxTokens) ? registryModel.maxTokens : 0,
+  };
+}
 
 /** 巡检/定时任务默认工具白名单（"*" = 与 chat 一致，全部放行） */
 export const PATROL_TOOLS_DEFAULT = "*";
@@ -355,8 +437,8 @@ function normalizeDeletedAgentTranscriptMessage(message: any) {
   };
 }
 
-function readSessionBranchMessages(sessionPath: any) {
-  const manager = SessionManager.open(sessionPath, path.dirname(sessionPath));
+function readSessionBranchMessages(sessionManager: any) {
+  const manager = sessionManager;
   const branch = manager.getBranch();
   const messages: any[] = [];
   for (const entry of branch) {
@@ -1066,6 +1148,109 @@ export class SessionCoordinator {
     }
   }
 
+  _ensureBranchManifestForPath(sessionPath: any, defaults: any = {}) {
+    const manifest = this._resolveSessionManifestForPath(sessionPath)
+      || this._ensureSessionManifestForPath(sessionPath, {
+        ownerAgentId: defaults.ownerAgentId || this._d.agentIdFromSessionPath?.(sessionPath) || null,
+        domain: defaults.domain || "desktop",
+        kind: defaults.kind || "chat",
+        lifecycle: "active",
+        memoryPolicy: defaults.memoryPolicy || { mode: "inherit", inheritedFrom: "session_branch" },
+        permissionModeSnapshot: defaults.permissionModeSnapshot || {
+          mode: this._getDefaultPermissionMode(),
+          source: "session_branch_restore",
+          capturedAt: new Date().toISOString(),
+        },
+        provenance: defaults.provenance || { createdBy: "session_branch_restore" },
+        locatorReason: defaults.locatorReason || "session_branch_restore",
+      });
+    if (!manifest?.sessionId) {
+      const error: any = new Error("Session branch persistence requires a manifest.");
+      error.code = "session_manifest_unavailable";
+      throw error;
+    }
+    return manifest;
+  }
+
+  applySessionBranchHead(sessionPath: any, sessionManager: any, defaults: any = {}) {
+    const manifest = this._ensureBranchManifestForPath(sessionPath, defaults);
+    return applyStoredSessionBranchHead({
+      store: this._sessionManifestStore,
+      sessionId: manifest.sessionId,
+      sessionManager,
+      reason: defaults.reason || "session_restore",
+    });
+  }
+
+  setSessionBranchHead(sessionPath: any, state: any = {}) {
+    if (!sessionPath) throw new Error("setSessionBranchHead: sessionPath is required");
+    const manifest = this._ensureBranchManifestForPath(sessionPath, {
+      locatorReason: state.reason || "explicit_branch",
+    });
+    const entry = this._getSessionEntryByPath(sessionPath);
+    const manager = entry?.session?.sessionManager;
+    if (!manager) throw new Error(`setSessionBranchHead: session is not loaded: ${sessionPath}`);
+    const result = persistExplicitSessionBranchHead({
+      store: this._sessionManifestStore,
+      sessionId: manifest.sessionId,
+      sessionManager: manager,
+      leafId: state.leafId ?? null,
+      reason: state.reason || "explicit_branch",
+    });
+    if (state.reason === "replay_rewind") {
+      entry.memoryBranchReplacementPending = true;
+      const agent = this._d.getAgentById(entry.agentId) || this._d.getAgent();
+      agent?._memoryTicker?.notifyBranchChanged?.(sessionPath);
+    }
+    return result;
+  }
+
+  getSessionBranchProjection(sessionPath: any, opts: any = {}) {
+    if (!sessionPath) throw new Error("getSessionBranchProjection: sessionPath is required");
+    const manifest = this._ensureBranchManifestForPath(sessionPath, {
+      locatorReason: "branch_projection",
+    });
+    return readManifestSessionBranch({
+      store: this._sessionManifestStore,
+      sessionId: manifest.sessionId,
+      sessionPath,
+      since: opts.since || null,
+      persistRecovery: opts.persistRecovery !== false,
+    });
+  }
+
+  openSessionManagerAtCurrentBranch(sessionPath: any, sessionDir: any = path.dirname(sessionPath)) {
+    const manager = SessionManager.open(sessionPath, sessionDir);
+    this.applySessionBranchHead(sessionPath, manager, { reason: "cold_writer_open" });
+    return manager;
+  }
+
+  _syncSessionBranchHead(sessionPath: any, sessionManager: any, reason: any) {
+    const manifest = this._ensureBranchManifestForPath(sessionPath, {
+      locatorReason: reason || "append_sync",
+    });
+    return syncSessionBranchHeadAfterAppend({
+      store: this._sessionManifestStore,
+      sessionId: manifest.sessionId,
+      sessionManager,
+      reason: reason || "append_sync",
+    });
+  }
+
+  _syncSessionBranchHeadQuiet(sessionPath: any, sessionManager: any, reason: any) {
+    try {
+      return this._syncSessionBranchHead(sessionPath, sessionManager, reason);
+    } catch (err) {
+      log.error(`session branch head sync failed for ${path.basename(sessionPath || "session")}: ${err?.message || err}`);
+      this._d.emitEvent?.({
+        type: "session_branch_persistence_warning",
+        reason: reason || "append_sync",
+        message: err?.message || String(err),
+      }, sessionPath || null);
+      return null;
+    }
+  }
+
   /** 列表/只读富化专用：manifest 查询失败降级 null，单条失败不清空整个列表（#414 拓扑加固） */
   _resolveSessionManifestForPathQuiet(sessionPath: any) {
     try {
@@ -1467,7 +1652,8 @@ export class SessionCoordinator {
       restoreDefaultWorkspaceIfMissing(effectiveCwd);
     }
     const models = this._d.getModels();
-    // restore 模式：不指定 model，让 PI SDK 从 JSONL 恢复（session model 单一数据源）
+    // restore 模式通常由 PI SDK 从 JSONL 恢复模型。唯一例外是历史模型当前不可用：
+    // 下方会传入同 provider/id 的不可执行占位对象，阻止 SDK 静默 fallback。
     const effectiveModel = restore ? null : (model || this._pendingModel || models.currentModel);
     this._pendingModel = null;
     log.log(`createSession cwd=${effectiveCwd} restore=${restore} (传入: ${cwd || "未指定"})`);
@@ -1497,6 +1683,31 @@ export class SessionCoordinator {
         }
       }
     }
+    let branchManifestCreatedEarly = false;
+    let earlyBranchManifest = null;
+    if (restore && sessionPathForMeta && this._sessionManifestStore) {
+      earlyBranchManifest = this._resolveSessionManifestForPath(sessionPathForMeta);
+      if (!earlyBranchManifest) {
+        branchManifestCreatedEarly = true;
+        earlyBranchManifest = this._ensureBranchManifestForPath(sessionPathForMeta, {
+          ownerAgentId,
+          domain: "desktop",
+          kind: sessionKind || "chat",
+          memoryPolicy: {
+            mode: memoryEnabled ? "enabled" : "disabled",
+            inheritedFrom: "session_restore",
+          },
+          provenance: { createdBy: "session_restore" },
+          locatorReason: "session_restore_branch",
+        });
+      }
+      applyStoredSessionBranchHead({
+        store: this._sessionManifestStore,
+        sessionId: earlyBranchManifest.sessionId,
+        sessionManager: sessionMgr,
+        reason: "session_restore",
+      });
+    }
     let restoredCapabilitySnapshot = restore && sessionPathForMeta
       ? this._readSessionCapabilitySnapshot(sessionPathForMeta)
       : null;
@@ -1524,22 +1735,32 @@ export class SessionCoordinator {
       )
       : null;
     let restoredSessionModelRef = null;
+    let restoredSessionModelAvailability: SessionModelAvailability | null = null;
+    let unavailableSessionModel = null;
     if (restore) {
       try {
         restoredSessionModelRef = sessionMgr?.buildSessionContext?.()?.model || null;
       } catch (err) {
         log.warn(`restore model ref read failed: ${err.message}`);
       }
-      if (restoredSessionModelRef?.provider && restoredSessionModelRef?.modelId
-        && !findModel(models.availableModels, restoredSessionModelRef.modelId, restoredSessionModelRef.provider)) {
-        throw new Error(t("error.modelNotFound", {
-          id: `${restoredSessionModelRef.provider}/${restoredSessionModelRef.modelId}`,
-        }));
+      if (restoredSessionModelRef?.provider && restoredSessionModelRef?.modelId) {
+        restoredSessionModelAvailability = classifySessionModelAvailability(
+          models,
+          restoredSessionModelRef.provider,
+          restoredSessionModelRef.modelId,
+        );
+        if (!restoredSessionModelAvailability.available) {
+          unavailableSessionModel = createUnavailableSessionModel(
+            models,
+            restoredSessionModelRef.provider,
+            restoredSessionModelRef.modelId,
+          );
+        }
       }
     }
     const restoredPromptModel = restore && !restoredPromptSnapshot
       && restoredSessionModelRef?.provider && restoredSessionModelRef?.modelId
-      ? findModel(models.availableModels, restoredSessionModelRef.modelId, restoredSessionModelRef.provider)
+      ? findModel(models.availableModels || [], restoredSessionModelRef.modelId, restoredSessionModelRef.provider)
       : null;
     const promptPatchModel = restoredPromptSnapshot ? null : (effectiveModel || restoredPromptModel);
     // Preserve legacy `auto` until the target model is known. Collapsing it to
@@ -1715,7 +1936,7 @@ export class SessionCoordinator {
     };
 
     const sessionPathRef = { current: sessionPathForMeta };
-    const targetModelRef = { current: promptPatchModel || effectiveModel || null };
+    const targetModelRef = { current: promptPatchModel || effectiveModel || unavailableSessionModel || null };
     const warnVisionContextInjection = (entry) => {
       if (typeof entry === "string") {
         log.warn(entry);
@@ -1809,8 +2030,12 @@ export class SessionCoordinator {
       tools: sessionTools,
       customTools: sessionCustomTools,
     };
-    // 新建 session 传 model；恢复 session 不传，让 PI SDK 从 JSONL 读取（单一数据源）
-    if (effectiveModel) sessionOpts.model = effectiveModel;
+    // 正常恢复仍让 Pi 从 JSONL 解析模型。历史模型当前不可用时，传入仅承载原
+    // provider/id 的不可执行占位对象，避免 Pi 静默选择其他模型；真正发送由
+    // _assertSessionModelAvailable 拦截，直到用户显式切换模型。
+    if (effectiveModel || unavailableSessionModel) {
+      sessionOpts.model = effectiveModel || unavailableSessionModel;
+    }
     const { session, modelFallbackMessage } = await createAgentSession(sessionOpts);
     if (modelFallbackMessage) {
       if (restore) {
@@ -1826,12 +2051,15 @@ export class SessionCoordinator {
     }
     const runtimeResolvedModel = session.model;
     const catalogResolvedModel = runtimeResolvedModel?.id && runtimeResolvedModel?.provider
-      ? findModel(models.availableModels, runtimeResolvedModel.id, runtimeResolvedModel.provider)
+      ? findModel(models.availableModels || [], runtimeResolvedModel.id, runtimeResolvedModel.provider)
       : null;
     const runtimeResolvedModelHasIdentity = !!(
       runtimeResolvedModel?.id && runtimeResolvedModel?.provider
     );
-    if (restore && runtimeResolvedModelHasIdentity && !catalogResolvedModel) {
+    const restoredUnavailableModelMatches = restoredSessionModelAvailability?.available === false
+      && runtimeResolvedModel?.id === restoredSessionModelRef?.modelId
+      && runtimeResolvedModel?.provider === restoredSessionModelRef?.provider;
+    if (restore && runtimeResolvedModelHasIdentity && !catalogResolvedModel && !restoredUnavailableModelMatches) {
       await teardownSessionResources({
         session,
         unsub: null,
@@ -2100,6 +2328,14 @@ export class SessionCoordinator {
       experienceEnabled: frozenExperienceEnabled,
       modelId: resolvedModel?.id || effectiveModel?.id || null,
       modelProvider: resolvedModel?.provider || effectiveModel?.provider || null,
+      modelAvailability: restoredSessionModelAvailability || {
+        available: true,
+        reason: null,
+        modelRef: sessionModelRef(
+          resolvedModel?.provider || effectiveModel?.provider,
+          resolvedModel?.id || effectiveModel?.id,
+        ),
+      },
       cwd: effectiveCwd,
       workspaceFolders: workspaceScope.workspaceFolders,
       workspaceMountId: workspaceMount?.mountId || null,
@@ -2157,6 +2393,20 @@ export class SessionCoordinator {
     const manifest = this._ensureSessionManifestForPath(sessionPath, manifestDefaults);
     if (manifest) {
       sessionEntry.sessionId = manifest.sessionId;
+    }
+    if (manifest && branchManifestCreatedEarly) {
+      this._sessionManifestStore.setMemoryPolicy(manifest.sessionId, manifestDefaults.memoryPolicy);
+      this._sessionManifestStore.setPermissionModeSnapshot(manifest.sessionId, manifestDefaults.permissionModeSnapshot);
+      this._sessionManifestStore.setThinkingLevel(manifest.sessionId, manifestDefaults.thinkingLevel);
+      this._sessionManifestStore.setWorkspaceScope(manifest.sessionId, manifestDefaults.workspaceScope);
+      if (manifestDefaults.plugin) this._sessionManifestStore.setPlugin(manifest.sessionId, manifestDefaults.plugin);
+    }
+    if (manifest && sessionPath) {
+      this._syncSessionBranchHeadQuiet(
+        sessionPath,
+        session.sessionManager,
+        restore ? "session_restore_ready" : "session_create_ready",
+      );
     }
     // 存入 map（SessionEntry）— sessionEntry is the same object the resourceLoader proxy references.
     // Runtime ownership is keyed by sessionId when the manifest layer is available;
@@ -3843,9 +4093,10 @@ export class SessionCoordinator {
     }
 
     const sourceManager = SessionManager.open(sourceSessionPath, path.dirname(sourceSessionPath));
+    this.applySessionBranchHead(sourceSessionPath, sourceManager, { reason: "deleted_agent_continue" });
     const sourceCwd = sourceManager.getCwd?.() || null;
     const targetCwd = sourceCwd || this._d.getHomeCwd(targetAgent.id) || process.cwd();
-    const sourceMessages = readSessionBranchMessages(sourceSessionPath);
+    const sourceMessages = readSessionBranchMessages(sourceManager);
     const transcriptMessages = sourceMessages
       .map(normalizeDeletedAgentTranscriptMessage)
       .filter(Boolean);
@@ -3874,6 +4125,7 @@ export class SessionCoordinator {
         manager.appendModelChange(session.model.provider, session.model.id);
       }
       (manager as any)._rewriteFile?.();
+      this._syncSessionBranchHeadQuiet(createdSessionPath, manager, "deleted_agent_continue_append");
 
       await this.writeSessionMeta(createdSessionPath, {
         continuedFrom: {
@@ -4408,10 +4660,13 @@ export class SessionCoordinator {
     try {
       const manager = session?.sessionManager;
       if (!Array.isArray(manager?.fileEntries)) return;
+      const selectedLeafId = manager.getLeafId?.() ?? null;
       const result = repairOversizedSessionEntries(manager.fileEntries);
       if (result.projected === 0) return;
       manager.fileEntries = result.entries;
       manager._buildIndex?.();
+      if (selectedLeafId == null) manager.resetLeaf?.();
+      else if (manager.getEntry?.(selectedLeafId)) manager.branch?.(selectedLeafId);
       manager._rewriteFile?.();
       log.warn(
         `session turn: ${path.basename(sessionPath || manager.getSessionFile?.() || "session")} `
@@ -4445,21 +4700,46 @@ export class SessionCoordinator {
    * When the identity is still allowed, bind the freshly rebuilt Hana model
    * object so api/context/thinking metadata cannot remain stale.
    */
+  getSessionModelAvailability(sessionPath = this.currentSessionPath) {
+    if (!sessionPath) return null;
+    const entry = this._getSessionEntryByPath(sessionPath)
+      || this._getRuntimeValueForPath(this._hibernatedSessionMeta, sessionPath);
+    if (!entry?.modelAvailability) return null;
+    return { ...entry.modelAvailability };
+  }
+
+  _sessionModelUnavailableError(availability: SessionModelAvailability) {
+    const error: any = new Error(t("error.modelNotFound", { id: availability.modelRef }));
+    error.code = "MODEL_NOT_AVAILABLE";
+    error.modelRef = availability.modelRef;
+    error.unavailableReason = availability.reason;
+    return error;
+  }
+
   _assertSessionModelAvailable(session: any) {
     const currentModel = session?.model;
     const modelId = typeof currentModel?.id === "string" ? currentModel.id : "";
     const provider = typeof currentModel?.provider === "string" ? currentModel.provider : "";
     const models = this._d.getModels?.();
+    const sessionPath = session?.sessionManager?.getSessionFile?.() || null;
+    const entry = sessionPath ? this._getSessionEntryByPath(sessionPath) : null;
+    if (entry?.modelAvailability?.available === false) {
+      throw this._sessionModelUnavailableError(entry.modelAvailability);
+    }
     const allowedModel = modelId && provider && Array.isArray(models?.availableModels)
       ? findModel(models.availableModels, modelId, provider)
       : null;
-    const modelRef = provider && modelId ? `${provider}/${modelId}` : "unknown";
+    const modelRef = sessionModelRef(provider, modelId);
 
     if (!allowedModel) {
-      const error: any = new Error(t("error.modelNotFound", { id: modelRef }));
-      error.code = "MODEL_NOT_AVAILABLE";
-      error.modelRef = modelRef;
-      throw error;
+      const availability = modelId && provider
+        ? classifySessionModelAvailability(models, provider, modelId)
+        : { available: false, reason: "temporarily_unavailable", modelRef } as SessionModelAvailability;
+      if (entry) {
+        entry.modelAvailability = availability;
+        this._emitSessionMetadataUpdated(sessionPath, { modelAvailability: { ...availability } });
+      }
+      throw this._sessionModelUnavailableError(availability);
     }
 
     if (currentModel !== allowedModel) {
@@ -4470,6 +4750,9 @@ export class SessionCoordinator {
         error.modelRef = modelRef;
         throw error;
       }
+    }
+    if (entry && entry.modelAvailability?.available !== true) {
+      entry.modelAvailability = { available: true, reason: null, modelRef };
     }
     return allowedModel;
   }
@@ -4513,12 +4796,15 @@ export class SessionCoordinator {
       engine?.endCurrentTurnNativeMedia?.(nativeMediaTurn);
       pruneSessionInlineMediaHistory(this._session);
       this._projectOversizedSessionHistory(this._session, sp);
+      if (sp) this._syncSessionBranchHeadQuiet(sp, this._session.sessionManager, "prompt_finally");
       if (sp) this._scheduleRuntimePressureCheck(sp, "prompt");
     }
     if (sp) {
       const entry = this._getSessionEntryByPath(sp);
       const agent = entry ? this._d.getAgentById(entry.agentId) : this._d.getAgent();
-      agent?._memoryTicker?.notifyTurn(sp);
+      const forceSummary = entry?.memoryBranchReplacementPending === true;
+      if (entry) entry.memoryBranchReplacementPending = false;
+      agent?._memoryTicker?.notifyTurn(sp, { forceSummary });
     }
   }
 
@@ -4626,10 +4912,13 @@ export class SessionCoordinator {
       engine?.endCurrentTurnNativeMedia?.(nativeMediaTurn);
       pruneSessionInlineMediaHistory(entry.session);
       this._projectOversizedSessionHistory(entry.session, sessionPath);
+      this._syncSessionBranchHeadQuiet(sessionPath, entry.session.sessionManager, "prompt_session_finally");
       this._scheduleRuntimePressureCheck(sessionPath, "prompt_session");
     }
     const agent = this._d.getAgentById(entry.agentId) || this._d.getAgent();
-    agent?._memoryTicker?.notifyTurn(sessionPath);
+    const forceSummary = entry.memoryBranchReplacementPending === true;
+    entry.memoryBranchReplacementPending = false;
+    agent?._memoryTicker?.notifyTurn(sessionPath, { forceSummary });
   }
 
   steerSession(sessionPath: any, text: any) {
@@ -4671,6 +4960,7 @@ export class SessionCoordinator {
       this.preflightSessionInput(sessionPath);
       entry.lastTouchedAt = Date.now();
       await entry.session.sendCustomMessage(message, { deliverAs: "followUp" });
+      this._syncSessionBranchHeadQuiet(sessionPath, entry.session.sessionManager, "custom_message_followup");
       this._emitTurnInputPresentation(sessionPath, message, "followUp");
       return { ok: true, mode: "followUp" };
     }
@@ -4689,6 +4979,7 @@ export class SessionCoordinator {
       entry.lastTouchedAt = Date.now();
     }
     await entry.session.sendCustomMessage(message, { triggerTurn });
+    this._syncSessionBranchHeadQuiet(sessionPath, entry.session.sessionManager, "custom_message_delivery");
     return { ok: true, mode: triggerTurn ? "triggerTurn" : "notifyOnly" };
   }
 
@@ -4700,11 +4991,13 @@ export class SessionCoordinator {
     const liveManager = this._getSessionEntryByPath(sessionPath)?.session?.sessionManager;
     if (typeof liveManager?.appendCustomEntry === "function") {
       liveManager.appendCustomEntry(customType, data);
+      this._syncSessionBranchHeadQuiet(sessionPath, liveManager, "custom_entry_live");
       return { ok: true, mode: "live" };
     }
 
-    const manager = SessionManager.open(sessionPath, path.dirname(sessionPath));
+    const manager = this.openSessionManagerAtCurrentBranch(sessionPath, path.dirname(sessionPath));
     manager.appendCustomEntry(customType, data);
+    this._syncSessionBranchHeadQuiet(sessionPath, manager, "custom_entry_file");
     return { ok: true, mode: "file" };
   }
 
@@ -4824,6 +5117,7 @@ export class SessionCoordinator {
     entry._switching = true;
     const adaptations = [];
     const oldModel = session.model;
+    const compactionModel = entry.modelAvailability?.available === false ? newModel : oldModel;
 
     try {
       // 估算当前上下文 token 数
@@ -4849,7 +5143,7 @@ export class SessionCoordinator {
 
         // 尝试压缩
         try {
-          const compactionResult = await this._compactWithModel(sessionPath, session, effectiveWindow, oldModel);
+          const compactionResult = await this._compactWithModel(sessionPath, session, effectiveWindow, compactionModel);
           const hardTruncated = compactionResult?.details?.reason === "cache-preserving-compaction-hard-truncate";
           adaptations.push(hardTruncated ? "truncated" : "compacted");
         } catch (compactErr) {
@@ -4877,6 +5171,11 @@ export class SessionCoordinator {
       await session.setModel(newModel);
       entry.modelId = newModel.id;
       entry.modelProvider = newModel.provider;
+      entry.modelAvailability = {
+        available: true,
+        reason: null,
+        modelRef: sessionModelRef(newModel.provider, newModel.id),
+      };
       const models = this._d.getModels();
       const currentThinkingLevel = this.getSessionThinkingLevel(sessionPath);
       const nextThinkingLevel = normalizeThinkingLevelForModel(currentThinkingLevel, newModel);
@@ -4884,6 +5183,9 @@ export class SessionCoordinator {
       session.setThinkingLevel?.(models?.resolveThinkingLevel?.(nextThinkingLevel) || nextThinkingLevel);
       this.writeSessionMeta(sessionPath, { thinkingLevel: nextThinkingLevel });
       this._renewCachePrefixContract(sessionPath, entry, "model_switch");
+      this._emitSessionMetadataUpdated(sessionPath, {
+        modelAvailability: { ...entry.modelAvailability },
+      });
 
       return { adaptations, thinkingLevel: nextThinkingLevel };
     } finally {
@@ -5356,6 +5658,7 @@ export class SessionCoordinator {
       experienceEnabled: entry.experienceEnabled,
       modelId: entry.modelId,
       modelProvider: entry.modelProvider,
+      modelAvailability: entry.modelAvailability ? { ...entry.modelAvailability } : null,
       cwd: entry.cwd || entry.session?.sessionManager?.getCwd?.() || null,
       workspaceFolders: Array.isArray(entry.workspaceFolders) ? [...entry.workspaceFolders] : [],
       authorizedFolders: Array.isArray(entry.authorizedFolders) ? [...entry.authorizedFolders] : [],
@@ -7268,6 +7571,16 @@ export class SessionCoordinator {
           providerCacheAffinityKey: isolatedProviderCacheAffinityKey,
         });
       }
+      if (isResumedSession) {
+        applyStoredSessionBranchHead({
+          store: this._sessionManifestStore,
+          sessionId: isolatedManifest.sessionId,
+          sessionManager: tempSessionMgr,
+          reason: "isolated_session_resume",
+        });
+      } else {
+        this._syncSessionBranchHeadQuiet(isolatedIdentityPath, tempSessionMgr, "isolated_session_create");
+      }
       const targetAgentToolsSnapshot = typeof targetAgent.getToolsSnapshot === "function"
         ? targetAgent.getToolsSnapshot({
           forceMemoryEnabled: targetAgent.memoryMasterEnabled !== false,
@@ -7573,6 +7886,9 @@ export class SessionCoordinator {
       try {
         await session.prompt(prompt);
       } finally {
+        if (childSessionPath) {
+          this._syncSessionBranchHeadQuiet(childSessionPath, session.sessionManager, "isolated_prompt_finally");
+        }
         opts.signal?.removeEventListener("abort", abortHandler);
         await teardownIsolatedSession("finally");
       }

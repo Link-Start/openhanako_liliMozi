@@ -26,6 +26,7 @@ function collectInlineImages(data) {
   const images = [];
   for (const candidate of data?.candidates || []) {
     for (const part of candidate?.content?.parts || []) {
+      if (part?.thought === true) continue;
       const inline = part.inlineData || part.inline_data;
       const b64 = inline?.data;
       if (typeof b64 === "string") {
@@ -45,7 +46,7 @@ function geminiImageCapabilities(modelId) {
     return {
       ratios: new Set(GEMINI_31_FLASH_RATIOS),
       imageSizes: new Set(GEMINI_31_FLASH_SIZES),
-      defaultImageSize: "4K",
+      defaultImageSize: "1K",
       maxReferenceImages: 14,
       supportsImageSize: true,
     };
@@ -54,7 +55,7 @@ function geminiImageCapabilities(modelId) {
     return {
       ratios: new Set(GEMINI_3_PRO_RATIOS),
       imageSizes: new Set(GEMINI_3_SIZES),
-      defaultImageSize: "4K",
+      defaultImageSize: "1K",
       maxReferenceImages: 14,
       supportsImageSize: true,
     };
@@ -105,6 +106,64 @@ function normalizeGeminiImageConfig(params, modelId) {
   return imageConfig;
 }
 
+function geminiErrorClassification(httpStatus) {
+  if (httpStatus === 401 || httpStatus === 403) return { kind: "authentication", retryable: false };
+  if (httpStatus === 408) return { kind: "timeout", retryable: true };
+  if (httpStatus === 429) return { kind: "rate_limit", retryable: true };
+  if (httpStatus >= 500) return { kind: "provider", retryable: true };
+  return { kind: "request", retryable: false };
+}
+
+function isRecord(value): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+class GeminiImageApiError extends Error {
+  declare code: string;
+  declare httpStatus: number;
+  declare provider: string;
+  declare retryable: boolean;
+  declare classification: { domain: string; kind: string };
+  declare googleError: Record<string, unknown> | null;
+
+  constructor(httpStatus, googleError: Record<string, unknown> | null = null) {
+    const providerStatus = typeof googleError?.status === "string" && googleError.status
+      ? googleError.status
+      : null;
+    const detail = typeof googleError?.message === "string" && googleError.message
+      ? googleError.message
+      : "unknown Google API error";
+    super(`Gemini API error ${httpStatus}${providerStatus ? ` (${providerStatus})` : ""}: ${detail}`);
+    this.name = "GeminiImageApiError";
+    this.code = providerStatus || `GEMINI_HTTP_${httpStatus}`;
+    this.httpStatus = httpStatus;
+    this.provider = "gemini";
+    const classified = geminiErrorClassification(httpStatus);
+    this.retryable = classified.retryable;
+    this.classification = { domain: "provider", kind: classified.kind };
+    this.googleError = googleError && typeof googleError === "object"
+      ? structuredClone(googleError)
+      : null;
+  }
+}
+
+function noImageResponseDetail(data) {
+  const details = [];
+  const blockReason = data?.promptFeedback?.blockReason || data?.prompt_feedback?.block_reason;
+  if (typeof blockReason === "string" && blockReason && blockReason !== "BLOCK_REASON_UNSPECIFIED") {
+    details.push(`promptFeedback.blockReason=${blockReason}`);
+  }
+  const finishReasons = [...new Set(
+    (data?.candidates || [])
+      .map((candidate) => candidate?.finishReason || candidate?.finish_reason)
+      .filter((reason) => typeof reason === "string" && reason),
+  )];
+  if (finishReasons.length > 0) details.push(`finishReason=${finishReasons.join(",")}`);
+  return details.length > 0
+    ? `Gemini API returned no images (${details.join("; ")})`
+    : "Gemini API returned no images";
+}
+
 async function remoteImageToInlinePart(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`download Gemini reference image failed ${res.status}`);
@@ -147,7 +206,7 @@ export const geminiImageAdapter = {
 
   async submit(params, ctx) {
     const creds = await getCredentials(ctx, params);
-    const modelId = params.modelId || params.model || "gemini-3.1-flash-image-preview";
+    const modelId = params.modelId || params.model || "gemini-3.1-flash-image";
     const capabilities = geminiImageCapabilities(modelId);
     const inputImages = normalizeImageInput(params.image);
     if (inputImages.length > capabilities.maxReferenceImages) {
@@ -165,7 +224,7 @@ export const geminiImageAdapter = {
       contents: [{ parts }],
       generationConfig: {
         responseModalities: ["TEXT", "IMAGE"],
-        ...(Object.keys(imageConfig).length ? { responseFormat: { image: imageConfig } } : {}),
+        ...(Object.keys(imageConfig).length ? { imageConfig } : {}),
       },
     };
 
@@ -179,17 +238,20 @@ export const geminiImageAdapter = {
     });
 
     if (!res.ok) {
-      let msg = `API error ${res.status}`;
+      let googleError: Record<string, unknown> | null = null;
       try {
-        const err = await res.json();
-        if (err.error?.message) msg = `${msg}: ${err.error.message}`;
-      } catch {}
-      throw new Error(msg);
+        const payload = await res.json();
+        if (isRecord(payload?.error)) googleError = payload.error;
+      } catch {
+        // Some proxy errors are HTML/plain text. HTTP status still provides
+        // a stable classification even when no Google error object exists.
+      }
+      throw new GeminiImageApiError(res.status, googleError);
     }
 
     const data = await res.json();
     const images = collectInlineImages(data);
-    if (images.length === 0) throw new Error("Gemini API returned no images");
+    if (images.length === 0) throw new Error(noImageResponseDetail(data));
 
     const files = [];
     for (const [index, image] of images.entries()) {

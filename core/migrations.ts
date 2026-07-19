@@ -164,6 +164,8 @@ const migrations = {
   // 迁移 #45 曾把 model_change / assistant message 事件记录自身的 id 误收为
   // Codex 模型 id 并写入 Provider Catalog；用闭环证据法清理这批污染条目
   49: repairPollutedCodexEventIdModels,
+  // Gemini 生图 preview 模型退役：默认、provider key、catalog 与可重试任务统一到 stable ID
+  50: migrateGeminiImagePreviewIdsToStable,
 };
 
 const migrationDependencies = {
@@ -175,6 +177,7 @@ const migrationDependencies = {
   45: [42, 44],
   46: [42],
   49: [42, 45],
+  50: [42],
 };
 
 const migrationIds = Object.keys(migrations).map(Number).sort((a, b) => a - b);
@@ -2350,6 +2353,197 @@ function removeCodexImageSizeDefaultFromPluginConfig(hanakoHome, log) {
 
   atomicWriteSync(configPath, JSON.stringify(config, null, 2) + "\n");
   return true;
+}
+
+const GEMINI_IMAGE_MODEL_ID_MIGRATION = Object.freeze({
+  "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+  "gemini-3-pro-image-preview": "gemini-3-pro-image",
+});
+
+function stableGeminiImageModelId(value) {
+  if (typeof value !== "string") return value;
+  return GEMINI_IMAGE_MODEL_ID_MIGRATION[value] || value;
+}
+
+function migrateGeminiModelKeyedDefaults(providerDefaults) {
+  const defaults = migrationRecord(providerDefaults);
+  const gemini = migrationRecord(defaults?.gemini);
+  if (!gemini) return false;
+  const before = JSON.stringify(gemini);
+  const models = migrationRecord(gemini.models);
+  if (models) {
+    for (const [previewId, stableId] of Object.entries(GEMINI_IMAGE_MODEL_ID_MIGRATION)) {
+      if (!Object.prototype.hasOwnProperty.call(models, previewId)) continue;
+      const previewValue = models[previewId];
+      if (!Object.prototype.hasOwnProperty.call(models, stableId)) {
+        models[stableId] = previewValue;
+      } else if (migrationRecord(previewValue) && migrationRecord(models[stableId])) {
+        // An explicitly saved stable-ID value wins field conflicts, while
+        // non-conflicting defaults from the retired key are retained.
+        models[stableId] = { ...previewValue, ...models[stableId] };
+      }
+      delete models[previewId];
+    }
+  }
+  for (const key of ["model", "modelId", "defaultModelId"]) {
+    if (typeof gemini[key] === "string") gemini[key] = stableGeminiImageModelId(gemini[key]);
+  }
+  return JSON.stringify(gemini) !== before;
+}
+
+function migrateGeminiImageConfigRecord(config) {
+  const record = migrationRecord(config);
+  if (!record) return false;
+  const before = JSON.stringify(record);
+  const defaultModel = migrationRecord(record.defaultImageModel);
+  if (defaultModel?.provider === "gemini" && typeof defaultModel.id === "string") {
+    defaultModel.id = stableGeminiImageModelId(defaultModel.id);
+  }
+  migrateGeminiModelKeyedDefaults(record.providerDefaults);
+  return JSON.stringify(record) !== before;
+}
+
+function migrateGeminiCatalogModelList(models) {
+  if (!Array.isArray(models)) return { models, changed: false };
+  const order = [];
+  const byId = new Map();
+  let changed = false;
+
+  for (const rawModel of models) {
+    const rawId = migrationModelId(rawModel);
+    if (typeof rawId !== "string" || !rawId) {
+      const invalidKey = Symbol("invalid-model");
+      order.push(invalidKey);
+      byId.set(invalidKey, { value: rawModel, stableSource: true });
+      continue;
+    }
+    const stableId = stableGeminiImageModelId(rawId);
+    const isStableSource = stableId === rawId;
+    if (!isStableSource) changed = true;
+    const incoming = migrationRecord(rawModel)
+      ? { ...rawModel, id: stableId }
+      : stableId;
+    if (!byId.has(stableId)) {
+      order.push(stableId);
+      byId.set(stableId, { value: incoming, stableSource: isStableSource });
+      continue;
+    }
+
+    changed = true;
+    const current = byId.get(stableId);
+    const currentRecord = migrationRecord(current.value);
+    const incomingRecord = migrationRecord(incoming);
+    if (currentRecord && incomingRecord) {
+      current.value = isStableSource
+        ? { ...currentRecord, ...incomingRecord, id: stableId }
+        : { ...incomingRecord, ...currentRecord, id: stableId };
+      current.stableSource = current.stableSource || isStableSource;
+    } else if (isStableSource && !current.stableSource) {
+      current.value = incoming;
+      current.stableSource = true;
+    }
+  }
+
+  return {
+    models: order.map((id) => byId.get(id)?.value),
+    changed,
+  };
+}
+
+function migrateGeminiCatalogProvider(provider) {
+  const record = migrationRecord(provider);
+  if (!record) return false;
+  const before = JSON.stringify(record);
+  if (Array.isArray(record.models)) {
+    record.models = migrateGeminiCatalogModelList(record.models).models;
+  }
+  const media = migrationRecord(record.media);
+  for (const key of ["image_generation", "imageGeneration"]) {
+    const capability = migrationRecord(media?.[key]);
+    if (!capability) continue;
+    if (typeof capability.defaultModelId === "string") {
+      capability.defaultModelId = stableGeminiImageModelId(capability.defaultModelId);
+    }
+    if (Array.isArray(capability.models)) {
+      capability.models = migrateGeminiCatalogModelList(capability.models).models;
+    }
+  }
+  return JSON.stringify(record) !== before;
+}
+
+function migrateGeminiPersistedTasks(hanakoHome, log) {
+  const tasksPath = path.join(hanakoHome, "plugin-data", "image-gen", "tasks.json");
+  if (!fs.existsSync(tasksPath)) return false;
+  let tasks;
+  try {
+    tasks = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
+  } catch (err) {
+    log?.(`[migrations] #45: image-gen tasks unreadable, skipped (${err.message})`);
+    return false;
+  }
+  if (!Array.isArray(tasks)) return false;
+  const before = JSON.stringify(tasks);
+  for (const task of tasks) {
+    if (!migrationRecord(task)) continue;
+    const params = migrationRecord(task.params);
+    const isGemini = task.providerId === "gemini"
+      || task.adapterId === "gemini"
+      || params?.providerId === "gemini";
+    if (!isGemini) continue;
+    if (typeof task.modelId === "string") task.modelId = stableGeminiImageModelId(task.modelId);
+    if (params) {
+      if (typeof params.modelId === "string") params.modelId = stableGeminiImageModelId(params.modelId);
+      if (typeof params.model === "string") params.model = stableGeminiImageModelId(params.model);
+    }
+  }
+  if (JSON.stringify(tasks) === before) return false;
+  atomicWriteSync(tasksPath, JSON.stringify(tasks, null, 2) + "\n");
+  return true;
+}
+
+function migrateGeminiPluginConfig(hanakoHome, log) {
+  const configPath = path.join(hanakoHome, "plugin-data", "image-gen", "config.json");
+  if (!fs.existsSync(configPath)) return false;
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch (err) {
+    log?.(`[migrations] #45: image-gen plugin config unreadable, skipped (${err.message})`);
+    return false;
+  }
+  const changed = migrateGeminiImageConfigRecord(config?.global);
+  if (!changed) return false;
+  atomicWriteSync(configPath, JSON.stringify(config, null, 2) + "\n");
+  return true;
+}
+
+function migrateGeminiImagePreviewIdsToStable(ctx) {
+  const { hanakoHome, prefs, providerRegistry, log } = ctx;
+  const preferences = prefs.getPreferences();
+  const preferencesChanged = migrateGeminiImageConfigRecord(preferences.imageGeneration);
+  if (preferencesChanged) prefs.savePreferences(preferences);
+
+  const pluginConfigChanged = migrateGeminiPluginConfig(hanakoHome, log);
+  const tasksChanged = migrateGeminiPersistedTasks(hanakoHome, log);
+
+  const store = providerRegistry?._catalog || new ProviderCatalogStore(hanakoHome);
+  const catalog = store.load();
+  const providers = structuredClone(catalog.providers || {});
+  const catalogChanged = migrateGeminiCatalogProvider(providers.gemini);
+  if (catalogChanged) {
+    store.saveProviders(providers, { geminiImageStableIdsMigratedAt: new Date().toISOString() });
+    if (providerRegistry) {
+      providerRegistry._addedModelsCache = null;
+      providerRegistry._addedModelsMtime = 0;
+      providerRegistry._entries?.clear?.();
+    }
+  }
+
+  log?.(
+    `[migrations] #45: Gemini image IDs migrated `
+      + `(preferences=${preferencesChanged}, pluginConfig=${pluginConfigChanged}, `
+      + `catalog=${catalogChanged}, tasks=${tasksChanged})`,
+  );
 }
 
 function migrateDirectNotifyAutomationsToAgentRuns(ctx) {

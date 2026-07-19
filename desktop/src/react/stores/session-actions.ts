@@ -874,6 +874,10 @@ export async function switchSession(path: string): Promise<void> {
         thinkingLevels: Array.isArray(data.currentModelThinkingLevels) ? data.currentModelThinkingLevels : undefined,
         defaultThinkingLevel: data.currentModelDefaultThinkingLevel ?? undefined,
         contextWindow: data.currentModelContextWindow ?? undefined,
+        available: data.currentModelAvailable !== false,
+        unavailableReason: data.currentModelAvailable === false
+          ? (data.currentModelUnavailableReason || 'temporarily_unavailable')
+          : null,
       });
     }
 

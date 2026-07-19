@@ -19,6 +19,7 @@ import {
   resolveMemoryTimeZone,
 } from "./time-context.ts";
 import { createModuleLogger } from "../debug-log.ts";
+import { sessionSummaryRevision } from "./session-summary.ts";
 
 const log = createModuleLogger("deep-memory");
 
@@ -26,6 +27,21 @@ const MAX_RETRIES = 3;
 const MAX_CONCURRENT = 3;
 const _failCounts = new Map(); // session → { count, lastUpdated }
 const FAIL_COUNT_TTL_MS = 60 * 60 * 1000;
+
+function summarySupersededError(message) {
+  const error: any = new Error(message);
+  error.code = "session_summary_superseded";
+  return error;
+}
+
+function summaryCursorBelongsToProjection(summary, projection) {
+  const cursor = summary?.cursor;
+  if (!cursor || typeof cursor.lineageHash !== "string" || !projection) return false;
+  const lineageHash = cursor.coveredLeafId == null
+    ? projection.rootLineageHash
+    : projection.prefixHashes?.[cursor.coveredLeafId];
+  return lineageHash === cursor.lineageHash;
+}
 
 function cleanExpiredFailCounts() {
   const cutoff = Date.now() - FAIL_COUNT_TTL_MS;
@@ -99,8 +115,13 @@ function normalizeFactJsonOutput(raw) {
  * @param {{ model: string, api: string, api_key: string, base_url: string }} resolvedModel
  * @returns {Promise<{ processed: number, factsAdded: number }>}
  */
-export async function processDirtySessions(summaryManager, factStore, resolvedModel, opts: { since?: any; getSourceTimeRange?: any; timeZone?: any } = {}) {
-  const dirty = summaryManager.getDirtySessions({ since: opts.since || null });
+export async function processDirtySessions(summaryManager, factStore, resolvedModel, opts: { since?: any; getSourceTimeRange?: any; getCurrentBranchProjection?: any; timeZone?: any; sessionIds?: string[] } = {}) {
+  const requestedSessionIds = Array.isArray(opts.sessionIds) && opts.sessionIds.length > 0
+    ? new Set(opts.sessionIds)
+    : null;
+  const dirty = summaryManager
+    .getDirtySessions({ since: opts.since || null })
+    .filter((session) => !requestedSessionIds || requestedSessionIds.has(session.session_id));
   if (dirty.length === 0) {
     return { processed: 0, factsAdded: 0 };
   }
@@ -110,6 +131,7 @@ export async function processDirtySessions(summaryManager, factStore, resolvedMo
   let totalFacts = 0;
 
   const processOne = async (session) => {
+    const expectedRevision = sessionSummaryRevision(session);
     try {
       const sourceTimeRange = !session?.source_time_range && typeof opts.getSourceTimeRange === "function"
         ? await opts.getSourceTimeRange(session.session_id)
@@ -118,45 +140,94 @@ export async function processDirtySessions(summaryManager, factStore, resolvedMo
         ? { ...session, source_time_range: sourceTimeRange }
         : session;
       const timeContext = buildFactTimeContext(sessionForTime, { timeZone: opts.timeZone });
-      const facts = await extractFactsFromDiff(
-        session.summary,
-        session.snapshot || "",
-        resolvedModel,
-        timeContext,
-      );
-
-      if (facts.length > 0) {
-        factStore.addBatch(
-          facts.map((f) => ({
-            fact: f.fact,
-            tags: f.tags || [],
-            time: f.time || null,
-            session_id: session.session_id,
-          })),
+      const replacement = session.factReplacementRequired === true;
+      const facts = replacement && !session.summary?.trim()
+        ? []
+        : await extractFactsFromDiff(
+          session.summary,
+          replacement ? "" : (session.snapshot || ""),
+          resolvedModel,
+          timeContext,
         );
+
+      const factEntries = facts.map((f) => ({
+        fact: f.fact,
+        tags: f.tags || [],
+        time: f.time || null,
+        session_id: session.session_id,
+      }));
+
+      if (typeof opts.getCurrentBranchProjection === "function") {
+        if (replacement && !session.cursor) {
+          throw summarySupersededError("replacement summary has no verifiable branch cursor");
+        }
+        // Legacy additive summaries have no branch proof. Preserve their
+        // existing retry behavior, but never use this path for replacement.
+        if (session.cursor) {
+          const projection = opts.getCurrentBranchProjection(session.session_id);
+          if (projection && typeof projection.then === "function") {
+            throw new TypeError("getCurrentBranchProjection must be synchronous for the fact commit guard");
+          }
+          if (!summaryCursorBelongsToProjection(session, projection)) {
+            throw summarySupersededError("session branch changed during fact extraction");
+          }
+        }
+      }
+      if (
+        typeof summaryManager.isRevisionCurrent === "function"
+        && !summaryManager.isRevisionCurrent(session.session_id, expectedRevision)
+      ) {
+        throw summarySupersededError("session summary changed during fact extraction");
+      }
+
+      if (replacement) {
+        if (typeof factStore.replaceBySession !== "function") {
+          throw new Error("fact store does not support session replacement");
+        }
+        factStore.replaceBySession(session.session_id, factEntries);
+      } else if (factEntries.length > 0) {
+        factStore.addBatch(factEntries);
+      }
+
+      if (factEntries.length > 0) {
         totalFacts += facts.length;
         log.log(
           `${session.session_id.slice(0, 8)}...: ${facts.length} 条元事实`,
         );
       }
 
-      summaryManager.markProcessed(session.session_id);
+      const marked = typeof summaryManager.markProcessedIfCurrent === "function"
+        ? summaryManager.markProcessedIfCurrent(session.session_id, expectedRevision)
+        : summaryManager.markProcessed(session.session_id);
+      if (marked === false) {
+        throw summarySupersededError("session summary changed before fact extraction commit");
+      }
       _failCounts.delete(session.session_id);
     } catch (err) {
+      if (err?.code === "session_summary_superseded") {
+        log.warn(`${session.session_id.slice(0, 8)}...: ${err.message}; keeping current summary dirty`);
+        return;
+      }
       cleanExpiredFailCounts();
       const prev = _failCounts.get(session.session_id);
       const count = (prev?.count || 0) + 1;
       _failCounts.set(session.session_id, { count, lastUpdated: Date.now() });
 
-      if (count >= MAX_RETRIES) {
+      if (count >= MAX_RETRIES && session.factReplacementRequired !== true) {
         log.error(
           `${session.session_id.slice(0, 8)}... 连续失败 ${count} 次，标记跳过: ${err.message}`,
         );
-        summaryManager.markProcessed(session.session_id);
+        if (typeof summaryManager.markProcessedIfCurrent === "function") {
+          summaryManager.markProcessedIfCurrent(session.session_id, expectedRevision);
+        } else {
+          summaryManager.markProcessed(session.session_id);
+        }
         _failCounts.delete(session.session_id);
       } else {
         log.error(
-          `处理失败 (${session.session_id.slice(0, 8)}... ${count}/${MAX_RETRIES}): ${err.message}`,
+          session.factReplacementRequired === true && count >= MAX_RETRIES
+            ? `处理失败 (${session.session_id.slice(0, 8)}... ${count} 次，分支替换保持 dirty): ${err.message}`
+            : `处理失败 (${session.session_id.slice(0, 8)}... ${count}/${MAX_RETRIES}): ${err.message}`,
         );
       }
     }

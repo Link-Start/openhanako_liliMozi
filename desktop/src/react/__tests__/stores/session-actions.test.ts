@@ -1565,6 +1565,32 @@ function mockPermissionDefault(mode = 'ask') {
       });
     });
 
+    it('hydrates an unavailable historical model as blocked session-owned state', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        agentId: null,
+        currentModelId: 'removed-chat-model',
+        currentModelName: 'Removed Chat Model',
+        currentModelProvider: 'legacy-provider',
+        currentModelAvailable: false,
+        currentModelUnavailableReason: 'model_removed',
+      }));
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        messages: [{ text: 'old history' }], blocks: [], todos: [], hasMore: false,
+      }));
+
+      await switchSession('/removed-model-session');
+
+      const models = mockState.sessionModelsByPath as Record<string, Record<string, unknown>>;
+      expect(models['/removed-model-session']).toMatchObject({
+        id: 'removed-chat-model',
+        provider: 'legacy-provider',
+        available: false,
+        unavailableReason: 'model_removed',
+      });
+      const calls = mockFetch.mock.calls.map(c => String(c[0]));
+      expect(calls.some(url => url.startsWith('/api/sessions/messages'))).toBe(true);
+    });
+
     it('已缓存的 session：switchSession 不再次 loadMessages', async () => {
       // 预置：/a 已经 initSession 过
       (mockState.chatSessions as Record<string, unknown>)['/a'] = {

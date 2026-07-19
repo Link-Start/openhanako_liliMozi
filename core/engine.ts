@@ -579,6 +579,12 @@ export class HanaEngine {
       getSessionFileByPath: (filePath, options) => this.getSessionFileByPath(filePath, options),
       getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath),
       ensureSessionRefForPath: (sessionPath, defaults) => this.ensureSessionRefForPath(sessionPath, defaults),
+      applySessionBranchHead: (sessionPath, manager, defaults) => (
+        this._sessionCoord.applySessionBranchHead(sessionPath, manager, defaults)
+      ),
+      syncSessionBranchHead: (sessionPath, manager, reason) => (
+        this._sessionCoord._syncSessionBranchHeadQuiet(sessionPath, manager, reason)
+      ),
       beginCurrentTurnNativeMedia: (sessionPath, opts) => this.beginCurrentTurnNativeMedia(sessionPath, opts),
       endCurrentTurnNativeMedia: (token) => this.endCurrentTurnNativeMedia(token),
       emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
@@ -1195,6 +1201,25 @@ export class HanaEngine {
   getSessionManifest(sessionId) {
     return this._sessionManifestStore?.getBySessionId(sessionId) || null;
   }
+  getSessionBranchHead(sessionId) {
+    return this._sessionManifestStore?.getBranchHead?.(sessionId) || null;
+  }
+  getSessionBranchHeadForPath(sessionPath) {
+    const sessionId = this.getSessionIdForPath(sessionPath);
+    return sessionId ? this.getSessionBranchHead(sessionId) : null;
+  }
+  setSessionBranchHead(sessionPath, state) {
+    return this._sessionCoord.setSessionBranchHead(sessionPath, state);
+  }
+  getSessionBranchProjection(sessionPath, opts = {}) {
+    return this._sessionCoord.getSessionBranchProjection(sessionPath, opts);
+  }
+  openSessionManagerAtCurrentBranch(sessionPath, sessionDir) {
+    return this._sessionCoord.openSessionManagerAtCurrentBranch(sessionPath, sessionDir);
+  }
+  syncSessionBranchHead(sessionPath, sessionManager, reason = "append_sync") {
+    return this._sessionCoord._syncSessionBranchHeadQuiet(sessionPath, sessionManager, reason);
+  }
   getSessionIdForPath(sessionPath) {
     if (!this._sessionManifestResolver) return null;
     try {
@@ -1376,6 +1401,9 @@ export class HanaEngine {
   async reloadSessionRuntime(p, opts = {}) { return this._sessionCoord.reloadSessionRuntime(p, opts); }
   /** #1624：当前应展示的"工具能力有更新"提示（无漂移 / 已 dismiss → null） */
   getSessionCapabilityDriftNotice(p) { return this._sessionCoord.getSessionCapabilityDriftNotice(p); }
+  getSessionModelAvailability(p = this.currentSessionPath) {
+    return this._sessionCoord.getSessionModelAvailability(p);
+  }
   markCapabilitySnapshotsStale(opts = {}) { return this._sessionCoord.markCapabilitySnapshotsStale(opts); }
   /** #1624：记录当前 fingerprint 已被用户关闭，持久化到 session-meta */
   async dismissSessionCapabilityDrift(p, fingerprint) { return this._sessionCoord.dismissSessionCapabilityDrift(p, fingerprint); }
@@ -2950,6 +2978,10 @@ export class HanaEngine {
       isSessionMemoryEnabledForPath: (sessionPath) => {
         return agent.isSessionMemoryEnabledFor(sessionPath);
       },
+      getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath),
+      readSessionBranchForPath: (sessionPath, options) => (
+        this.getSessionBranchProjection(sessionPath, options)
+      ),
     });
   }
 

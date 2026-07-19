@@ -922,6 +922,13 @@
     "notSelected": "请选择模型",
     "noneConfigured": "未配置模型",
     "unavailable": "模型不可用",
+    "removed": "模型已移除",
+    "providerNotConfigured": "Provider 未配置",
+    "unavailableReason": {
+      "modelRemoved": "此会话使用的模型已被移除。请从模型选择器选择一个可用模型后继续。",
+      "providerNotConfigured": "此会话的模型 Provider 或凭证未配置。请完成配置，或选择其他可用模型。",
+      "temporarilyUnavailable": "此会话使用的模型当前不可用。请检查 Provider 状态，或选择其他可用模型。"
+    },
     "offline": "离线",
     "switchFailed": "切换模型失败",
     "switchWhileStreaming": "回复中不能切换模型",

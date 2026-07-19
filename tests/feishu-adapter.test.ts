@@ -573,6 +573,28 @@ describe("createFeishuAdapter", () => {
     });
   });
 
+  it("rejects recognizable Feishu business-error envelopes returned by download APIs", async () => {
+    mockMessageResourceGet.mockResolvedValue({
+      code: 234005,
+      message: "file is unavailable",
+      log_id: "download-log-001",
+    });
+    const adapter = createFeishuAdapter({
+      appId: "app-id",
+      appSecret: "app-secret",
+      agentId: "hana",
+      onMessage: vi.fn(),
+    });
+
+    await expect(adapter.downloadFile("om_fake_msg_001", "file_key_001")).rejects.toMatchObject({
+      name: "FeishuBusinessError",
+      operation: "文件下载",
+      code: 234005,
+      businessMessage: "file is unavailable",
+      logId: "download-log-001",
+    });
+  });
+
   it("uploads image buffers and sends image_key messages", async () => {
     mockImageCreate.mockResolvedValue({ image_key: "img_key_001" });
     const adapter = createFeishuAdapter({
@@ -756,6 +778,33 @@ describe("createFeishuAdapter", () => {
     expect(mockMessageCreate).not.toHaveBeenCalled();
   });
 
+  it("rejects resolved Feishu upload business failures before sending a message", async () => {
+    mockImageCreate.mockResolvedValue({
+      code: 234011,
+      msg: "Can't recognize the image format.",
+      error: { log_id: "upload-log-001" },
+    });
+    const adapter = createFeishuAdapter({
+      appId: "app-id",
+      appSecret: "app-secret",
+      agentId: "hana",
+      onMessage: vi.fn(),
+    });
+
+    await expect(adapter.sendMediaBuffer("oc_chat", Buffer.from("not-image"), {
+      mime: "image/png",
+      filename: "broken.png",
+    })).rejects.toMatchObject({
+      name: "FeishuBusinessError",
+      operation: "图片上传",
+      code: 234011,
+      businessMessage: "Can't recognize the image format.",
+      logId: "upload-log-001",
+    });
+
+    expect(mockMessageCreate).not.toHaveBeenCalled();
+  });
+
   it("wraps Feishu message send API failures with code and log id", async () => {
     mockImageCreate.mockResolvedValue({ image_key: "img_key_001" });
     const err = new Error("Request failed with status code 400");
@@ -781,6 +830,9 @@ describe("createFeishuAdapter", () => {
   });
 
   it("sends plain and block replies as Feishu post markdown messages", async () => {
+    mockMessageCreate
+      .mockResolvedValueOnce({ code: 0 })
+      .mockResolvedValueOnce({ code: "0" });
     const adapter = createFeishuAdapter({
       appId: "app-id",
       appSecret: "app-secret",
@@ -807,6 +859,29 @@ describe("createFeishuAdapter", () => {
         content: markdownPostContent("- item"),
       },
     });
+  });
+
+  it("rejects resolved plain-reply business failures without retrying the send", async () => {
+    mockMessageCreate.mockResolvedValue({
+      code: 230002,
+      message: "The bot is outside the group.",
+      log_id: "plain-send-log-001",
+    });
+    const adapter = createFeishuAdapter({
+      appId: "app-id",
+      appSecret: "app-secret",
+      agentId: "hana",
+      onMessage: vi.fn(),
+    });
+
+    await expect(adapter.sendReply("oc_chat", "fallback text")).rejects.toMatchObject({
+      name: "FeishuBusinessError",
+      operation: "消息发送",
+      code: 230002,
+      businessMessage: "The bot is outside the group.",
+      logId: "plain-send-log-001",
+    });
+    expect(mockMessageCreate).toHaveBeenCalledOnce();
   });
 
   it("sends markdown tables as Feishu interactive card messages", async () => {
@@ -907,6 +982,33 @@ describe("createFeishuAdapter", () => {
     });
   });
 
+  it("rejects nested resolved business failures from edit-message updates", async () => {
+    mockMessageCreate.mockResolvedValue({ data: { message_id: "om_stream_001" } });
+    mockMessageUpdate.mockResolvedValue({
+      data: {
+        code: "230004",
+        msg: "message update denied",
+        error: { log_id: "message-update-log-001" },
+      },
+    });
+    const adapter = createFeishuAdapter({
+      appId: "app-id",
+      appSecret: "app-secret",
+      agentId: "hana",
+      onMessage: vi.fn(),
+    });
+    const state = await adapter.startStreamReply("oc_chat", "first");
+
+    await expect(adapter.updateStreamReply("oc_chat", state, "second")).rejects.toMatchObject({
+      name: "FeishuBusinessError",
+      operation: "消息更新",
+      code: "230004",
+      businessMessage: "message update denied",
+      logId: "message-update-log-001",
+    });
+    expect(mockMessageUpdate).toHaveBeenCalledOnce();
+  });
+
   it("declares Feishu CardKit rich streaming and updates markdown content by sequence", async () => {
     mockCardCreate.mockResolvedValue({ data: { card_id: "card_stream_001" } });
     const adapter = createFeishuAdapter({
@@ -991,6 +1093,82 @@ describe("createFeishuAdapter", () => {
         sequence: 5,
       },
     });
+  });
+
+  it("rejects resolved CardKit business failures during stream start", async () => {
+    mockCardCreate.mockResolvedValue({
+      code: 230099,
+      msg: "card creation denied",
+      error: { log_id: "card-start-log-001" },
+    });
+    const adapter = createFeishuAdapter({
+      appId: "app-id",
+      appSecret: "app-secret",
+      agentId: "hana",
+      onMessage: vi.fn(),
+    });
+
+    await expect(adapter.startRichStreamReply("oc_chat", "first")).rejects.toMatchObject({
+      name: "FeishuBusinessError",
+      operation: "CardKit 卡片创建",
+      code: 230099,
+      businessMessage: "card creation denied",
+      logId: "card-start-log-001",
+    });
+    expect(mockCardCreate).toHaveBeenCalledOnce();
+    expect(mockMessageCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects resolved CardKit business failures during stream update", async () => {
+    mockCardCreate.mockResolvedValue({ data: { card_id: "card_stream_001" } });
+    mockCardElementContent.mockResolvedValue({
+      code: 230099,
+      msg: "card content update denied",
+      log_id: "card-update-log-001",
+    });
+    const adapter = createFeishuAdapter({
+      appId: "app-id",
+      appSecret: "app-secret",
+      agentId: "hana",
+      onMessage: vi.fn(),
+    });
+    const state = await adapter.startRichStreamReply("oc_chat", "first");
+
+    await expect(adapter.updateRichStreamReply("oc_chat", state, "second")).rejects.toMatchObject({
+      name: "FeishuBusinessError",
+      operation: "CardKit 内容更新",
+      code: 230099,
+      businessMessage: "card content update denied",
+      logId: "card-update-log-001",
+    });
+    expect(mockCardElementContent).toHaveBeenCalledOnce();
+  });
+
+  it("rejects resolved CardKit business failures during stream finish", async () => {
+    mockCardCreate.mockResolvedValue({ data: { card_id: "card_stream_001" } });
+    mockCardSettings
+      .mockResolvedValueOnce({ code: 0 })
+      .mockResolvedValueOnce({
+        code: 230099,
+        message: "card streaming close denied",
+        log_id: "card-finish-log-001",
+      });
+    const adapter = createFeishuAdapter({
+      appId: "app-id",
+      appSecret: "app-secret",
+      agentId: "hana",
+      onMessage: vi.fn(),
+    });
+    const state = await adapter.startRichStreamReply("oc_chat", "first");
+
+    await expect(adapter.finishRichStreamReply("oc_chat", state, "final")).rejects.toMatchObject({
+      name: "FeishuBusinessError",
+      operation: "CardKit 流式关闭",
+      code: 230099,
+      businessMessage: "card streaming close denied",
+      logId: "card-finish-log-001",
+    });
+    expect(mockCardSettings).toHaveBeenCalledTimes(2);
   });
 
   it("moves Feishu streams from post to interactive card when markdown tables appear", async () => {

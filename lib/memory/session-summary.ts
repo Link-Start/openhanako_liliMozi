@@ -41,6 +41,18 @@ import {
 
 const log = createModuleLogger("session-summary");
 
+export function sessionSummaryRevision(data) {
+  if (!data || typeof data !== "object") return null;
+  return JSON.stringify({
+    updatedAt: data.updated_at || null,
+    summary: data.summary || "",
+    snapshot: data.snapshot || "",
+    cursor: data.cursor || null,
+    snapshotCursor: data.snapshotCursor || null,
+    factReplacementRequired: data.factReplacementRequired === true,
+  });
+}
+
 export class SessionSummaryManager {
   declare summariesDir: string;
   declare _cache: Map<string, any>;
@@ -195,9 +207,9 @@ export class SessionSummaryManager {
     const since = normalizeSince(opts.since);
     const dirty = [];
     for (const data of this._cache.values()) {
-      if (!data?.summary) continue;
+      if (!data?.summary && data?.factReplacementRequired !== true) continue;
       if (since && !isAfter(data.updated_at || data.created_at, since)) continue;
-      if (data.summary !== (data.snapshot || "")) {
+      if (data.factReplacementRequired === true || data.summary !== (data.snapshot || "")) {
         dirty.push(data);
       }
     }
@@ -212,9 +224,25 @@ export class SessionSummaryManager {
     const data = this.getSummary(sessionId);
     if (!data) return;
 
-    data.snapshot = data.summary;
-    data.snapshot_at = new Date().toISOString();
-    this.saveSummary(sessionId, data);
+    const next = {
+      ...data,
+      snapshot: data.summary,
+      snapshotCursor: data.cursor || null,
+      snapshot_at: new Date().toISOString(),
+      factReplacementRequired: false,
+    };
+    this.saveSummary(sessionId, next);
+    return true;
+  }
+
+  isRevisionCurrent(sessionId, expectedRevision) {
+    return expectedRevision != null
+      && sessionSummaryRevision(this.getSummary(sessionId)) === expectedRevision;
+  }
+
+  markProcessedIfCurrent(sessionId, expectedRevision) {
+    if (!this.isRevisionCurrent(sessionId, expectedRevision)) return false;
+    return this.markProcessed(sessionId);
   }
 
   // ════════════════════════════
@@ -471,7 +499,7 @@ export class SessionSummaryManager {
     if (draft?.data) {
       this.saveSummary(sessionId, draft.data);
     }
-    return draft?.summary || "";
+    return opts.returnResult === true ? draft : (draft?.summary || "");
   }
 
   /**
@@ -490,22 +518,74 @@ export class SessionSummaryManager {
     const existing = resetAt && existingRaw && !isAfter(existingRaw.updated_at || existingRaw.created_at, resetAt)
       ? null
       : existingRaw;
-    const prevSummary = existing?.summary || "";
-
-    // 增量：只取上次摘要之后的新消息，避免长 session 上下文爆炸
-    const hasMessageCount = Number.isInteger(existing?.messageCount) && existing.messageCount >= 0;
-    const lastMessageCount = hasMessageCount ? existing.messageCount : 0;
-    const newMessages = hasMessageCount
-      ? messages.slice(Math.min(lastMessageCount, messages.length))
-      : messages; // 旧数据无 messageCount 时 fallback 到全量
+    const projection = normalizeBranchProjection(opts.projection);
+    let mode = "legacy";
+    let prevSummary = existing?.summary || "";
+    let newMessages = messages;
+    if (projection) {
+      if (!existing) {
+        mode = "initial";
+        prevSummary = "";
+      } else if (isCursorAncestorOfProjection(existing.cursor, projection)) {
+        mode = "append";
+        const coveredIndex = existing.cursor?.coveredLeafId == null
+          ? -1
+          : projection.lineage.findIndex((entry) => entry.id === existing.cursor.coveredLeafId);
+        newMessages = messages.filter((message) => (
+          Number.isInteger(message?.lineageIndex)
+          && message.lineageIndex > coveredIndex
+        ));
+      } else {
+        // messageCount cannot establish branch ancestry. Legacy summaries and
+        // sibling/rewound branches must rebuild from the complete projection.
+        mode = "replace";
+        prevSummary = "";
+      }
+    } else {
+      // 旧数据无 messageCount 时 fallback 到全量；显式 0 代表尚未覆盖任何消息。
+      const hasMessageCount = Number.isInteger(existing?.messageCount) && existing.messageCount >= 0;
+      const lastMessageCount = hasMessageCount ? existing.messageCount : 0;
+      newMessages = hasMessageCount
+        ? messages.slice(Math.min(lastMessageCount, messages.length))
+        : messages;
+    }
 
     const timeZone = resolveMemoryTimeZone(opts.timeZone);
     const sourceTimeRange = buildSourceTimeRange(messages, { timeZone });
     const convText = this._buildConversationText(newMessages, { timeZone });
     if (!convText) {
+      if (projection) {
+        const now = new Date().toISOString();
+        const cursor = projectionCursor(projection);
+        const replacement = mode === "replace";
+        const summary = replacement ? "" : prevSummary;
+        const cursorChanged = !sameCursor(existing?.cursor, cursor);
+        const shouldSave = replacement || mode === "initial" || cursorChanged;
+        return {
+          summary,
+          changed: replacement,
+          mode,
+          data: shouldSave ? {
+            session_id: sessionId,
+            created_at: existing?.created_at || now,
+            updated_at: replacement ? now : (existing?.updated_at || now),
+            summary,
+            messageCount: messages.length,
+            cursor,
+            source_time_range: sourceTimeRange || (replacement ? null : existing?.source_time_range || null),
+            snapshot: existing?.snapshot || "",
+            snapshotCursor: existing?.snapshotCursor || null,
+            snapshot_at: existing?.snapshot_at || null,
+            factReplacementRequired: replacement || existing?.factReplacementRequired === true,
+          } : null,
+          usage: null,
+          reason: replacement ? "empty_branch_replacement" : "empty_conversation",
+        };
+      }
       return {
         summary: prevSummary,
         changed: false,
+        mode,
         data: null,
         usage: null,
         reason: "empty_conversation",
@@ -525,6 +605,7 @@ export class SessionSummaryManager {
       return {
         summary: prevSummary,
         changed: false,
+        mode,
         data: null,
         usage,
         reason: "empty_output",
@@ -555,11 +636,26 @@ export class SessionSummaryManager {
       throw new Error(`rolling summary format invalid after ${repairsUsed} repair attempt(s): ${validation.issues.join("; ")}`);
     }
 
+    if (projection && typeof opts.revalidateProjection === "function") {
+      const latestProjection = normalizeBranchProjection(await opts.revalidateProjection());
+      if (!latestProjection || !projectionRemainsAncestor(projection, latestProjection)) {
+        return {
+          summary: existing?.summary || "",
+          changed: false,
+          mode,
+          data: null,
+          usage,
+          reason: "branch_changed",
+        };
+      }
+    }
+
     const latestResetAt = latestSince(resetAt, readCompiledResetAt(path.dirname(this.summariesDir)));
     if (latestResetAt && !areMessagesAfter(messages, latestResetAt)) {
       return {
         summary: prevSummary,
         changed: false,
+        mode,
         data: null,
         usage,
         reason: "reset_watermark",
@@ -586,15 +682,19 @@ export class SessionSummaryManager {
       updated_at: now,
       summary: newSummary.trim(),
       messageCount: messages.length, // 记录已覆盖的消息总数
+      ...(projection ? { cursor: projectionCursor(projection) } : {}),
       source_time_range: sourceTimeRange || existing?.source_time_range || null,
       snapshot: existing?.snapshot || "",
+      snapshotCursor: existing?.snapshotCursor || null,
       snapshot_at: existing?.snapshot_at || null,
       ...(existingRaw?.fork_baseline ? { fork_baseline: existingRaw.fork_baseline } : {}),
+      factReplacementRequired: mode === "replace" || existing?.factReplacementRequired === true,
     };
 
     return {
       summary: newSummary.trim(),
       changed: true,
+      mode,
       data,
       usage,
       reason: rollingDetected.length > 0 ? "pii_redacted" : "",
@@ -892,6 +992,39 @@ function isAfter(value, since) {
 function areMessagesAfter(messages, since) {
   if (!since) return true;
   return messages.every((message) => isAfter(message.timestamp, since));
+}
+
+function normalizeBranchProjection(value) {
+  if (!value || typeof value !== "object" || !Array.isArray(value.lineage)) return null;
+  if (typeof value.lineageHash !== "string" || !value.lineageHash) return null;
+  return value;
+}
+
+function projectionCursor(projection) {
+  return {
+    coveredLeafId: projection.selectedLeafId ?? null,
+    lineageHash: projection.lineageHash,
+  };
+}
+
+function sameCursor(left, right) {
+  if (!left || !right) return false;
+  return (left.coveredLeafId ?? null) === (right.coveredLeafId ?? null)
+    && left.lineageHash === right.lineageHash;
+}
+
+function projectionHashAtLeaf(projection, leafId) {
+  if (leafId == null) return projection.rootLineageHash || null;
+  return projection.prefixHashes?.[leafId] || null;
+}
+
+function isCursorAncestorOfProjection(cursor, projection) {
+  if (!cursor || typeof cursor.lineageHash !== "string") return false;
+  return projectionHashAtLeaf(projection, cursor.coveredLeafId ?? null) === cursor.lineageHash;
+}
+
+function projectionRemainsAncestor(original, latest) {
+  return projectionHashAtLeaf(latest, original.selectedLeafId ?? null) === original.lineageHash;
 }
 
 function normalizeMemoryReflectionSnapshot(value) {

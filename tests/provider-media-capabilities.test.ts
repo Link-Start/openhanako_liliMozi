@@ -54,8 +54,18 @@ describe("ProviderRegistry media capabilities", () => {
     expect(byId.has("minimax-token-plan")).toBe(false);
     expect(byId.get("gemini")?.models).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "gemini-2.5-flash-image", protocolId: "gemini-generate-content-image" }),
-      expect.objectContaining({ id: "gemini-3.1-flash-image-preview", protocolId: "gemini-generate-content-image" }),
+      expect.objectContaining({ id: "gemini-3.1-flash-image", protocolId: "gemini-generate-content-image" }),
+      expect.objectContaining({ id: "gemini-3-pro-image", protocolId: "gemini-generate-content-image" }),
     ]));
+    expect(byId.get("gemini")?.models.map((model) => model.id)).not.toContain("gemini-3.1-flash-image-preview");
+    expect(byId.get("gemini")?.models.map((model) => model.id)).not.toContain("gemini-3-pro-image-preview");
+    expect(registry.resolveMediaModel({
+      providerId: "gemini",
+      modelId: "gemini-3.1-flash-image-preview",
+      capability: "image_generation",
+    })).toMatchObject({
+      model: expect.objectContaining({ id: "gemini-3.1-flash-image" }),
+    });
   });
 
   it("exposes media parameters and reference-image limits at model/mode granularity", () => {
@@ -120,7 +130,7 @@ describe("ProviderRegistry media capabilities", () => {
     ]);
 
     const gemini25 = gemini?.models.find((model) => model.id === "gemini-2.5-flash-image");
-    const gemini31 = gemini?.models.find((model) => model.id === "gemini-3.1-flash-image-preview");
+    const gemini31 = gemini?.models.find((model) => model.id === "gemini-3.1-flash-image");
     const gemini25ImageMode = gemini25?.modes?.find((mode) => mode.id === "image2image");
     const gemini31ImageMode = gemini31?.modes?.find((mode) => mode.id === "image2image");
     expect(gemini25?.modes?.[0]?.parameterSchema.properties).not.toHaveProperty("resolution");
@@ -183,14 +193,15 @@ describe("ProviderRegistry media capabilities", () => {
       default: "1K",
     });
 
-    expect(prop("gemini", "gemini-3.1-flash-image-preview", "text2image", "resolution")).toMatchObject({
+    expect(prop("gemini", "gemini-3.1-flash-image", "text2image", "resolution")).toMatchObject({
       enum: ["512", "1K", "2K", "4K"],
-      default: "4K",
+      default: "1K",
     });
-    expect(prop("gemini", "gemini-3.1-flash-image-preview", "text2image", "ratio")).toMatchObject({
+    expect(prop("gemini", "gemini-3.1-flash-image", "text2image", "ratio")).toMatchObject({
       default: "3:2",
     });
-    expect(defaults("gemini", "gemini-3.1-flash-image-preview")).toMatchObject({ ratio: "3:2", resolution: "4K" });
+    expect(defaults("gemini", "gemini-3.1-flash-image")).toMatchObject({ ratio: "3:2", resolution: "1K" });
+    expect(defaults("gemini", "gemini-3-pro-image")).toMatchObject({ ratio: "3:2", resolution: "1K" });
 
     expect(prop("volcengine", "doubao-seedream-3-0-t2i", "text2image", "resolution")).toMatchObject({
       enum: ["1K"],

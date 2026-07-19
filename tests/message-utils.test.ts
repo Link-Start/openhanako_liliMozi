@@ -387,6 +387,29 @@ describe("loadSessionHistoryMessages", () => {
     expect(result).toEqual([]);
   });
 
+  it("uses the persisted current branch when the physical tail is a discarded sibling", async () => {
+    const sessionDir = path.join(tmpDir, "persisted-branch-sessions");
+    const manager = SessionManager.create(tmpDir, sessionDir);
+    const userId = manager.appendMessage({ role: "user", content: [{ type: "text", text: "prompt" }] } as any);
+    const selectedAnswerId = manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "selected answer" }] } as any);
+    manager.branch(userId);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "discarded physical tail" }] } as any);
+    const sessionPath = manager.getSessionFile();
+    const openSessionManagerAtCurrentBranch = vi.fn(() => {
+      const reopened = SessionManager.open(sessionPath, sessionDir);
+      reopened.branch(selectedAnswerId);
+      return reopened;
+    });
+
+    const result = await loadSessionHistoryMessages({ openSessionManagerAtCurrentBranch }, sessionPath);
+
+    expect(openSessionManagerAtCurrentBranch).toHaveBeenCalledWith(sessionPath, path.dirname(sessionPath));
+    expect(result.map((message) => message.content?.[0]?.text)).toEqual([
+      "prompt",
+      "selected answer",
+    ]);
+  });
+
   it("从 Pi session 分支恢复 custom_message 供后台结果重建 UI 块", async () => {
     const sessionDir = path.join(tmpDir, "sessions");
     const manager = SessionManager.create(tmpDir, sessionDir);

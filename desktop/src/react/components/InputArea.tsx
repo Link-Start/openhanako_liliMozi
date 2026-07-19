@@ -76,10 +76,15 @@ import {
 import { attachFilesFromPaths } from '../MainContent';
 import { hanaFetch } from '../hooks/use-hana-fetch';
 import styles from './input/InputArea.module.css';
-import type { ChatListItem, SessionConfirmationBlock } from '../stores/chat-types';
-import type { AudioWaveform } from '../stores/chat-types';
+import type { AudioWaveform, ChatListItem, SessionConfirmationBlock, SessionModel } from '../stores/chat-types';
 
 const EMPTY_FILE_REFS: readonly import('../types/file-ref').FileRef[] = Object.freeze([]);
+
+function modelUnavailableMessageKey(reason: SessionModel['unavailableReason']): string {
+  if (reason === 'model_removed') return 'model.unavailableReason.modelRemoved';
+  if (reason === 'provider_not_configured') return 'model.unavailableReason.providerNotConfigured';
+  return 'model.unavailableReason.temporarilyUnavailable';
+}
 
 function chatVideoMimeTypeForName(name: string, fallback?: string): string {
   if (fallback?.startsWith('video/')) return fallback;
@@ -467,6 +472,10 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     const full = models.find(m => m.id === sessionModel.id && m.provider === sessionModel.provider);
     return full ? { ...full, ...sessionModel } : sessionModel;
   }, [models, sessionModel]);
+  const modelSelectionRequired = !!(currentSessionPath && sessionModel?.available === false);
+  const modelUnavailableMessage = modelSelectionRequired
+    ? t(modelUnavailableMessageKey(sessionModel?.unavailableReason))
+    : null;
   // #1624：当前 session 的工具能力漂移提示（服务端 restore 时算好，前端只消费）
   const capabilityDrift = useStore(s => s.currentSessionPath ? (sessionScopedValue(s, s.capabilityDriftBySession, s.currentSessionPath) ?? null) : null);
   const capabilityRefreshing = useStore(s => sessionScopedListIncludes(s, s.capabilityRefreshingSessions, s.currentSessionPath));
@@ -785,6 +794,18 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     const _s = useStore.getState();
     if (sessionScopedListIncludes(_s, _s.streamingSessions, _s.currentSessionPath)) return false;
     if (_s.pendingSessionSwitchPath) return false;
+    const activeSessionModel = _s.currentSessionPath
+      ? sessionScopedValue(_s, _s.sessionModelsByPath, _s.currentSessionPath)
+      : undefined;
+    if (activeSessionModel?.available === false) {
+      _s.addToast(
+        t(modelUnavailableMessageKey(activeSessionModel.unavailableReason)),
+        'warning',
+        6000,
+        { dedupeKey: 'session-model-unavailable' },
+      );
+      return false;
+    }
 
     let sessionRef: Readonly<SessionRef> | null = null;
     if (pendingNewSession) {
@@ -809,7 +830,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       displayMessage: { text: displayText ?? text },
     }));
     return true;
-  }, [inputLocked, pendingDraftId, pendingNewSession]);
+  }, [inputLocked, pendingDraftId, pendingNewSession, t]);
 
   // ── 斜杠命令 ──
 
@@ -1018,7 +1039,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     base64Data: string;
     waveform?: AudioWaveform;
   }): Promise<boolean> => {
-    if (inputLocked || !connected || isStreaming || sending || modelSwitching || useStore.getState().pendingSessionSwitchPath) {
+    if (inputLocked || modelSelectionRequired || !connected || isStreaming || sending || modelSwitching || useStore.getState().pendingSessionSwitchPath) {
       return false;
     }
 
@@ -1079,6 +1100,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     inputLocked,
     isStreaming,
     modelSwitching,
+    modelSelectionRequired,
     sending,
     t,
   ]);
@@ -1163,7 +1185,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   }, [addToast, ensureVoiceSessionRef, restoreEditorFocus, sendVoiceAudioAttachment, t]);
 
   const startAudioRecording = useCallback(async () => {
-    if (inputLocked || !showAudioInput || !connected || isStreaming || sending || modelSwitching || pendingSessionSwitchPath) return;
+    if (inputLocked || modelSelectionRequired || !showAudioInput || !connected || isStreaming || sending || modelSwitching || pendingSessionSwitchPath) return;
     if (audioRecordingState !== 'idle' || audioRecorderRef.current) return;
     const AudioContextCtor = window.AudioContext
       || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -1232,6 +1254,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     inputLocked,
     isStreaming,
     modelSwitching,
+    modelSelectionRequired,
     pendingSessionSwitchPath,
     sending,
     showAudioInput,
@@ -1251,7 +1274,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const canUseVoiceShortcut = useCallback(() => {
     if (surface !== 'desktop') return false;
     if (!showAudioInput) return false;
-    if (inputLocked || modelSwitching) return false;
+    if (inputLocked || modelSelectionRequired || modelSwitching) return false;
     if (typeof document !== 'undefined' && !document.hasFocus()) return false;
     const state = useStore.getState() as Record<string, any>;
     if (state.currentTab !== 'chat') return false;
@@ -1260,7 +1283,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       return false;
     }
     return true;
-  }, [inputLocked, modelSwitching, showAudioInput, surface]);
+  }, [inputLocked, modelSelectionRequired, modelSwitching, showAudioInput, surface]);
 
   useEffect(() => {
     if (surface !== 'desktop') return undefined;
@@ -1404,6 +1427,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   // capabilityRefreshing / compacting：压缩到 reload 完成之间 session 没有可用
   // runtime，此窗口内发 prompt 会冷建第二个 runtime 与 reload 竞争（#1624 I2）。
   const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && !inputLocked
+    && !modelSelectionRequired
     && !capabilityRefreshing && !compacting;
 
   const loadVisionAuxiliaryConfig = useCallback(async () => {
@@ -1686,6 +1710,19 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     if (sending) return;
     if (modelSwitching) return;
     if (useStore.getState().pendingSessionSwitchPath) return;
+    const guardState = useStore.getState();
+    const guardModel = guardState.currentSessionPath
+      ? sessionScopedValue(guardState, guardState.sessionModelsByPath, guardState.currentSessionPath)
+      : undefined;
+    if (guardModel?.available === false) {
+      guardState.addToast(
+        t(modelUnavailableMessageKey(guardModel.unavailableReason)),
+        'warning',
+        6000,
+        { dedupeKey: 'session-model-unavailable' },
+      );
+      return;
+    }
     if (type === 'prompt') {
       // 压缩 / 能力刷新（fresh compact）期间禁发 prompt：此窗口内 session 没有
       // 可用 runtime，发消息会冷建第二个 runtime 与压缩后的 reload 竞争（#1624 I2）。
@@ -2154,6 +2191,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           : null}
         screenshotProgress={screenshotProgress}
         inlineError={inlineError}
+        modelUnavailableMessage={modelUnavailableMessage}
         slashResult={slashResult}
         onResultClick={(slashResult?.filePath || slashResult?.deskDir) ? handleSlashResultClick : undefined}
       />

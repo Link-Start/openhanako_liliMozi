@@ -22,10 +22,22 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
   const current = sessionModel
     ? (matchedSessionModel ? { ...matchedSessionModel, ...sessionModel } : sessionModel)
     : models.find(m => m.isCurrent);
-  const sessionModelUnavailable = !!(sessionModel?.id && sessionModel.provider && models.length > 0 && !matchedSessionModel);
+  const inferredUnavailable = !!(
+    sessionModel?.id
+    && sessionModel.provider
+    && models.length > 0
+    && !matchedSessionModel
+  );
+  const sessionModelUnavailable = sessionModel?.available === false || inferredUnavailable;
   const label = (() => {
     if (loading) return '...';
-    if (sessionModelUnavailable) return t('model.unavailable') || '...';
+    if (sessionModelUnavailable) {
+      if (sessionModel?.unavailableReason === 'model_removed') return t('model.removed') || '...';
+      if (sessionModel?.unavailableReason === 'provider_not_configured') {
+        return t('model.providerNotConfigured') || '...';
+      }
+      return t('model.unavailable') || '...';
+    }
     if (current?.name) return current.name;
     if (models.length > 0) return t('model.notSelected') || t('model.unknown') || '...';
     return t('model.noneConfigured') || t('model.unknown') || '...';
@@ -42,7 +54,10 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
         const sm = sessionScopedValue(state, sessionModelsByPath, currentSessionPath);
         const useSession = !!(sm?.id && sm?.provider);
         const cur = useSession ? sm : models.find(m => m.isCurrent);
-        if (cur && modelId === cur.id && provider === cur.provider) return;
+        // A blocked historical model must be explicitly re-selected after its
+        // provider/model becomes usable again. Do not let the same-model guard
+        // turn that recovery action into a no-op.
+        if (cur && modelId === cur.id && provider === cur.provider && sm?.available !== false) return;
 
         // Per-session switch
         setLoading(true);
@@ -57,7 +72,11 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
         if (!res.ok) throw new Error(data.error || 'switch failed');
 
         if (data.model) {
-          useStore.getState().updateSessionModel(currentSessionPath, data.model);
+          useStore.getState().updateSessionModel(currentSessionPath, {
+            ...data.model,
+            available: true,
+            unavailableReason: null,
+          });
         }
         if (data.thinkingLevel) {
           useStore.getState().setThinkingLevel(data.thinkingLevel);
@@ -142,7 +161,9 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
     );
   }, [grouped, groupKeys, hasMultipleProviders]);
 
-  const currentValue = current ? valueOf(current) : '';
+  // Keep the unavailable historical identity visible in the trigger, but leave
+  // the select value empty so choosing the same provider/id is a real action.
+  const currentValue = current && !sessionModelUnavailable ? valueOf(current) : '';
 
   const handleSelect = useCallback((val: string) => {
     const all = groupKeys.flatMap(p => grouped[p]);

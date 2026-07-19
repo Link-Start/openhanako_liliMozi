@@ -412,6 +412,19 @@ export class BridgeSessionManager {
     });
   }
 
+  _applySessionBranchHead(sessionPath, manager, reason) {
+    if (typeof this._deps.applySessionBranchHead !== "function") return null;
+    return this._deps.applySessionBranchHead(sessionPath, manager, {
+      reason,
+      domain: "bridge",
+    });
+  }
+
+  _syncSessionBranchHead(sessionPath, manager, reason) {
+    if (typeof this._deps.syncSessionBranchHead !== "function") return null;
+    return this._deps.syncSessionBranchHead(sessionPath, manager, reason);
+  }
+
   _assertBridgeSessionRefLocator(sessionRef, sessionPath, operation) {
     if (!sessionRef?.sessionId || !sessionRef?.sessionPath || !sessionPath) {
       throw new Error(`${operation}: SessionRef is incomplete`);
@@ -851,7 +864,7 @@ export class BridgeSessionManager {
     const context = this.getBridgeContextForSessionPath(sessionPath, opts);
     if (context?.isBridgeSession !== true) return null;
     const agent = this._resolveAgent({ agentId: context.agentId || opts.agentId }, "recordCustomEntryForSessionPath");
-    this._ensureBridgeSessionRef(sessionPath, {
+    const sessionRef = this._ensureBridgeSessionRef(sessionPath, {
       agent,
       sessionKey: context.sessionKey,
       role: context.role,
@@ -866,6 +879,7 @@ export class BridgeSessionManager {
         throw new Error("recordCustomEntryForSessionPath: active bridge session does not support custom entries");
       }
       session.sessionManager.appendCustomEntry(customType, data);
+      this._syncSessionBranchHead(activePath, session.sessionManager, "bridge_custom_entry_live");
       return { ok: true, mode: "bridge-live" };
     }
 
@@ -873,7 +887,9 @@ export class BridgeSessionManager {
       throw new Error(`recordCustomEntryForSessionPath: session file not found: ${sessionPath}`);
     }
     const manager = SessionManager.open(resolved, path.dirname(resolved));
+    this._applySessionBranchHead(sessionRef.sessionPath, manager, "bridge_custom_entry_file_open");
     manager.appendCustomEntry(customType, data);
+    this._syncSessionBranchHead(sessionRef.sessionPath, manager, "bridge_custom_entry_file_append");
     return { ok: true, mode: "bridge-file" };
   }
 
@@ -1007,6 +1023,11 @@ export class BridgeSessionManager {
         role: currentRole,
         locatorReason: restoredExistingSession ? "bridge_session_restore" : "bridge_session_create",
       });
+      if (restoredExistingSession) {
+        this._applySessionBranchHead(identityPath, mgr, "bridge_session_restore");
+      } else {
+        this._syncSessionBranchHead(identityPath, mgr, "bridge_session_create");
+      }
       const sessionPathRef = { current: identityPath };
       const sessionRefRef = { current: sessionRef };
       const targetModelRef = { current: null };
@@ -1208,6 +1229,9 @@ export class BridgeSessionManager {
         } catch (err) {
           log.warn(`bridge inline media prune failed (${sessionKey}): ${err?.message || err}`);
         }
+        if (activeSessionPath) {
+          this._syncSessionBranchHead(activeSessionPath, session.sessionManager, "bridge_prompt_finally");
+        }
         await teardownSessionResources({
           session,
           unsub,
@@ -1329,7 +1353,7 @@ export class BridgeSessionManager {
         }
       }
 
-      this._ensureBridgeSessionRef(sessionPath, {
+      const sessionRef = this._ensureBridgeSessionRef(sessionPath, {
         agent,
         sessionKey,
         role: "owner",
@@ -1337,8 +1361,14 @@ export class BridgeSessionManager {
           ? "bridge_assistant_record_restore"
           : "bridge_assistant_record_create",
       });
+      if (restoredExistingSession) {
+        this._applySessionBranchHead(sessionRef.sessionPath, mgr, "bridge_assistant_record_restore");
+      } else {
+        this._syncSessionBranchHead(sessionRef.sessionPath, mgr, "bridge_assistant_record_create");
+      }
 
       mgr.appendMessage(this._buildRecordedAssistantMessage(agent, text));
+      this._syncSessionBranchHead(sessionRef.sessionPath, mgr, "bridge_assistant_record_append");
 
       if (sessionPath) {
         this._rememberBridgeContext(sessionPath, bridgeContext);
@@ -1547,6 +1577,7 @@ export class BridgeSessionManager {
       role: "owner",
       locatorReason: "bridge_compact_restore",
     });
+    this._applySessionBranchHead(sessionRef.sessionPath, mgr, "bridge_compact_restore");
     const bridgeContext = this.getBridgeContextForSessionPath(sessionFilePath, { agentId: agent.id })
       || this._buildBridgeContext(sessionKey, entry, { guest: false }, agent);
     const freshContext = opts.fresh === true
@@ -1586,7 +1617,11 @@ export class BridgeSessionManager {
       }
       let after = null;
       try {
-        await compactSessionWithCachePreservation(session, undefined);
+        try {
+          await compactSessionWithCachePreservation(session, undefined);
+        } finally {
+          this._syncSessionBranchHead(sessionRef.sessionPath, session.sessionManager, "bridge_compact_finally");
+        }
         after = session.getContextUsage?.() ?? null;
       } catch (err) {
         const noopReason = freshContext ? getFreshCompactNoopReason(err) : null;
@@ -1602,7 +1637,6 @@ export class BridgeSessionManager {
           contextWindow: before?.contextWindow ?? null,
         });
       }
-
       const result = {
         tokensBefore: before?.tokens ?? null,
         tokensAfter: after?.tokens ?? null,

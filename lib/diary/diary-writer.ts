@@ -16,7 +16,7 @@ import { callText } from "../../core/llm-client.ts";
 import { callTextConfigFromResolvedModel } from "../../core/model-execution-config.ts";
 import { getLocale } from "../i18n.ts";
 import { generateSummary } from "../pi-sdk/index.ts";
-import { listSessionFiles, readSessionMessages } from "../session-jsonl.ts";
+import { listSessionFiles, readCurrentSessionBranch } from "../session-jsonl.ts";
 import { createModuleLogger } from "../debug-log.ts";
 import { resolveWorkspaceOutputDir } from "../../shared/workspace-output.ts";
 
@@ -197,8 +197,34 @@ function canUseWholeSummaryForDiaryDate(summary, session, rangeStart, rangeEnd) 
   return true;
 }
 
-function needsTemporarySupplement(summary, messages) {
+function summaryBranchRelation(summary, projection) {
+  if (!projection) return "legacy";
+  const cursor = summary?.cursor;
+  if (!cursor || typeof cursor.lineageHash !== "string") return "replace";
+  const prefixHash = cursor.coveredLeafId == null
+    ? projection.rootLineageHash
+    : projection.prefixHashes?.[cursor.coveredLeafId];
+  if (prefixHash !== cursor.lineageHash) return "replace";
+  return (cursor.coveredLeafId ?? null) === (projection.selectedLeafId ?? null)
+    && cursor.lineageHash === projection.lineageHash
+    ? "exact"
+    : "append";
+}
+
+function messagesAfterSummaryCursor(summary, messages, projection) {
+  if (summaryBranchRelation(summary, projection) !== "append") return messages;
+  const cursorIndex = summary.cursor.coveredLeafId == null
+    ? -1
+    : projection.lineage.findIndex((entry) => entry.id === summary.cursor.coveredLeafId);
+  return messages.filter((message) => Number.isInteger(message?.lineageIndex) && message.lineageIndex > cursorIndex);
+}
+
+function needsTemporarySupplement(summary, messages, projection = null) {
   if (!summary?.summary?.trim()) return messages.length > 0;
+  const branchRelation = summaryBranchRelation(summary, projection);
+  if (branchRelation === "replace") return messages.length > 0;
+  if (branchRelation === "append") return true;
+  if (branchRelation === "exact") return false;
   if (typeof summary.messageCount === "number" && summary.messageCount < messages.length) {
     return true;
   }
@@ -210,7 +236,10 @@ function needsTemporarySupplement(summary, messages) {
     && latestMessageTime > summaryTime + SUMMARY_STALE_GRACE_MS;
 }
 
-function selectSupplementMessages(summary, messages) {
+function selectSupplementMessages(summary, messages, projection = null) {
+  if (projection && summaryBranchRelation(summary, projection) === "append") {
+    return messagesAfterSummaryCursor(summary, messages, projection);
+  }
   if (typeof summary?.messageCount === "number" && summary.messageCount > 0 && summary.messageCount < messages.length) {
     return messages.slice(summary.messageCount);
   }
@@ -352,6 +381,8 @@ async function collectDiaryMaterialResult({
   isSessionMemoryEnabledForPath,
   generateTemporarySummary = defaultGenerateTemporarySummary,
   getCompactionAuth,
+  getSessionIdForPath,
+  readSessionBranchForPath,
 }) {
   const materials = [];
   const warnings = [];
@@ -362,11 +393,19 @@ async function collectDiaryMaterialResult({
 
   const sessionFiles = new Map();
   for (const item of listSessionFiles(sessionDir)) {
-    const { messages, lastTimestamp } = readSessionMessages(item.filePath, { full: true });
+    const projection = typeof readSessionBranchForPath === "function"
+      ? readSessionBranchForPath(item.filePath, {})
+      : readCurrentSessionBranch(item.filePath);
+    const { messages, lastTimestamp } = projection;
     if (!hasMessageInRange(messages, rangeStart, rangeEnd)) continue;
     const targetMessages = filterMessagesInRange(messages, rangeStart, rangeEnd);
-    sessionFiles.set(item.sessionId, {
+    const stableSessionId = projection?.sessionId
+      || getSessionIdForPath?.(item.filePath)
+      || item.sessionId;
+    sessionFiles.set(stableSessionId, {
       ...item,
+      sessionId: stableSessionId,
+      projection,
       messages,
       targetMessages,
       fullLastTimestamp: lastTimestamp,
@@ -377,6 +416,10 @@ async function collectDiaryMaterialResult({
   for (const summary of summaries) {
     seenInRange.add(summary.session_id);
     const session = sessionFiles.get(summary.session_id);
+    if (session && summaryBranchRelation(summary, session.projection) === "replace") {
+      seenInRange.delete(summary.session_id);
+      continue;
+    }
     if (!canUseWholeSummaryForDiaryDate(summary, session, rangeStart, rangeEnd)) {
       if (!session) {
         addMaterialWarning(warnings, summary.session_id, "date-slice", "summary source range is outside the diary date and the session file is unavailable");
@@ -413,8 +456,8 @@ async function collectDiaryMaterialResult({
       at: summary.created_at || summary.updated_at,
     });
 
-    if (!session || !needsTemporarySupplement(summary, session.targetMessages)) continue;
-    const supplementMessages = selectSupplementMessages(summary, session.targetMessages);
+    if (!session || !needsTemporarySupplement(summary, session.targetMessages, session.projection)) continue;
+    const supplementMessages = selectSupplementMessages(summary, session.targetMessages, session.projection);
     const temporary = await generateOptionalTemporarySummary({
       warnings,
       warningStage: "temporary-supplement",
@@ -458,7 +501,14 @@ async function collectDiaryMaterialResult({
         addMaterialWarning(warnings, sessionId, "rolling-summary", "summaryManager.rollingSummary is required to backfill diary summaries");
       } else {
         try {
-          const backfilled = await summaryManager.rollingSummary(sessionId, session.targetMessages, resolvedModel);
+          const backfilled = await summaryManager.rollingSummary(sessionId, session.targetMessages, resolvedModel, {
+            projection: session.projection,
+            revalidateProjection: () => (
+              typeof readSessionBranchForPath === "function"
+                ? readSessionBranchForPath(session.filePath, {})
+                : readCurrentSessionBranch(session.filePath)
+            ),
+          });
           if (backfilled?.trim()) {
             materials.push({
               kind: "backfilled",
@@ -556,6 +606,7 @@ export async function writeDiary(opts) {
     cwd, activityStore, sessionDir, targetDate,
     isSessionMemoryEnabledForPath,
     generateTemporarySummary, getCompactionAuth,
+    getSessionIdForPath, readSessionBranchForPath,
   } = opts;
 
   // 1. 计算逻辑日，收集摘要与临时补齐材料
@@ -576,6 +627,8 @@ export async function writeDiary(opts) {
       isSessionMemoryEnabledForPath,
       generateTemporarySummary,
       getCompactionAuth,
+      getSessionIdForPath,
+      readSessionBranchForPath,
     });
     materials = Array.isArray(collected) ? collected : collected.materials;
     warnings = Array.isArray(collected?.warnings) ? collected.warnings : [];

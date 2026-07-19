@@ -92,6 +92,8 @@ function makeDeps(agent) {
     getHomeCwd: () => rootCwd,
     ensureSessionRefForPath,
     getSessionIdForPath: vi.fn((sessionPath) => sessionIdsByPath.get(sessionPath) || null),
+    applySessionBranchHead: vi.fn(),
+    syncSessionBranchHead: vi.fn(),
     registerSessionFile: vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
       id: "sf_bridge_inbound",
       fileId: "sf_bridge_inbound",
@@ -798,7 +800,8 @@ describe("BridgeSessionManager teardown", () => {
     const sessionFile = path.join(agent.sessionDir, "bridge", "owner", "assistant.jsonl");
     fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
     fs.writeFileSync(sessionFile, "{}\n", "utf-8");
-    const manager = new BridgeSessionManager(makeDeps(agent));
+    const deps = makeDeps(agent);
+    const manager = new BridgeSessionManager(deps);
     manager.writeIndex({
       "tg_dm_assistant@agent-a": {
         file: "owner/assistant.jsonl",
@@ -826,6 +829,16 @@ describe("BridgeSessionManager teardown", () => {
     })).toBe(true);
 
     expect(appendMessage).toHaveBeenCalledOnce();
+    expect(deps.applySessionBranchHead).toHaveBeenCalledWith(
+      sessionFile,
+      expect.objectContaining({ appendMessage }),
+      expect.objectContaining({ reason: "bridge_assistant_record_restore" }),
+    );
+    expect(deps.syncSessionBranchHead).toHaveBeenCalledWith(
+      sessionFile,
+      expect.objectContaining({ appendMessage }),
+      "bridge_assistant_record_append",
+    );
     expect(compactSession.compact).not.toHaveBeenCalled();
     const index = manager.readIndex(agent);
     expect(index["tg_dm_assistant@agent-a"].freshCompact).toEqual({ lastFreshCompactDate: "2026-05-14" });
@@ -839,7 +852,8 @@ describe("BridgeSessionManager teardown", () => {
     const sessionFile = path.join(agent.sessionDir, "bridge", "owner", "assistant.jsonl");
     fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
     fs.writeFileSync(sessionFile, "{}\n", "utf-8");
-    const manager = new BridgeSessionManager(makeDeps(agent));
+    const deps = makeDeps(agent);
+    const manager = new BridgeSessionManager(deps);
     manager.writeIndex({
       "tg_dm_assistant@agent-a": { file: "owner/assistant.jsonl" },
     }, agent);
@@ -856,7 +870,17 @@ describe("BridgeSessionManager teardown", () => {
 
     expect(result).toMatchObject({ ok: true, mode: "bridge-file" });
     expect(sessionManagerOpenMock).toHaveBeenCalledWith(sessionFile, path.dirname(sessionFile));
+    expect(deps.applySessionBranchHead).toHaveBeenCalledWith(
+      sessionFile,
+      expect.objectContaining({ appendCustomEntry }),
+      expect.objectContaining({ reason: "bridge_custom_entry_file_open" }),
+    );
     expect(appendCustomEntry).toHaveBeenCalledWith("hana-deferred-result", { taskId: "task-img" });
+    expect(deps.syncSessionBranchHead).toHaveBeenCalledWith(
+      sessionFile,
+      expect.objectContaining({ appendCustomEntry }),
+      "bridge_custom_entry_file_append",
+    );
   });
 
   it("records non-context custom entries through the live bridge session manager when loaded", () => {

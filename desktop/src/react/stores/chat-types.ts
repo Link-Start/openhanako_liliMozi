@@ -349,6 +349,9 @@ export interface SessionModel {
   thinkingLevels?: ThinkingLevel[];
   defaultThinkingLevel?: ThinkingLevel;
   contextWindow?: number;
+  /** Historical sessions can remain readable while their exact model is no longer executable. */
+  available?: boolean;
+  unavailableReason?: 'model_removed' | 'provider_not_configured' | 'temporarily_unavailable' | null;
 }
 
 // ── Per-session 消息状态 ──

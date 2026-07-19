@@ -17,17 +17,23 @@ import {
 } from "./media-schema-helpers.ts";
 
 function geminiImageProperties(ratios, resolutions = null) {
+  const defaultResolution = resolutions
+    ? (resolutions.includes("1K") ? "1K" : resolutions[0])
+    : null;
   return {
     ratio: enumParam(ratios, ratios.includes("3:2") ? "3:2" : ratios[0]),
-    ...(resolutions ? { resolution: enumParam(resolutions, resolutions[resolutions.length - 1]) } : {}),
+    ...(resolutions ? { resolution: enumParam(resolutions, defaultResolution) } : {}),
   };
 }
 
 function geminiImageModel(id, displayName, aliases, ratios, resolutions, maxReferenceImages) {
   const properties = geminiImageProperties(ratios, resolutions);
+  const defaultResolution = resolutions
+    ? (resolutions.includes("1K") ? "1K" : resolutions[0])
+    : null;
   const defaults = {
     ratio: ratios.includes("3:2") ? "3:2" : ratios[0],
-    ...(resolutions ? { resolution: resolutions[resolutions.length - 1] } : {}),
+    ...(resolutions ? { resolution: defaultResolution } : {}),
   };
   return {
     id,
@@ -56,11 +62,11 @@ export const geminiPlugin = {
   capabilities: {
     media: {
       imageGeneration: {
-        defaultModelId: "gemini-3.1-flash-image-preview",
+        defaultModelId: "gemini-3.1-flash-image",
         models: [
           geminiImageModel("gemini-2.5-flash-image", "Gemini 2.5 Flash Image", ["nano-banana"], GEMINI_25_IMAGE_RATIOS, null, 3),
-          geminiImageModel("gemini-3.1-flash-image-preview", "Gemini 3.1 Flash Image Preview", ["nano-banana-2"], GEMINI_31_FLASH_IMAGE_RATIOS, ["512", "1K", "2K", "4K"], 14),
-          geminiImageModel("gemini-3-pro-image-preview", "Gemini 3 Pro Image Preview", ["nano-banana-pro"], GEMINI_3_PRO_IMAGE_RATIOS, ["1K", "2K", "4K"], 14),
+          geminiImageModel("gemini-3.1-flash-image", "Gemini 3.1 Flash Image", ["nano-banana-2", "gemini-3.1-flash-image-preview"], GEMINI_31_FLASH_IMAGE_RATIOS, ["512", "1K", "2K", "4K"], 14),
+          geminiImageModel("gemini-3-pro-image", "Gemini 3 Pro Image", ["nano-banana-pro", "gemini-3-pro-image-preview"], GEMINI_3_PRO_IMAGE_RATIOS, ["1K", "2K", "4K"], 14),
         ],
       },
     },

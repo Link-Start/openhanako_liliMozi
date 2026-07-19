@@ -3471,6 +3471,7 @@ describe("SessionCoordinator", () => {
     coordinator.setSessionPinned = vi.fn(async () => null);
     coordinator.discardSessionRuntime = vi.fn(async () => {});
     coordinator.getSessionWorkspaceFolders = vi.fn(() => []);
+    coordinator.applySessionBranchHead = vi.fn();
 
     const result = await coordinator.continueDeletedAgentSession(sourcePath);
 
@@ -3532,6 +3533,7 @@ describe("SessionCoordinator", () => {
     coordinator.setSessionPinned = vi.fn(async () => null);
     coordinator.discardSessionRuntime = vi.fn(async () => {});
     coordinator.getSessionWorkspaceFolders = vi.fn(() => []);
+    coordinator.applySessionBranchHead = vi.fn();
 
     await coordinator.continueDeletedAgentSession(sourcePath);
 
@@ -3564,6 +3566,7 @@ describe("SessionCoordinator", () => {
       getHomeCwd: vi.fn(() => tempDir),
     };
     coordinator.createSession = vi.fn();
+    coordinator.applySessionBranchHead = vi.fn();
 
     await expect(coordinator.continueDeletedAgentSession(sourcePath)).rejects.toMatchObject({
       code: "SESSION_TRANSCRIPT_EMPTY",
@@ -3607,6 +3610,8 @@ describe("SessionCoordinator", () => {
     const sessionManifestStore = {
       resolveByLocatorPath: vi.fn((candidate) => candidate === resumeFile ? existingManifest : null),
       getBySessionId: vi.fn((sessionId) => sessionId === existingManifest.sessionId ? existingManifest : null),
+      getBranchHead: vi.fn(() => null),
+      setBranchHead: vi.fn(),
       createForPath: vi.fn(),
       updateLocatorLifecycle: vi.fn(),
     };
@@ -3619,7 +3624,12 @@ describe("SessionCoordinator", () => {
       return { tools: [], customTools };
     });
     const piSdk = await import("../lib/pi-sdk/index.ts");
-    (piSdk.SessionManager.open as any).mockReturnValue({ getCwd: () => tempDir, getSessionFile: () => resumeFile });
+    (piSdk.SessionManager.open as any).mockReturnValue({
+      getCwd: () => tempDir,
+      getSessionFile: () => resumeFile,
+      getEntries: () => [],
+      resetLeaf: vi.fn(),
+    });
     createAgentSessionMock.mockResolvedValue({
       session: { sessionManager: { getSessionFile: () => resumeFile }, subscribe: vi.fn(() => vi.fn()), abort: vi.fn() },
     });
@@ -3657,6 +3667,8 @@ describe("SessionCoordinator", () => {
     const sessionManifestStore = {
       resolveByLocatorPath: vi.fn((candidate) => candidate === resumeFile ? existingManifest : null),
       getBySessionId: vi.fn((sessionId) => sessionId === existingManifest.sessionId ? existingManifest : null),
+      getBranchHead: vi.fn(() => null),
+      setBranchHead: vi.fn(),
       createForPath: vi.fn(),
       updateLocatorLifecycle: vi.fn(),
     };
@@ -3665,6 +3677,10 @@ describe("SessionCoordinator", () => {
       getSessionFile: () => resumeFile,
       getSessionId: () => "pi-child",
       getBranch: () => [],
+      getEntries: () => [],
+      getLeafId: () => null,
+      resetLeaf: vi.fn(),
+      branch: vi.fn(),
     };
     const piSdk = await import("../lib/pi-sdk/index.ts");
     (piSdk.SessionManager.open as any).mockReturnValue(manager);
@@ -3724,6 +3740,8 @@ describe("SessionCoordinator", () => {
         manifest?.currentLocator?.path === candidate ? manifest : null
       )),
       getBySessionId: vi.fn((sessionId) => manifest?.sessionId === sessionId ? manifest : null),
+      getBranchHead: vi.fn(() => null),
+      setBranchHead: vi.fn(),
       createForPath: vi.fn((input) => {
         manifest = {
           ...input,
@@ -3745,6 +3763,8 @@ describe("SessionCoordinator", () => {
     (piSdk.SessionManager.open as any).mockReturnValue({
       getCwd: () => tempDir,
       getSessionFile: () => resumeFile,
+      getEntries: () => [],
+      resetLeaf: vi.fn(),
     });
     createAgentSessionMock.mockResolvedValue({
       session: {

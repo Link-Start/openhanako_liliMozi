@@ -1521,6 +1521,43 @@ describe("artifact-ota: resolveStagedTrainStatus", () => {
 });
 
 describe("artifact-ota: readStagedTrainStatus (filesystem integration)", () => {
+  const cachedAvailable = {
+    train: 17,
+    version: "0.401.7",
+    serverSha256: "a".repeat(64),
+    rendererSha256: "b".repeat(64),
+    sizes: { server: 100, renderer: 200 },
+    recordedAt: "2026-07-13T00:00:00.000Z",
+  };
+
+  async function writeCachedAvailableState(homeDir: string) {
+    await writeOtaChannelState(homeDir, SEED_CHANNEL, {
+      available: cachedAvailable,
+      minShellBlocked: true,
+      lastError: "cached network diagnostic",
+      lastCheckedAt: "2026-07-13T00:00:00.000Z",
+    });
+  }
+
+  async function writeCurrentVersions(homeDir: string, serverVersion: string | null, rendererVersion: string | null) {
+    if (serverVersion !== null) {
+      await pointerStore.writePointer(homeDir, SEED_CHANNEL, "current", {
+        train: 0,
+        kind: "server",
+        version: serverVersion,
+        sha256: "c".repeat(64),
+      });
+    }
+    if (rendererVersion !== null) {
+      await pointerStore.writePointer(homeDir, artifactBoot.rendererPointerChannel(SEED_CHANNEL), "current", {
+        train: 0,
+        kind: "renderer",
+        version: rendererVersion,
+        sha256: "d".repeat(64),
+      });
+    }
+  }
+
   it("reports not staged when no next pointers exist", async () => {
     const root = makeTempDir("hana-ota-staged-status-");
     const homeDir = path.join(root, "home");
@@ -1537,6 +1574,43 @@ describe("artifact-ota: readStagedTrainStatus (filesystem integration)", () => {
       manifestReleasedAt: null,
       originUnreachable: false,
     });
+  });
+
+  it.each([
+    ["exactly match", "0.401.7", "0.401.7"],
+    ["are newer", "0.402.0", "0.410.0"],
+  ])("hides a cached available update when both current component versions %s, without rewriting ota-state", async (_label, serverVersion, rendererVersion) => {
+    const root = makeTempDir("hana-ota-stale-available-");
+    const homeDir = path.join(root, "home");
+    await writeCachedAvailableState(homeDir);
+    await writeCurrentVersions(homeDir, serverVersion, rendererVersion);
+
+    const status = await readStagedTrainStatus(homeDir, { channel: SEED_CHANNEL });
+
+    expect(status.available).toBeNull();
+    expect(status.minShellBlocked).toBe(false);
+    expect(status.lastError).toBe("cached network diagnostic");
+    const persisted = (await readOtaState(homeDir))[SEED_CHANNEL];
+    expect(persisted.available).toEqual(cachedAvailable);
+    expect(persisted.minShellBlocked).toBe(true);
+  });
+
+  it.each([
+    ["server is behind", "0.400.9", "0.401.7"],
+    ["renderer is behind", "0.401.7", "0.400.9"],
+    ["server pointer is missing", null, "0.401.7"],
+    ["renderer pointer is missing", "0.401.7", null],
+    ["a pointer version is not comparable", "0.401.7", "legacy"],
+  ])("keeps cached availability when %s", async (_label, serverVersion, rendererVersion) => {
+    const root = makeTempDir("hana-ota-live-available-");
+    const homeDir = path.join(root, "home");
+    await writeCachedAvailableState(homeDir);
+    await writeCurrentVersions(homeDir, serverVersion, rendererVersion);
+
+    const status = await readStagedTrainStatus(homeDir, { channel: SEED_CHANNEL });
+
+    expect(status.available).toEqual(cachedAvailable);
+    expect(status.minShellBlocked).toBe(true);
   });
 
   it("reports staged after downloadAndApplyArtifacts writes both next pointers", async () => {

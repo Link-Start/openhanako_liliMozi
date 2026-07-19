@@ -922,6 +922,13 @@
     "notSelected": "Select a model",
     "noneConfigured": "No models configured",
     "unavailable": "Model unavailable",
+    "removed": "Model removed",
+    "providerNotConfigured": "Provider not configured",
+    "unavailableReason": {
+      "modelRemoved": "This conversation's model has been removed. Choose an available model to continue.",
+      "providerNotConfigured": "This conversation's model provider or credentials are not configured. Complete the setup or choose another model.",
+      "temporarilyUnavailable": "This conversation's model is currently unavailable. Check the provider or choose another model."
+    },
     "offline": "Offline",
     "switchFailed": "Failed to switch model",
     "switchWhileStreaming": "Cannot switch models while replying",

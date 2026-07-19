@@ -1825,6 +1825,26 @@ function resolveStagedTrainStatus({ serverNext, rendererNext }) {
 }
 
 /**
+ * A cached `available` descriptor can outlive the update it described when
+ * a full installer/seed boot advances both current pointers without going
+ * through the OTA apply path that normally clears ota-state.json. This is a
+ * read-only reconciliation: suppress the stale descriptor only when BOTH
+ * component pointers carry comparable versions at or beyond it. Missing,
+ * split, or malformed pointer state stays visible so a partial update can
+ * never be mistaken for completion.
+ * @param {{available: object|null, currentServerPointer: object|null,
+ *   currentRendererPointer: object|null}} opts
+ * @returns {boolean}
+ */
+function isCachedAvailableSatisfied({ available, currentServerPointer, currentRendererPointer }) {
+  if (!available || typeof available.version !== "string" || available.version.length === 0) return false;
+  if (!currentServerPointer || !currentRendererPointer) return false;
+  const serverCmp = compareVersions(currentServerPointer.version, available.version);
+  const rendererCmp = compareVersions(currentRendererPointer.version, available.version);
+  return serverCmp !== null && serverCmp >= 0 && rendererCmp !== null && rendererCmp >= 0;
+}
+
+/**
  * `minShellBlocked` covers every way this shell can be too old for a real,
  * gate-passing update: the minShell version string gate AND the preload
  * contract integer gate (see `checkOnce`'s `blockedReason` field in
@@ -1842,9 +1862,11 @@ function resolveStagedTrainStatus({ serverNext, rendererNext }) {
 async function readStagedTrainStatus(homeDir, opts = {}) {
   const { channel = SEED_CHANNEL } = opts;
   const rendererChannel = rendererPointerChannel(channel);
-  const [serverNext, rendererNext, otaState] = await Promise.all([
+  const [serverNext, rendererNext, currentServerPointer, currentRendererPointer, otaState] = await Promise.all([
     pointerStore.readPointer(homeDir, channel, "next"),
     pointerStore.readPointer(homeDir, rendererChannel, "next"),
+    pointerStore.readPointer(homeDir, channel, "current"),
+    pointerStore.readPointer(homeDir, rendererChannel, "current"),
     readOtaState(homeDir),
   ]);
   const status = resolveStagedTrainStatus({ serverNext, rendererNext });
@@ -1853,10 +1875,20 @@ async function readStagedTrainStatus(homeDir, opts = {}) {
   // wrote the legacy `lastSkipReason` string; a shell built after it
   // writes the boolean directly. Both are honored so an old ota-state.json
   // never crashes or silently reports the wrong thing after an upgrade.
-  const minShellBlocked = typeof channelState.minShellBlocked === "boolean"
+  const cachedMinShellBlocked = typeof channelState.minShellBlocked === "boolean"
     ? channelState.minShellBlocked
     : typeof channelState.lastSkipReason === "string" && channelState.lastSkipReason.startsWith("minShell ");
-  const available = channelState.available && typeof channelState.available === "object" ? channelState.available : null;
+  const cachedAvailable = channelState.available && typeof channelState.available === "object" ? channelState.available : null;
+  const availableSatisfied = isCachedAvailableSatisfied({
+    available: cachedAvailable,
+    currentServerPointer,
+    currentRendererPointer,
+  });
+  const available = availableSatisfied ? null : cachedAvailable;
+  // `minShellBlocked` describes the cached available update, not a durable
+  // shell condition. Once both components have reached that version, the
+  // stale block must disappear with its descriptor in this projection.
+  const minShellBlocked = availableSatisfied ? false : cachedMinShellBlocked;
   return {
     ...status,
     minShellBlocked,

@@ -274,11 +274,22 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
       if (typeof session.sessionManager.appendCustomEntry !== "function") {
         throw new Error("session retry requires durable branch commits");
       }
+      if (typeof engine.setSessionBranchHead !== "function") {
+        throw new Error("session branch persistence is unavailable");
+      }
       const originalLeafId = session.sessionManager.getLeafId?.() || null;
       let deferredSuppressionReceipt = null;
+      let branchHeadPersisted = false;
+      let resetMarkerAttempted = false;
       let rollbackReason = "branch_commit_failed";
       try {
         branchBeforeResolvedTurnInput(session, resolved);
+        engine.setSessionBranchHead(sessionPath, {
+          leafId: session.sessionManager.getLeafId?.() ?? null,
+          reason: "replay_rewind",
+        });
+        branchHeadPersisted = true;
+        resetMarkerAttempted = true;
         session.sessionManager.appendCustomEntry(SESSION_BRANCH_RESET_RECORD_TYPE, {
           sourceEntryId: resolved.turnInputEntry.id,
           target: resolved.target,
@@ -314,12 +325,26 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
         } catch (restoreError) {
           console.warn(`session retry deferred rollback failed for ${sessionId || sessionPath}: ${restoreError.message}`);
         }
-        restoreRetryBranch(
-          session,
-          originalLeafId,
-          resolved,
-          rollbackReason,
-        );
+        if (resetMarkerAttempted) {
+          restoreRetryBranch(
+            session,
+            originalLeafId,
+            resolved,
+            rollbackReason,
+          );
+        } else {
+          restoreBranchLeaf(session, originalLeafId);
+        }
+        if (branchHeadPersisted) {
+          try {
+            engine.setSessionBranchHead(sessionPath, {
+              leafId: originalLeafId,
+              reason: "replay_rollback",
+            });
+          } catch (restoreError) {
+            console.warn(`session retry branch-head rollback failed for ${sessionId || sessionPath}: ${restoreError.message}`);
+          }
+        }
         throw error;
       }
       branchCommitted = true;
@@ -805,6 +830,12 @@ function branchBeforeResolvedTurnInput(session, resolved) {
   } else {
     session.sessionManager.resetLeaf();
   }
+  replaceAgentMessagesFromBranch(session);
+}
+
+function restoreBranchLeaf(session, leafId) {
+  if (leafId == null) session.sessionManager.resetLeaf();
+  else session.sessionManager.branch(leafId);
   replaceAgentMessagesFromBranch(session);
 }
 

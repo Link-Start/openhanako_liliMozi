@@ -14,7 +14,7 @@ import { validateProviderModels } from "../shared/provider-model-validation.ts";
 
 // ── 测试工具 ────────────────────────────────────────────────────────────────
 
-const LATEST_DATA_VERSION = 49;
+const LATEST_DATA_VERSION = 50;
 
 function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hana-migrations-"));
@@ -188,7 +188,7 @@ describe("runMigrations runner", () => {
 
     expect(getMigrationStatus(prefs)).toEqual({
       registryLatestId: LATEST_DATA_VERSION,
-      pendingIds: [48, 49],
+      pendingIds: [48, 49, 50],
       lastFailedIds: [],
     });
     expect(fs.readFileSync(path.join(userDir, "preferences.json")).equals(before)).toBe(true);
@@ -286,7 +286,7 @@ describe("runMigrations runner", () => {
     }
 
     expect(logs).toContain("[migrations] 收据保存失败，应用将继续启动；未落盘的迁移会在下次启动重试");
-    expect(getMigrationStatus(prefs).pendingIds).toEqual([49]);
+    expect(getMigrationStatus(prefs).pendingIds).toEqual([49, 50]);
   });
 });
 
@@ -1762,6 +1762,153 @@ describe("migration #49: repair Codex OAuth model ids polluted by session event 
 
     expect(fs.readFileSync(catalogPath).equals(originalCatalogBytes)).toBe(true);
     expect(prefs.getPreferences()._dataVersion).toBe(48);
+  });
+});
+
+describe("migration #50: Gemini image preview IDs converge to stable IDs", () => {
+  let tmpDir, agentsDir, userDir;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    agentsDir = path.join(tmpDir, "agents");
+    userDir = path.join(tmpDir, "user");
+    fs.mkdirSync(agentsDir, { recursive: true });
+  });
+
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  it("migrates defaults, provider model keys, catalog entries, and retryable task params", () => {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({
+      _dataVersion: 49,
+      imageGeneration: {
+        defaultImageModel: { provider: "gemini", id: "gemini-3.1-flash-image-preview" },
+        providerDefaults: {
+          gemini: {
+            models: {
+              "gemini-3.1-flash-image-preview": { resolution: "4K", inherited: true },
+              "gemini-3.1-flash-image": { resolution: "2K", explicit: true },
+              "gemini-3-pro-image-preview": { resolution: "4K" },
+            },
+          },
+          custom: {
+            models: {
+              "gemini-3.1-flash-image-preview": { untouched: true },
+            },
+          },
+        },
+      },
+    });
+
+    writeJson(path.join(tmpDir, "plugin-data", "image-gen", "config.json"), {
+      schemaVersion: 1,
+      global: {
+        defaultImageModel: { provider: "gemini", id: "gemini-3-pro-image-preview" },
+        providerDefaults: {
+          gemini: {
+            models: {
+              "gemini-3-pro-image-preview": { resolution: "4K" },
+            },
+          },
+        },
+      },
+      agents: {},
+      sessions: {},
+    });
+
+    writeJson(path.join(tmpDir, "provider-catalog.json"), {
+      catalogVersion: 2,
+      providers: {
+        gemini: {
+          media: {
+            image_generation: {
+              defaultModelId: "gemini-3.1-flash-image-preview",
+              models: [
+                { id: "gemini-3.1-flash-image-preview", legacyField: true },
+                { id: "gemini-3.1-flash-image", stableField: true },
+                "gemini-3-pro-image-preview",
+              ],
+            },
+          },
+        },
+      },
+      capabilities: {},
+      meta: {},
+    });
+
+    writeJson(path.join(tmpDir, "plugin-data", "image-gen", "tasks.json"), [
+      {
+        taskId: "gemini-task",
+        adapterId: "gemini",
+        providerId: "gemini",
+        modelId: "gemini-3.1-flash-image-preview",
+        params: {
+          providerId: "gemini",
+          modelId: "gemini-3.1-flash-image-preview",
+          model: "gemini-3.1-flash-image-preview",
+        },
+      },
+      {
+        taskId: "custom-task",
+        adapterId: "custom",
+        providerId: "custom",
+        modelId: "gemini-3.1-flash-image-preview",
+        params: { model: "gemini-3.1-flash-image-preview" },
+      },
+    ]);
+
+    runMigrations({
+      hanakoHome: tmpDir,
+      agentsDir,
+      prefs,
+      providerRegistry: new ProviderRegistry(tmpDir),
+      log: () => {},
+    });
+
+    const nextPrefs = prefs.getPreferences();
+    expect(nextPrefs._dataVersion).toBe(LATEST_DATA_VERSION);
+    expect(nextPrefs.imageGeneration.defaultImageModel).toEqual({
+      provider: "gemini",
+      id: "gemini-3.1-flash-image",
+    });
+    expect(nextPrefs.imageGeneration.providerDefaults.gemini.models).toEqual({
+      "gemini-3.1-flash-image": {
+        resolution: "2K",
+        inherited: true,
+        explicit: true,
+      },
+      "gemini-3-pro-image": { resolution: "4K" },
+    });
+    expect(nextPrefs.imageGeneration.providerDefaults.custom.models).toHaveProperty(
+      "gemini-3.1-flash-image-preview",
+    );
+
+    const pluginConfig = readJson(path.join(tmpDir, "plugin-data", "image-gen", "config.json"));
+    expect(pluginConfig.global.defaultImageModel.id).toBe("gemini-3-pro-image");
+    expect(pluginConfig.global.providerDefaults.gemini.models).toEqual({
+      "gemini-3-pro-image": { resolution: "4K" },
+    });
+
+    const catalog = readJson(path.join(tmpDir, "provider-catalog.json"));
+    const imageCapability = catalog.providers.gemini.media.image_generation;
+    expect(imageCapability.defaultModelId).toBe("gemini-3.1-flash-image");
+    expect(imageCapability.models).toEqual([
+      { id: "gemini-3.1-flash-image", legacyField: true, stableField: true },
+      "gemini-3-pro-image",
+    ]);
+
+    const tasks = readJson(path.join(tmpDir, "plugin-data", "image-gen", "tasks.json"));
+    expect(tasks[0]).toMatchObject({
+      modelId: "gemini-3.1-flash-image",
+      params: {
+        modelId: "gemini-3.1-flash-image",
+        model: "gemini-3.1-flash-image",
+      },
+    });
+    expect(tasks[1]).toMatchObject({
+      modelId: "gemini-3.1-flash-image-preview",
+      params: { model: "gemini-3.1-flash-image-preview" },
+    });
   });
 });
 

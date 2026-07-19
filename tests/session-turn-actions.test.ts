@@ -44,6 +44,7 @@ describe("replayLatestUserTurn", () => {
       ensureSessionLoaded: vi.fn(async () => session),
       isSessionStreaming: vi.fn(() => false),
       emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
     };
 
     await replayLatestUserTurn(engine, {
@@ -65,6 +66,10 @@ describe("replayLatestUserTurn", () => {
       sessionFiles: [],
       discardedTaskIds: [],
     }, "/tmp/main.jsonl");
+    expect(engine.setSessionBranchHead).toHaveBeenCalledWith("/tmp/main.jsonl", {
+      leafId: priorAssistantId,
+      reason: "replay_rewind",
+    });
     expect(submit).toHaveBeenCalledWith(engine, expect.objectContaining({
       sessionPath: "/tmp/main.jsonl",
       text: "try again",
@@ -86,6 +91,7 @@ describe("replayLatestUserTurn", () => {
       ensureSessionLoaded: vi.fn(async () => session),
       isSessionStreaming: vi.fn(() => false),
       emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
     };
 
     await replayLatestUserTurn(engine, {
@@ -122,6 +128,7 @@ describe("replayLatestUserTurn", () => {
       ensureSessionLoaded: vi.fn(async () => session),
       isSessionStreaming: vi.fn(() => false),
       emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
     };
 
     await replayLatestUserTurn(engine, {
@@ -152,6 +159,7 @@ describe("replayLatestUserTurn", () => {
       ensureSessionLoaded: vi.fn(async () => session),
       isSessionStreaming: vi.fn(() => false),
       emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
     };
 
     await replayLatestUserTurn(engine, {
@@ -184,6 +192,7 @@ describe("replayLatestUserTurn", () => {
       ensureSessionLoaded: vi.fn(async () => session),
       isSessionStreaming: vi.fn(() => false),
       emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
     };
 
     await replayLatestUserTurn(engine, {
@@ -210,6 +219,7 @@ describe("replayLatestUserTurn", () => {
       ensureSessionLoaded: vi.fn(async () => session),
       isSessionStreaming: vi.fn(() => false),
       emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
     };
 
     await expect(replayLatestUserTurn(engine, {
@@ -218,6 +228,35 @@ describe("replayLatestUserTurn", () => {
     }, { submit })).rejects.toThrow("latest user message");
 
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("rolls the in-memory branch back and aborts replay when head persistence fails", async () => {
+    const manager = SessionManager.inMemory("/workspace");
+    manager.appendMessage({ role: "user", content: "context" } as any);
+    const latestUserId = manager.appendMessage({ role: "user", content: "retry" } as any);
+    const oldLeafId = manager.appendMessage({ role: "assistant", content: "bad answer" } as any);
+    const session = makeNavigableSession(manager);
+    const submit = vi.fn();
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      isSessionStreaming: vi.fn(() => false),
+      emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(() => {
+        throw new Error("manifest disk full");
+      }),
+    };
+
+    await expect(replayLatestUserTurn(engine, {
+      sessionPath: "/tmp/main.jsonl",
+      sourceEntryId: latestUserId,
+    }, { submit })).rejects.toThrow("manifest disk full");
+
+    expect(manager.getLeafId()).toBe(oldLeafId);
+    expect(submit).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledWith(engine, expect.objectContaining({
+      beforeInputSideEffects: expect.any(Function),
+    }));
+    expect(engine.emitEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -375,6 +414,7 @@ describe("retrySessionTurn", () => {
       ensureSessionLoaded: vi.fn(async () => session),
       isSessionStreaming: vi.fn(() => false),
       emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
     };
   }
 

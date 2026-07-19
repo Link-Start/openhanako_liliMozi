@@ -16,6 +16,7 @@ interface Props {
     totalPages: number;
   } | null;
   inlineError: string | null;
+  modelUnavailableMessage?: string | null;
   slashResult: { text: string; type: 'success' | 'error'; deskDir?: string; filePath?: string } | null;
   onResultClick: (() => void) | undefined;
 }
@@ -24,7 +25,7 @@ interface Props {
 export const InputStatusBars = memo(function InputStatusBars({
   slashBusy, slashBusyLabel, compacting, compactingLabel,
   screenshotBusy, screenshotLabel, screenshotPageLabel, screenshotProgress,
-  inlineError, slashResult, onResultClick,
+  inlineError, modelUnavailableMessage = null, slashResult, onResultClick,
 }: Props) {
   const completedBlocks = screenshotProgress?.completedBlocks ?? 0;
   const totalBlocks = screenshotProgress?.totalBlocks ?? 0;
@@ -75,7 +76,13 @@ export const InputStatusBars = memo(function InputStatusBars({
           <span>{inlineError}</span>
         </div>
       )}
-      {!slashBusy && !compacting && !screenshotBusy && !inlineError && slashResult && (
+      {modelUnavailableMessage && (
+        <div className={styles['slash-error-bar']} role="status">
+          <span className={styles['slash-error-dot']} />
+          <span>{modelUnavailableMessage}</span>
+        </div>
+      )}
+      {!slashBusy && !compacting && !screenshotBusy && !inlineError && !modelUnavailableMessage && slashResult && (
         <div
           className={`${styles['slash-busy-bar']}${resultClickable ? ` ${styles['slash-busy-bar-clickable']}` : ''}`}
           onClick={onResultClick}

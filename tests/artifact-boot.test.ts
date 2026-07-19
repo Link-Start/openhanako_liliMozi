@@ -192,29 +192,44 @@ describe("artifact-boot: seed presence and verification", () => {
 });
 
 describe("artifact-boot: decideBootAction (pure)", () => {
-  const seedEntry = { sha256: "a".repeat(64) };
+  const seedEntry = { sha256: "a".repeat(64), version: "2.0.0" };
 
   it("activates the seed when nothing is resolved (first run)", () => {
     expect(decideBootAction({ resolved: null, seedEntry, crashFallback: false })).toBe("activate-seed");
   });
 
   it("boots the resolved pointer when it matches the bundled seed", () => {
-    const resolved = { slot: "current", pointer: { sha256: "a".repeat(64), train: 0 } };
+    const resolved = { slot: "current", pointer: { sha256: "a".repeat(64), train: 0, version: "2.0.0" } };
     expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("boot");
   });
 
-  it("re-activates the seed when a seed-era pointer mismatches the bundled seed (installer updated)", () => {
-    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 0 } };
+  it("activates a strictly newer packaged seed over an older OTA train", () => {
+    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 7, version: "1.9.9" } };
     expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("activate-seed");
   });
 
-  it("leaves OTA-activated trains (train > 0) alone even when they mismatch the seed", () => {
-    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 7 } };
+  it("keeps an equal-version current pointer even when its content and train differ", () => {
+    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 0, version: "2.0.0" } };
+    expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("boot");
+  });
+
+  it("never downgrades a current pointer that is newer than the packaged seed", () => {
+    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 0, version: "2.0.1" } };
+    expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("boot");
+  });
+
+  it("preserves the legacy train-0 sha mismatch rule when versions cannot be compared", () => {
+    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 0, version: "legacy" } };
+    expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("activate-seed");
+  });
+
+  it("preserves the legacy OTA-train priority when versions cannot be compared", () => {
+    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 7, version: "legacy" } };
     expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("boot");
   });
 
   it("never forces the seed over a crash-fallback target", () => {
-    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 0 } };
+    const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 7, version: "1.0.0" } };
     expect(decideBootAction({ resolved, seedEntry, crashFallback: true })).toBe("boot");
   });
 });
@@ -638,6 +653,47 @@ describe("artifact-boot: prepareArtifactBoot dual-kind orchestrator", () => {
     expect(result.renderer.activatedSeed).toBe(true);
     expect(fs.existsSync(path.join(result.server.versionDir, "bundle", "index.js"))).toBe(true);
     expect(fs.existsSync(path.join(result.renderer.versionDir, "index.html"))).toBe(true);
+  });
+
+  it("activates a newer packaged seed over older OTA currents for both server and renderer", async () => {
+    const root = makeTempDir("hana-boot-dual-seed-upgrade-");
+    const keys = makeKeys();
+    const oldSeed = await makeDualKindSeedResources(root, keys, { version: "1.0.0", marker: "old-seed" });
+    const ota = await makeDualKindSeedResources(root, keys, { version: "1.1.0", marker: "old-ota", train: 7 });
+    const newSeed = await makeDualKindSeedResources(root, keys, { version: "2.0.0", marker: "new-seed" });
+    const homeDir = path.join(root, "home");
+
+    await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: oldSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      log: () => {},
+    });
+
+    await activation.activateFromArchive(
+      path.join(ota.seedDir, `server-1.1.0-${PLATFORM_ARCH}.tar.gz`),
+      ota.manifest,
+      { homeDir, channel: SEED_CHANNEL, kind: "server", platformArch: PLATFORM_ARCH },
+    );
+    await activation.activateFromArchive(
+      path.join(ota.seedDir, "renderer-1.1.0.tar.gz"),
+      ota.manifest,
+      { homeDir, channel: rendererPointerChannel(SEED_CHANNEL), kind: "renderer" },
+    );
+
+    const result = await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: newSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      log: () => {},
+    });
+
+    expect(result.server).toMatchObject({ activatedSeed: true, train: 0, version: "2.0.0" });
+    expect(result.renderer).toMatchObject({ activatedSeed: true, train: 0, version: "2.0.0" });
+    expect(fs.readFileSync(path.join(result.server.versionDir, "bundle", "index.js"), "utf8")).toContain("new-seed");
+    expect(fs.readFileSync(path.join(result.renderer.versionDir, "index.html"), "utf8")).toContain("new-seed");
   });
 
   // Mutation-check target: a manifest missing the

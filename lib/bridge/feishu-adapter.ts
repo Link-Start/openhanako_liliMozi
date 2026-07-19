@@ -155,12 +155,81 @@ function extractFeishuCardId(res: any) {
   return null;
 }
 
+function isObjectRecord(value: any): value is Record<string, any> {
+  return Boolean(value && typeof value === "object");
+}
+
+function findFeishuBusinessEnvelope(response: any) {
+  const candidates = [response, response?.data];
+  for (const candidate of candidates) {
+    if (!isObjectRecord(candidate)) continue;
+    if (Object.prototype.hasOwnProperty.call(candidate, "code")) return candidate;
+  }
+  return null;
+}
+
+function feishuBusinessMessage(envelope: Record<string, any>) {
+  const value = envelope.msg ?? envelope.message;
+  return value === undefined || value === null ? null : String(value);
+}
+
+function feishuBusinessLogId(envelope: Record<string, any>) {
+  return envelope.error?.log_id ?? envelope.log_id ?? null;
+}
+
+function isRecognizableFeishuErrorEnvelope(envelope: Record<string, any>) {
+  return envelope.msg !== undefined
+    || envelope.message !== undefined
+    || envelope.log_id !== undefined
+    || envelope.error?.log_id !== undefined;
+}
+
+class FeishuBusinessError extends Error {
+  operation: string;
+  code: any;
+  businessMessage: string | null;
+  msg: string | null;
+  logId: any;
+  log_id: any;
+  responseBody: Record<string, any>;
+
+  constructor(operation: string, envelope: Record<string, any>) {
+    const code = envelope.code;
+    const businessMessage = feishuBusinessMessage(envelope);
+    const logId = feishuBusinessLogId(envelope);
+    const details = [`code=${code}`];
+    if (businessMessage) details.push(`msg=${businessMessage}`);
+    if (logId) details.push(`log_id=${logId}`);
+    super(`飞书${operation}失败：${details.join(", ")}`);
+    this.name = "FeishuBusinessError";
+    this.operation = operation;
+    this.code = code;
+    this.businessMessage = businessMessage;
+    this.msg = businessMessage;
+    this.logId = logId;
+    this.log_id = logId;
+    this.responseBody = envelope;
+  }
+}
+
+function assertFeishuBusinessSuccess(
+  operation: string,
+  response: any,
+  { recognizableErrorsOnly = false }: { recognizableErrorsOnly?: boolean } = {},
+) {
+  const envelope = findFeishuBusinessEnvelope(response);
+  if (!envelope) return response;
+  if (envelope.code === 0 || envelope.code === "0") return response;
+  if (recognizableErrorsOnly && !isRecognizableFeishuErrorEnvelope(envelope)) return response;
+  throw new FeishuBusinessError(operation, envelope);
+}
+
 function describeFeishuError(err: any) {
   const data = err?.response?.data || err?.data || err?.body || null;
   if (data && typeof data === "object") {
     const parts = [];
     if (data.code !== undefined) parts.push(`code=${data.code}`);
-    if (data.msg) parts.push(`msg=${data.msg}`);
+    if (data.msg || data.message) parts.push(`msg=${data.msg || data.message}`);
     const logId = data.error?.log_id || data.log_id;
     if (logId) parts.push(`log_id=${logId}`);
     if (parts.length) return parts.join(", ");
@@ -174,12 +243,18 @@ function wrapFeishuError(label: any, err: any) {
   return wrapped;
 }
 
-async function callFeishu(label: any, fn: any) {
+async function callFeishu(
+  label: any,
+  fn: any,
+  options: { recognizableErrorsOnly?: boolean } = {},
+) {
+  let response;
   try {
-    return await fn();
+    response = await fn();
   } catch (err) {
     throw wrapFeishuError(label, err);
   }
+  return assertFeishuBusinessSuccess(label, response, options);
 }
 
 function assertUploadBuffer(buffer: any, label: any, maxBytes: any) {
@@ -627,7 +702,9 @@ export function createFeishuAdapter({ appId, appSecret, region, agentId, onMessa
   }
 
   async function createOutboundMessage(chatId: string, rendered: FeishuOutboundMessage) {
-    return client.im.message.create(feishuOutboundCreatePayload(chatId, rendered));
+    return callFeishu("消息发送", () => (
+      client.im.message.create(feishuOutboundCreatePayload(chatId, rendered))
+    ));
   }
 
   function feishuCardKitCreatePayload(text: string) {
@@ -680,7 +757,9 @@ export function createFeishuAdapter({ appId, appSecret, region, agentId, onMessa
   }
 
   async function updateOutboundMessage(messageId: string, rendered: FeishuOutboundMessage) {
-    return client.im.message.update(feishuOutboundUpdatePayload(messageId, rendered));
+    return callFeishu("消息更新", () => (
+      client.im.message.update(feishuOutboundUpdatePayload(messageId, rendered))
+    ));
   }
 
   async function transitionStreamToInteractiveCard(chatId: string, state: FeishuStreamState, rendered: FeishuOutboundMessage) {
@@ -799,8 +878,12 @@ export function createFeishuAdapter({ appId, appSecret, region, agentId, onMessa
         ? await callFeishu("图片下载", () => client.im.messageResource.get({
           path: { message_id: messageId, file_key: imageKey },
           params: { type: "image" },
-        }))
-        : await callFeishu("图片下载", () => client.im.image.get({ path: { image_key: imageKey } }));
+        }), { recognizableErrorsOnly: true })
+        : await callFeishu(
+          "图片下载",
+          () => client.im.image.get({ path: { image_key: imageKey } }),
+          { recognizableErrorsOnly: true },
+        );
       return bufferFromFeishuDownload(resp, "图片下载");
     },
 
@@ -809,7 +892,7 @@ export function createFeishuAdapter({ appId, appSecret, region, agentId, onMessa
       const resp = await callFeishu("文件下载", () => client.im.messageResource.get({
         path: { message_id: messageId, file_key: fileKey },
         params: { type: "file" },
-      }));
+      }), { recognizableErrorsOnly: true });
       return bufferFromFeishuDownload(resp, "文件下载");
     },
 

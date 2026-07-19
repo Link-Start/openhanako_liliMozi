@@ -17,10 +17,11 @@
  * - 消费方硬报错：seed manifest 缺调用方需要的 kind（server 缺当前平台条目 /
  *   renderer 缺条目）→ 拒绝启动，绝不静默降级（schema 修正案的消费侧义务）。
  *   packaged 模式的组合入口 `prepareArtifactBoot` 要求两个 kind 都在场。
- * - seed 新鲜度：安装器是主要投递通道，指针内容与当前安装包
- *   的 seed 不一致（sha256 不同）说明安装包换代了 → 以随包 seed 为准重新
- *   激活，shell 与两种 kind 永远同版本旅行。OTA 激活的 train（train > 0）
- *   优先于 seed —— seed/OTA 的进一步调和由后台 OTA 更新管理器负责。
+ * - seed 新鲜度：安装器是主要投递通道。随包签名 seed 的产品版本严格新于
+ *   已解析指针时，以 seed 为准重新激活，即使指针来自 OTA train；相同或更旧
+ *   的 seed 不覆盖 current，避免安装旧包或同版重装造成降级/无意义替换。
+ *   旧指针缺少可比较版本时保留既有兼容规则：train 0 的 sha256 不同则重新
+ *   激活随包 seed，train > 0 仍优先于 seed。
  * - 三连败降级：server 与 renderer都实现——boot
  *   哨兵连续 3 次未被健康清除 → current 降级到 previous；被降级的 train > 0
  *   时写入 quarantine（永不自动重试）。train 0 永不隔离：quarantine 按
@@ -34,9 +35,9 @@
  *   提供决策 + 两个纯过滤函数（`isRendererMainFrameLoadCrash`／
  *   `isRenderProcessGoneCrash`），不直接依赖 Electron。
  * - 指针命名空间：server 沿用未加限定的 `channel`（"stable"），与签名 seed 管线
- *   已经落地的用户数据字节兼容——老用户升级后 stable.current.json 仍然有效，
- *   sha256 不匹配触发的"随包 seed 为准"重激活自然覆盖"server 版本换代"这
- *   一种情形。renderer 采用独立指针命名空间，用
+ *   已经落地的用户数据字节兼容——老用户升级后 stable.current.json 仍然有效；
+ *   新指针按产品版本决定 seed 新鲜度，缺少可比较版本的旧指针继续按 train 与
+ *   sha256 的既有规则恢复。renderer 采用独立指针命名空间，用
  *   `${channel}.renderer` 作为独立指针命名空间（pointer-store 的 channel
  *   参数只是一个不透明的文件名片段，不做语义校验）——两种 kind 各自的
  *   current/previous/next 互不覆盖。`SEED_CHANNEL` 与 `rendererPointerChannel`
@@ -129,18 +130,52 @@ function verifySeedManifest({ manifestBytes, sigBytes, keyset, platformArch, req
 }
 
 /**
- * 纯决策：给定已解析指针、随包 seed 的 server 条目、是否处于三连败降级。
+ * 产品版本只接受完整的 major.minor.patch（可带 v 前缀）。不可解析返回 null，
+ * 由启动决策回退到旧指针兼容规则，不猜测版本先后。
+ * @param {unknown} version
+ * @returns {number[]|null}
+ */
+function parseProductVersion(version) {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(version == null ? "" : version).trim());
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+/**
+ * @param {unknown} leftVersion
+ * @param {unknown} rightVersion
+ * @returns {-1|0|1|null}
+ */
+function compareProductVersions(leftVersion, rightVersion) {
+  const left = parseProductVersion(leftVersion);
+  const right = parseProductVersion(rightVersion);
+  if (!left || !right) return null;
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] > right[index] ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
+ * 纯决策：给定已解析指针、随包 seed 条目、是否处于三连败降级。
  * @param {{resolved: {slot: string, pointer: object} | null,
- *          seedEntry: {sha256: string}, crashFallback: boolean}} opts
+ *          seedEntry: {sha256: string, version?: string}, crashFallback: boolean}} opts
  * @returns {"boot"|"activate-seed"}
  */
 function decideBootAction({ resolved, seedEntry, crashFallback }) {
   if (!resolved) return "activate-seed";
   if (crashFallback) return "boot"; // 绝不把降级目标又顶回 seed
   const pointer = resolved.pointer;
+  const versionComparison = compareProductVersions(seedEntry.version, pointer.version);
+  if (versionComparison !== null) {
+    return versionComparison > 0 ? "activate-seed" : "boot";
+  }
+
+  // 老指针或异常数据没有完整产品版本时，逐字保留原来的 train/sha 决策：
+  // seed-era 指针按内容新鲜度自愈，OTA train 不被无法比较的 seed 覆盖。
   const pointerTrain = Number.isInteger(pointer.train) ? pointer.train : 0;
   if (pointerTrain === 0 && pointer.sha256 !== seedEntry.sha256) {
-    return "activate-seed"; // 安装包换代：随包 seed 为准，见文件头的新鲜度规则。
+    return "activate-seed";
   }
   return "boot";
 }

@@ -120,7 +120,11 @@ vi.mock('../../components/input/FileMentionMenu', () => ({
 }));
 
 vi.mock('../../components/input/InputStatusBars', () => ({
-  InputStatusBars: () => null,
+  InputStatusBars: (props: { modelUnavailableMessage?: string | null }) => (
+    props.modelUnavailableMessage
+      ? React.createElement('div', { 'data-testid': 'model-unavailable-status' }, props.modelUnavailableMessage)
+      : null
+  ),
 }));
 
 vi.mock('../../components/input/InputContextRow', () => ({
@@ -311,6 +315,32 @@ describe('InputArea draft sync', () => {
       expect(bar.getAttribute('data-has-input')).toBe('true');
       expect(bar.getAttribute('data-can-send')).toBe('true');
     });
+  });
+
+  it('keeps history editable but disables sending until an unavailable session model is replaced', async () => {
+    seedSessionComposer('等待更换模型');
+    useStore.setState({
+      sessionModelsByPath: {
+        '/session/draft-sync.jsonl': {
+          id: 'removed-chat-model',
+          name: 'Removed Chat Model',
+          provider: 'legacy-provider',
+          available: false,
+          unavailableReason: 'model_removed',
+        },
+      },
+    } as never);
+
+    render(React.createElement(InputArea));
+
+    await waitFor(() => {
+      expect(setContentCallsWithText('等待更换模型')).toBe(true);
+      const bar = screen.getByTestId('input-control-bar');
+      expect(bar.getAttribute('data-has-input')).toBe('true');
+      expect(bar.getAttribute('data-can-send')).toBe('false');
+    });
+    expect(screen.getByTestId('model-unavailable-status').textContent)
+      .toBe(testT('model.unavailableReason.modelRemoved'));
   });
 
   it('does not inject home draft text after pending activation when the session draft is empty', async () => {

@@ -922,6 +922,13 @@
     "notSelected": "모델 선택",
     "noneConfigured": "설정된 모델 없음",
     "unavailable": "모델을 사용할 수 없음",
+    "removed": "모델이 삭제됨",
+    "providerNotConfigured": "Provider가 설정되지 않음",
+    "unavailableReason": {
+      "modelRemoved": "이 대화에서 사용하던 모델이 삭제되었습니다. 계속하려면 사용 가능한 모델을 선택하세요.",
+      "providerNotConfigured": "이 대화의 모델 Provider 또는 인증 정보가 설정되지 않았습니다. 설정을 완료하거나 다른 모델을 선택하세요.",
+      "temporarilyUnavailable": "이 대화의 모델을 현재 사용할 수 없습니다. Provider 상태를 확인하거나 다른 모델을 선택하세요."
+    },
     "offline": "오프라인",
     "switchFailed": "모델 전환 실패",
     "switchWhileStreaming": "응답 중에는 모델을 전환할 수 없습니다",

@@ -293,6 +293,31 @@ export class FactStore {
   }
 
   /**
+   * Replace every fact owned by one stable session in a single transaction.
+   * FTS stays consistent through the existing delete/insert triggers.
+   */
+  replaceBySession(sessionId, entries) {
+    const stableSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!stableSessionId) throw new Error("replaceBySession requires sessionId");
+    if (!Array.isArray(entries)) throw new Error("replaceBySession requires an entries array");
+
+    const run = this.db.transaction(() => {
+      this._stmts.deleteBySession.run(stableSessionId);
+      for (const entry of entries) {
+        if (typeof entry?.fact !== "string" || !entry.fact.trim()) {
+          throw new Error("replacement fact must be a non-empty string");
+        }
+        this.add({
+          ...entry,
+          session_id: stableSessionId,
+        });
+      }
+    });
+    run();
+    return entries.length;
+  }
+
+  /**
    * 按标签搜索（精确匹配，OR 逻辑，按匹配数降序）
    *
    * 使用 json_each 精确匹配标签值，避免 LIKE 子串误匹配

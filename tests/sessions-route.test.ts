@@ -162,6 +162,65 @@ describe("sessions route", () => {
     expect(data.currentModelAudioTransportSupported).toBe(true);
   });
 
+  it("returns historical model availability without failing the session switch", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const app = new Hono();
+    const targetPath = "/tmp/agents/a/sessions/removed-model.jsonl";
+    const historicalModel = {
+      id: "removed-chat-model",
+      name: "Removed Chat Model",
+      provider: "legacy-provider",
+      api: "hana-unavailable-model",
+      input: ["text"],
+    };
+    const engine = {
+      agentsDir: "/tmp/agents",
+      currentSessionPath: targetPath,
+      activeSessionModel: historicalModel,
+      currentModel: { id: "current-model", provider: "current-provider", input: ["text"] },
+      memoryEnabled: true,
+      planMode: false,
+      memoryModelUnavailableReason: null,
+      cwd: "/tmp/workspace",
+      currentAgentId: "a",
+      isSessionStreaming: vi.fn(() => false),
+      switchSession: vi.fn(async () => historicalModel),
+      getSessionByPath: vi.fn(() => ({
+        model: historicalModel,
+        messages: [{ role: "user", content: "history" }],
+      })),
+      getSessionMemoryEnabled: vi.fn(() => true),
+      getSessionThinkingLevel: vi.fn(() => "medium"),
+      getSessionWorkspaceFolders: vi.fn(() => []),
+      getSessionAuthorizedFolders: vi.fn(() => []),
+      getSessionModelAvailability: vi.fn(() => ({
+        available: false,
+        reason: "model_removed",
+        modelRef: "legacy-provider/removed-chat-model",
+      })),
+      getAgent: vi.fn(() => ({ agentName: "Agent A" })),
+      agentIdFromSessionPath: vi.fn(() => "a"),
+    };
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request("/api/sessions/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: targetPath }),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.messageCount).toBe(1);
+    expect(data).toMatchObject({
+      currentModelId: "removed-chat-model",
+      currentModelProvider: "legacy-provider",
+      currentModelAvailable: false,
+      currentModelUnavailableReason: "model_removed",
+    });
+    expect(engine.getSessionModelAvailability).toHaveBeenCalledWith(targetPath);
+  });
+
   it("switches sessions by sessionId and treats path as a legacy locator", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const app = new Hono();
@@ -1694,12 +1753,13 @@ describe("sessions route", () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const { SessionManager } = await import("../lib/pi-sdk/index.ts");
     const { loadLatestTodosFromSessionFile, loadLatestTodoSnapshotFromSessionFile } = await import("../lib/tools/todo-compat.ts");
+    const { TODO_STATE_CUSTOM_TYPE } = await import("../lib/tools/todo-constants.ts");
     const app = new Hono();
     const agentsDir = path.join(tmpDir, "agents");
     const sessionDir = path.join(agentsDir, "hana", "sessions");
     const manager = SessionManager.create("/tmp/workspace", sessionDir);
     const sessionPath = manager.getSessionFile();
-    manager.appendMessage({
+    const baseAssistantId = manager.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "working" }],
       api: "test",
@@ -1708,7 +1768,7 @@ describe("sessions route", () => {
       stopReason: "toolUse",
       timestamp: Date.now(),
     } as any);
-    manager.appendMessage({
+    const currentTodoLeafId = manager.appendMessage({
       role: "toolResult",
       toolCallId: "todo-1",
       toolName: "todo_write",
@@ -1722,11 +1782,27 @@ describe("sessions route", () => {
         ],
       },
     });
+    manager.branch(baseAssistantId);
+    manager.appendCustomMessageEntry(
+      TODO_STATE_CUSTOM_TYPE,
+      "discarded todos",
+      false,
+      {
+        source: "user",
+        removed: false,
+        todos: [{ content: "discarded", activeForm: "discarding", status: "in_progress" }],
+      },
+    );
+    manager.branch(currentTodoLeafId);
 
+    const openSessionManagerAtCurrentBranch = vi.fn(() => manager);
+    const syncSessionBranchHead = vi.fn();
     const engine = {
       agentsDir,
       isSessionStreaming: vi.fn(() => false),
-      getSessionByPath: vi.fn(() => ({ sessionManager: manager })),
+      getSessionByPath: vi.fn(() => null),
+      openSessionManagerAtCurrentBranch,
+      syncSessionBranchHead,
       emitEvent: vi.fn(),
     };
 
@@ -1750,6 +1826,8 @@ describe("sessions route", () => {
         { content: "write", activeForm: "writing", status: "completed" },
       ],
     });
+    expect(openSessionManagerAtCurrentBranch).toHaveBeenCalledWith(sessionPath, path.dirname(sessionPath));
+    expect(syncSessionBranchHead).toHaveBeenCalledWith(sessionPath, manager, "todo_complete_append");
     expect(engine.emitEvent).toHaveBeenCalledWith({ type: "todo_update", todos: [] }, sessionPath);
   });
 

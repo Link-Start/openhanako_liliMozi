@@ -104,6 +104,46 @@ describe('ModelSelector', () => {
     expect(screen.queryByRole('option', { name: /Removed Model/ })).toBeNull();
   });
 
+  it('shows a reliable removal reason and allows explicitly re-selecting the same restored model', async () => {
+    storeState.currentSessionPath = '/sessions/a.jsonl';
+    storeState.pendingNewSession = false;
+    storeState.chatSessions = {
+      '/sessions/a.jsonl': { items: [{ type: 'message' }] },
+    };
+    const blockedModel = {
+      ...models[0],
+      available: false,
+      unavailableReason: 'model_removed' as const,
+    };
+    storeState.sessionModelsByPath = {
+      '/sessions/a.jsonl': blockedModel,
+    };
+    vi.mocked(hanaFetch).mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      model: { ...models[0], available: true, unavailableReason: null },
+    }));
+
+    render(<ModelSelector models={models} sessionModel={blockedModel} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /model.removed/ }));
+    fireEvent.click(screen.getByRole('option', { name: /DeepSeek V4 Flash/ }));
+
+    await waitFor(() => {
+      expect(hanaFetch).toHaveBeenCalledWith('/api/models/switch', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          sessionPath: '/sessions/a.jsonl',
+          modelId: 'deepseek-v4-flash',
+          provider: 'deepseek',
+        }),
+      }));
+    });
+    expect(storeState.updateSessionModel).toHaveBeenCalledWith(
+      '/sessions/a.jsonl',
+      expect.objectContaining({ available: true }),
+    );
+  });
+
   it('maps a server streaming-switch rejection to the same explicit warning', async () => {
     storeState.currentSessionPath = '/sessions/a.jsonl';
     storeState.pendingNewSession = false;

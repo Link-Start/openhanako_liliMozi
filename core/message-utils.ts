@@ -109,7 +109,9 @@ export async function loadSessionHistoryMessages(engine, explicitPath) {
   try {
     if (await looksLikePiSessionFile(sessionPath)) {
       repairOversizedSessionEntriesInFile(sessionPath);
-      const manager = SessionManager.open(sessionPath, path.dirname(sessionPath));
+      const manager = typeof engine?.openSessionManagerAtCurrentBranch === "function"
+        ? engine.openSessionManagerAtCurrentBranch(sessionPath, path.dirname(sessionPath))
+        : SessionManager.open(sessionPath, path.dirname(sessionPath));
       const branch = manager.getBranch();
       const messages = [];
       for (const entry of branch) {

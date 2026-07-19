@@ -421,6 +421,12 @@ export class Agent {
         getSessionIdForPath: (sessionPath) => (
           this._cb?.getEngine?.()?.getSessionIdForPath?.(sessionPath)
         ),
+        getSessionBranchHeadForPath: (sessionPath) => (
+          this._cb?.getEngine?.()?.getSessionBranchHeadForPath?.(sessionPath)
+        ),
+        readSessionBranchForPath: (sessionPath, options) => (
+          this._cb?.getEngine?.()?.getSessionBranchProjection?.(sessionPath, options)
+        ),
         envChangeLedger: this._cb?.getEngine?.()?.getEnvChangeLedger?.() || null,
         onCompiled: () => {
           // _systemPrompt 是非 session 路径（巡检/cron/频道/DM/bridge owner 新建）

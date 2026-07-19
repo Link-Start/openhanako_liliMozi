@@ -992,25 +992,57 @@ describe("gemini image adapter", () => {
     const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
     const result = await geminiImageAdapter.submit({
       prompt: "a quiet library",
-      modelId: "gemini-3.1-flash-image-preview",
+      modelId: "gemini-3.1-flash-image",
       ratio: "4:3",
       size: "2K",
       providerId: "gemini",
     }, ctx);
 
     const [url, opts] = mockFetch.mock.calls[0];
-    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent");
+    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent");
     expect(opts.headers["x-goog-api-key"]).toBe("gemini-key");
     const body = JSON.parse(opts.body);
     expect(body.contents[0].parts[0].text).toBe("a quiet library");
-    expect(body.generationConfig.responseFormat.image).toEqual({
+    expect(body.generationConfig.imageConfig).toEqual({
       aspectRatio: "4:3",
       imageSize: "2K",
     });
-    expect(body.generationConfig.responseFormat.image).not.toHaveProperty("ratio");
-    expect(body.generationConfig.responseFormat.image).not.toHaveProperty("resolution");
-    expect(body.generationConfig.responseFormat.image).not.toHaveProperty("size");
+    expect(body.generationConfig).not.toHaveProperty("responseFormat");
+    expect(body.generationConfig.imageConfig).not.toHaveProperty("ratio");
+    expect(body.generationConfig.imageConfig).not.toHaveProperty("resolution");
+    expect(body.generationConfig.imageConfig).not.toHaveProperty("size");
     expect(result.files).toHaveLength(1);
+  });
+
+  it("defaults Gemini 3 image size to 1K in generationConfig.imageConfig", async () => {
+    const { geminiImageAdapter } = await import("../core/media-adapters/gemini.ts");
+
+    const fakeB64 = Buffer.from("gemini-image").toString("base64");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [{ inlineData: { mimeType: "image/png", data: fakeB64 } }],
+          },
+        }],
+      }),
+    });
+
+    const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
+    await geminiImageAdapter.submit({
+      prompt: "a quiet library",
+      providerId: "gemini",
+    }, ctx);
+
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
+    );
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.generationConfig.imageConfig).toEqual({
+      aspectRatio: "3:2",
+      imageSize: "1K",
+    });
   });
 
   it("downloads ordinary image URLs and sends Gemini reference images as inline data", async () => {
@@ -1037,7 +1069,7 @@ describe("gemini image adapter", () => {
     const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
     await geminiImageAdapter.submit({
       prompt: "use this pose",
-      modelId: "gemini-3.1-flash-image-preview",
+      modelId: "gemini-3.1-flash-image",
       image: "https://example.com/ref.png",
       providerId: "gemini",
     }, ctx);
@@ -1070,7 +1102,7 @@ describe("gemini image adapter", () => {
     const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
     await expect(geminiImageAdapter.submit({
       prompt: "a quiet library",
-      modelId: "gemini-3.1-flash-image-preview",
+      modelId: "gemini-3.1-flash-image",
       size: "1024x1024",
       providerId: "gemini",
     }, ctx)).rejects.toThrow(/Gemini.*size/i);
@@ -1088,6 +1120,114 @@ describe("gemini image adapter", () => {
       providerId: "gemini",
     }, ctx)).rejects.toThrow(/Gemini.*2.5.*size/i);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("sends Gemini 2.5 aspect ratio without an imageSize field", async () => {
+    const { geminiImageAdapter } = await import("../core/media-adapters/gemini.ts");
+
+    const fakeB64 = Buffer.from("gemini-25-image").toString("base64");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [{ inlineData: { mimeType: "image/png", data: fakeB64 } }],
+          },
+        }],
+      }),
+    });
+
+    const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
+    await geminiImageAdapter.submit({
+      prompt: "a quiet library",
+      modelId: "gemini-2.5-flash-image",
+      ratio: "16:9",
+      providerId: "gemini",
+    }, ctx);
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.generationConfig.imageConfig).toEqual({ aspectRatio: "16:9" });
+    expect(body.generationConfig.imageConfig).not.toHaveProperty("imageSize");
+  });
+
+  it("ignores thought image parts and saves only final image parts", async () => {
+    const { geminiImageAdapter } = await import("../core/media-adapters/gemini.ts");
+
+    const thoughtB64 = Buffer.from("gemini-thought-image").toString("base64");
+    const finalB64 = Buffer.from("gemini-final-image").toString("base64");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [
+              { thought: true, inlineData: { mimeType: "image/png", data: thoughtB64 } },
+              { inlineData: { mimeType: "image/png", data: finalB64 } },
+            ],
+          },
+        }],
+      }),
+    });
+
+    const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
+    const result = await geminiImageAdapter.submit({
+      prompt: "a quiet library",
+      modelId: "gemini-3.1-flash-image",
+      providerId: "gemini",
+    }, ctx);
+
+    expect(result.files).toHaveLength(1);
+  });
+
+  it("surfaces prompt and candidate block reasons when Gemini returns no image", async () => {
+    const { geminiImageAdapter } = await import("../core/media-adapters/gemini.ts");
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        promptFeedback: { blockReason: "SAFETY" },
+        candidates: [{ finishReason: "IMAGE_SAFETY", content: { parts: [{ text: "blocked" }] } }],
+      }),
+    });
+
+    const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
+    await expect(geminiImageAdapter.submit({
+      prompt: "a quiet library",
+      modelId: "gemini-3.1-flash-image",
+      providerId: "gemini",
+    }, ctx)).rejects.toThrow(/promptFeedback\.blockReason=SAFETY.*finishReason=IMAGE_SAFETY/i);
+  });
+
+  it("preserves Google error status and classifies retryability", async () => {
+    const { geminiImageAdapter } = await import("../core/media-adapters/gemini.ts");
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: async () => ({
+        error: {
+          code: 429,
+          status: "RESOURCE_EXHAUSTED",
+          message: "Quota exceeded",
+          details: [{ reason: "RATE_LIMIT_EXCEEDED" }],
+        },
+      }),
+    });
+
+    const ctx = makeBusCtx("gemini-key", "https://generativelanguage.googleapis.com/v1beta", "gemini");
+    await expect(geminiImageAdapter.submit({
+      prompt: "a quiet library",
+      modelId: "gemini-3.1-flash-image",
+      providerId: "gemini",
+    }, ctx)).rejects.toMatchObject({
+      name: "GeminiImageApiError",
+      code: "RESOURCE_EXHAUSTED",
+      httpStatus: 429,
+      provider: "gemini",
+      retryable: true,
+      classification: { domain: "provider", kind: "rate_limit" },
+      googleError: expect.objectContaining({ code: 429, message: "Quota exceeded" }),
+    });
   });
 });
 
