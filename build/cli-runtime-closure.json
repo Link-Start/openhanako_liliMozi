@@ -2254,6 +2254,18 @@
       "reason": "Reached via esbuild source module graph, imported by core/engine.ts (import-statement); server/routes/server-identity.ts (import-statement)."
     },
     {
+      "path": "core/session-branch-head.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "core/session-coordinator.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by core/session-coordinator.ts (import-statement)."
+    },
+    {
       "path": "core/session-cache-snapshot.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -6247,11 +6259,16 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "lib/memory/deep-memory.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "core/agent.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/agent.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/memory/deep-memory.ts (import-statement); core/agent.ts (import-statement)."
     },
     {
       "path": "lib/memory/time-context.ts",
@@ -8276,6 +8293,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "core/session-branch-head.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "core/session-coordinator.ts",
           "kind": "import-statement"
         },
@@ -8295,7 +8317,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/session-files/session-file-registry.ts (import-statement); core/migrations.ts (import-statement); core/migrations.ts (import-statement); +8 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/session-files/session-file-registry.ts (import-statement); core/migrations.ts (import-statement); core/migrations.ts (import-statement); +9 more importer(s)."
     },
     {
       "path": "lib/shell/execution-cwd.ts",
@@ -111833,9 +111855,9 @@
     }
   ],
   "stats": {
-    "totalFiles": 9595,
+    "totalFiles": 9596,
     "byInputType": {
-      "source-graph": 616,
+      "source-graph": 617,
       "runtime-asset": 11,
       "nft-runtime-trace": 8968
     }

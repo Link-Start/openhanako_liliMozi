@@ -65,7 +65,7 @@ describe("persistence schema tripwire", () => {
     expect(manifest).toMatchObject({
       kind: "sqlite-runtime",
       module: "core/session-manifest/store.ts",
-      runtimeSchema: { userVersion: 3 },
+      runtimeSchema: { userVersion: 4 },
     });
     expect(manifest.runtimeSchema.objects.some((entry) => entry.name === "session_manifests")).toBe(true);
     expect(manifest.runtimeSchema.objects.every((entry) => !entry.name.startsWith("sqlite_"))).toBe(true);

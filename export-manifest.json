@@ -129,6 +129,7 @@
     "core/server-network-config.ts",
     "core/server-port-selection.ts",
     "core/server-runtime-context.ts",
+    "core/session-branch-head.ts",
     "core/session-cache-snapshot.ts",
     "core/session-capability-drift.ts",
     "core/session-compactor.ts",
