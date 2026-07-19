@@ -3,20 +3,26 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { JSONContent } from '@tiptap/core';
+import { Schema, type Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputArea } from '../../components/InputArea';
+import type { SlashItem } from '../../components/input/slash-commands';
 import { useStore } from '../../stores';
 
 const mocks = vi.hoisted(() => ({
   editorOptions: undefined as undefined | Record<string, unknown>,
   editorText: '',
   editorJson: undefined as undefined | JSONContent,
+  editorState: undefined as undefined | EditorState,
   updateHandler: undefined as undefined | (() => void),
   insertContent: vi.fn(),
   setContent: vi.fn(),
   splitListItem: vi.fn(),
   editorIsActive: vi.fn((_name?: string) => false),
   chainInserted: [] as unknown[],
+  chainDeletedRanges: [] as Array<{ from: number; to: number }>,
+  chainClearContent: vi.fn(),
   ensureSession: vi.fn(async () => ({
     sessionId: 'sess_input',
     sessionPath: '/session/input.jsonl',
@@ -38,11 +44,76 @@ function editorJsonForText(text: string) {
   };
 }
 
+const slashRangeSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    paragraph: { content: 'inline*', group: 'block' },
+    text: { group: 'inline' },
+    hardBreak: { inline: true, group: 'inline', atom: true },
+    skillBadge: {
+      inline: true,
+      group: 'inline',
+      atom: true,
+      attrs: { name: { default: '' } },
+    },
+    fileBadge: {
+      inline: true,
+      group: 'inline',
+      atom: true,
+      attrs: {
+        fileId: { default: null },
+        path: { default: '' },
+        name: { default: '' },
+      },
+    },
+    agentBadge: {
+      inline: true,
+      group: 'inline',
+      atom: true,
+      attrs: {
+        agentId: { default: '' },
+        label: { default: '' },
+      },
+    },
+  },
+  marks: {
+    bold: {},
+    italic: {},
+  },
+});
+
+function setMockEditorDocument(doc: ProseMirrorNode, cursor: number): void {
+  mocks.editorJson = doc.toJSON();
+  mocks.editorText = doc.textBetween(0, doc.content.size, '\n', '');
+  mocks.editorState = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, cursor),
+  });
+}
+
+function findTextNodePosition(doc: ProseMirrorNode, text: string): number {
+  let match = -1;
+  doc.descendants((node, position) => {
+    if (match >= 0 || !node.isText || node.text !== text) return match < 0;
+    match = position;
+    return false;
+  });
+  if (match < 0) throw new Error(`Missing text node: ${text}`);
+  return match;
+}
+
 vi.mock('@tiptap/react', () => ({
   useEditor: (options: Record<string, unknown>) => {
     mocks.editorOptions = options;
     const chain = {
-      clearContent: vi.fn(() => chain),
+      clearContent: vi.fn(() => {
+        mocks.chainClearContent();
+        return chain;
+      }),
+      deleteRange: vi.fn((range: { from: number; to: number }) => {
+        mocks.chainDeletedRanges.push(range);
+        return chain;
+      }),
       insertContent: vi.fn((content: unknown) => {
         mocks.chainInserted.push(content);
         return chain;
@@ -64,7 +135,9 @@ vi.mock('@tiptap/react', () => ({
       getJSON: () => mocks.editorJson ?? editorJsonForText(mocks.editorText),
       isActive: mocks.editorIsActive,
       isDestroyed: false,
-      state: { tr: { setMeta: vi.fn(() => ({})) } },
+      get state() {
+        return mocks.editorState ?? { tr: { setMeta: vi.fn(() => ({})) } };
+      },
       view: { dispatch: vi.fn() },
       on: vi.fn((event: string, handler: () => void) => {
         if (event === 'update') mocks.updateHandler = handler;
@@ -129,9 +202,27 @@ vi.mock('../../MainContent', () => ({
 }));
 
 vi.mock('../../components/input/SlashCommandMenu', () => ({
-  SlashCommandMenu: ({ selected }: { selected: number }) => React.createElement(
+  SlashCommandMenu: ({
+    commands,
+    selected,
+    onSelect,
+  }: {
+    commands: SlashItem[];
+    selected: number;
+    onSelect: (item: SlashItem) => void;
+  }) => React.createElement(
     'div',
     { 'data-testid': 'slash-menu', 'data-selected': String(selected) },
+    commands.map(command => React.createElement(
+      'button',
+      {
+        key: command.name,
+        type: 'button',
+        'aria-label': `slash-${command.name}`,
+        onClick: () => onSelect(command),
+      },
+      command.label,
+    )),
   ),
 }));
 
@@ -148,10 +239,25 @@ vi.mock('../../components/input/InputContextRow', () => ({
 }));
 
 vi.mock('../../components/input/InputControlBar', () => ({
-  InputControlBar: ({ onAttach }: { onAttach: () => void }) => React.createElement(
-    'button',
-    { type: 'button', 'aria-label': 'attach', onClick: onAttach },
-    'send',
+  InputControlBar: ({
+    onAttach,
+    onSlashToggle,
+  }: {
+    onAttach: () => void;
+    onSlashToggle: () => void;
+  }) => React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(
+      'button',
+      { type: 'button', 'aria-label': 'attach', onClick: onAttach },
+      'send',
+    ),
+    React.createElement(
+      'button',
+      { type: 'button', 'aria-label': 'slash-toggle', onClick: onSlashToggle },
+      'slash',
+    ),
   ),
 }));
 
@@ -291,8 +397,11 @@ describe('InputArea paste and slash menu behavior', () => {
     mocks.editorOptions = undefined;
     mocks.editorText = '';
     mocks.editorJson = undefined;
+    mocks.editorState = undefined;
     mocks.updateHandler = undefined;
     mocks.chainInserted = [];
+    mocks.chainDeletedRanges = [];
+    mocks.chainClearContent.mockClear();
     mocks.splitListItem.mockClear();
     mocks.editorIsActive.mockReset();
     mocks.editorIsActive.mockReturnValue(false);
@@ -350,13 +459,16 @@ describe('InputArea paste and slash menu behavior', () => {
   });
 
   it('selects the highlighted slash command on Enter without falling through to message send', async () => {
+    const doc = slashRangeSchema.node('doc', null, [
+      slashRangeSchema.node('paragraph', null, [slashRangeSchema.text('/zz')]),
+    ]);
+    setMockEditorDocument(doc, 4);
     render(React.createElement(InputArea));
 
     await waitFor(() => {
       expect(mocks.updateHandler).toBeTypeOf('function');
     });
 
-    mocks.editorText = '/zz';
     act(() => {
       mocks.updateHandler?.();
     });
@@ -374,7 +486,60 @@ describe('InputArea paste and slash menu behavior', () => {
       type: 'skillBadge',
       attrs: { name: 'zz-second' },
     });
+    expect(mocks.chainDeletedRanges).toEqual([{ from: 1, to: 4 }]);
+    expect(mocks.chainClearContent).not.toHaveBeenCalled();
     expect(mocks.wsSend).not.toHaveBeenCalled();
+  });
+
+  it('replaces only the selected rich-document slash trigger when a skill is clicked', async () => {
+    const doc = slashRangeSchema.node('doc', null, [
+      slashRangeSchema.node('paragraph', null, [
+        slashRangeSchema.text('第一行', [slashRangeSchema.mark('bold')]),
+      ]),
+      slashRangeSchema.node('paragraph', null, [
+        slashRangeSchema.text('前文 ', [slashRangeSchema.mark('italic')]),
+        slashRangeSchema.node('fileBadge', { fileId: 'file-1', path: '/tmp/a.txt', name: 'a.txt' }),
+        slashRangeSchema.text(' '),
+        slashRangeSchema.node('agentBadge', { agentId: 'agent-1', label: 'Agent One' }),
+        slashRangeSchema.text(' '),
+        slashRangeSchema.text('/', [slashRangeSchema.mark('bold')]),
+        slashRangeSchema.text('z'),
+        slashRangeSchema.text('z', [slashRangeSchema.mark('italic')]),
+        slashRangeSchema.text(' 后文', [slashRangeSchema.mark('bold')]),
+      ]),
+      slashRangeSchema.node('paragraph', null, [slashRangeSchema.text('最后一行')]),
+    ]);
+    const slashFrom = findTextNodePosition(doc, '/');
+    setMockEditorDocument(doc, slashFrom + 3);
+    render(React.createElement(InputArea));
+
+    fireEvent.click(screen.getByRole('button', { name: 'slash-toggle' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'slash-zz-first' }));
+
+    expect(mocks.chainDeletedRanges).toEqual([{ from: slashFrom, to: slashFrom + 3 }]);
+    expect(mocks.chainInserted).toEqual([
+      { type: 'skillBadge', attrs: { name: 'zz-first' } },
+      ' ',
+    ]);
+    expect(mocks.chainClearContent).not.toHaveBeenCalled();
+  });
+
+  it('inserts a toolbar-selected skill at the current selection when there is no slash trigger', async () => {
+    const doc = slashRangeSchema.node('doc', null, [
+      slashRangeSchema.node('paragraph', null, [slashRangeSchema.text('已有正文')]),
+    ]);
+    setMockEditorDocument(doc, 3);
+    render(React.createElement(InputArea));
+
+    fireEvent.click(screen.getByRole('button', { name: 'slash-toggle' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'slash-zz-first' }));
+
+    expect(mocks.chainDeletedRanges).toEqual([]);
+    expect(mocks.chainClearContent).not.toHaveBeenCalled();
+    expect(mocks.chainInserted).toEqual([
+      { type: 'skillBadge', attrs: { name: 'zz-first' } },
+      ' ',
+    ]);
   });
 
   it('saves rich list drafts as markdown text plus the editor document', async () => {

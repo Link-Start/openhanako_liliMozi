@@ -244,6 +244,11 @@ interface FileMentionRange {
   query: string;
 }
 
+interface SlashTriggerRange {
+  from: number;
+  to: number;
+}
+
 interface InputKeyEvent {
   key: string;
   shiftKey: boolean;
@@ -284,6 +289,51 @@ function findFileMentionRange(editor: Editor | null): FileMentionRange | null {
     to: selection.from,
     query,
   };
+}
+
+function findSlashTriggerRange(editor: Editor | null): SlashTriggerRange | null {
+  if (!editor?.state?.selection) return null;
+  const { selection } = editor.state;
+  if (!selection.empty) return null;
+
+  const parent = selection.$from.parent;
+  const cursorOffset = selection.$from.parentOffset;
+  const parentStart = selection.$from.start();
+  const units: Array<{ char: string | null; from: number }> = [];
+
+  parent.forEach((node, offset) => {
+    if (offset >= cursorOffset) return;
+    const sizeBeforeCursor = Math.min(node.nodeSize, cursorOffset - offset);
+    if (sizeBeforeCursor <= 0) return;
+
+    if (!node.isText || typeof node.text !== 'string') {
+      units.push({
+        char: null,
+        from: parentStart + offset,
+      });
+      return;
+    }
+
+    const textLength = Math.min(node.text.length, sizeBeforeCursor);
+    for (let index = 0; index < textLength; index += 1) {
+      const from = parentStart + offset + index;
+      units.push({ char: node.text[index], from });
+    }
+  });
+
+  let index = units.length - 1;
+  while (index >= 0) {
+    const char = units[index].char;
+    if (char === null || char === '/' || /\s/u.test(char)) break;
+    index -= 1;
+  }
+
+  const slash = units[index];
+  if (!slash || slash.char !== '/') return null;
+  const beforeSlash = units[index - 1];
+  if (beforeSlash && beforeSlash.char !== null && !/\s/u.test(beforeSlash.char)) return null;
+
+  return { from: slash.from, to: selection.from };
 }
 
 function editorHasInlineNode(editor: Editor | null, nodeType: string): boolean {
@@ -1504,11 +1554,14 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       return;
     }
     if (!editor) return;
-    editor.chain()
-      .clearContent()
+    const slashRange = findSlashTriggerRange(editor);
+    const chain = editor.chain().focus();
+    if (slashRange) {
+      chain.deleteRange({ from: slashRange.from, to: slashRange.to });
+    }
+    chain
       .insertContent({ type: 'skillBadge', attrs: { name: item.name } })
       .insertContent(' ')
-      .focus()
       .run();
     setSlashMenuOpen(false);
   }, [editor, inputLocked, inputText]);
