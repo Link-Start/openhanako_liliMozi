@@ -2,12 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { Hub } from "../hub/index.ts";
 import JimengCliPlugin from "../plugins/jimeng-cli/index.ts";
 
-function createEngine(providerRegistry) {
+function createEngine(providerRegistry, mediaConfig: any = {}) {
   return {
     agentsDir: "/agents",
     channelsDir: null,
     hanakoHome: "/tmp/hana",
     providerRegistry,
+    media: {
+      getImageConfig: vi.fn(() => mediaConfig.image || {}),
+      getVideoConfig: vi.fn(() => mediaConfig.video || {}),
+    },
     setHubCallbacks: vi.fn(),
     setEventBus: vi.fn(),
     getAgent: vi.fn(() => null),
@@ -100,18 +104,40 @@ describe("Jimeng runtime provider capability integration", () => {
 
   it("refreshes runtime capabilities before returning Provider model choices", async () => {
     const providerRegistry = createProviderRegistry();
-    const hub = new Hub({ engine: createEngine(providerRegistry) });
+    const hub = new Hub({
+      engine: createEngine(providerRegistry, {
+        image: { defaultImageModel: { provider: "private-default-provider", id: "private-default-model" } },
+      }),
+    });
 
-    const result = await hub.eventBus.request("provider:media-providers", {
+    const imageResult = await hub.eventBus.request("provider:media-providers", {
       capability: "image_generation",
     });
 
     expect(providerRegistry.refreshRuntimeMediaCapabilities).toHaveBeenCalledWith({
       capability: "image_generation",
     });
-    expect(result.providers["jimeng-cli"]).toMatchObject({
+    expect(imageResult.providers["jimeng-cli"]).toMatchObject({
       runtimeCapability: { status: "ready", version: "2.0.0" },
       models: [expect.objectContaining({ id: "jimeng-image-5.0" })],
+    });
+    expect(imageResult.selection).toMatchObject({
+      defaultConfigured: true,
+      selectionPolicy: "configured_default",
+      overrideRequired: false,
+      defaultInvocation: { provider: "omit", model: "omit" },
+    });
+    expect(JSON.stringify(imageResult.selection)).not.toContain("private-default-provider");
+    expect(JSON.stringify(imageResult.selection)).not.toContain("private-default-model");
+
+    const videoResult = await hub.eventBus.request("provider:media-providers", {
+      capability: "video_generation",
+    });
+    expect(videoResult.selection).toMatchObject({
+      defaultConfigured: false,
+      selectionPolicy: "first_available_fallback",
+      overrideRequired: false,
+      defaultInvocation: { provider: "omit", model: "omit" },
     });
     expect(providerRegistry.refreshRuntimeMediaCapabilities.mock.invocationCallOrder[0])
       .toBeLessThan(providerRegistry.getMediaProviders.mock.invocationCallOrder[0]);

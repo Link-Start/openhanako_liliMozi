@@ -30,6 +30,8 @@ Generation is asynchronous. After submission, the tool returns immediately with 
 
 Use this side-effect-free tool only when the user asks for a specific provider/model/mode, asks for advanced parameters, or a default generation path reports a clear unsupported-capability error.
 
+Its provider and model list contains optional advanced overrides, not a required menu. After reading it, continue to omit `provider` and `model` for ordinary generation so the host applies its configured default or fallback. Set an override only when the user explicitly requested one, or when the default path clearly reports an unsupported capability and the user authorizes trying another provider.
+
 ## Routing
 
 | Intent | Tool |
@@ -45,5 +47,6 @@ Use this side-effect-free tool only when the user asks for a specific provider/m
 
 - Use only the `media_*` tools for image and video generation.
 - Do not silently switch providers after a failure. Report the error unless the user asks you to try another provider.
+- Never interpret media_describe-options candidates as a requirement to choose a provider or model.
 - Provider capability comes from Hana Media Provider Registry, not from chat model names.
 - If the user wants text inside the image, put the exact text in double quotes inside the prompt.

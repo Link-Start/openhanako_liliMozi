@@ -80,6 +80,10 @@ describe("media generation tools", () => {
 
   it("delegates video generation to the native media bus", async () => {
     const mod = await import("../plugins/media/tools/generate-video.ts");
+    expect(mod.parameters.properties.model.description).toMatch(/(omit|省略).*(configured default|已配置默认)/i);
+    expect(mod.parameters.properties.provider.description).toMatch(/(omit|省略).*(configured default|已配置默认)/i);
+    expect(mod.parameters.properties.mode.description).toMatch(/omit.+ordinary generation/i);
+    expect(mod.parameters.properties.options.description).toMatch(/omit.+ordinary generation/i);
     const request = vi.fn(async () => ({
       ok: true,
       kind: "video",
@@ -165,5 +169,56 @@ describe("media generation tools", () => {
     expect(request).toHaveBeenCalledWith("provider:media-providers", { capability: "video_generation" });
     const mediaOptions = result.details.mediaOptions as any;
     expect(mediaOptions.mode.parameterSchema.properties.video_resolution.enum).toEqual(["720p", "1080p"]);
+    expect(mediaOptions.selection).toMatchObject({
+      defaultConfigured: null,
+      selectionPolicy: "host_resolved",
+      overrideRequired: false,
+      defaultInvocation: { provider: "omit", model: "omit" },
+      instruction: expect.stringMatching(/omit provider and model/i),
+    });
+  });
+
+  it("labels the full provider list as optional overrides with a default invocation", async () => {
+    const mod = await import("../plugins/media/tools/describe-options.ts");
+    const request = vi.fn(async () => ({
+      selection: {
+        defaultConfigured: true,
+        selectionPolicy: "configured_default",
+        overrideRequired: false,
+        defaultInvocation: {
+          provider: "omit",
+          model: "omit",
+          mode: "omit_unless_needed",
+          options: "omit_unless_needed",
+        },
+        instruction: "Candidates are optional advanced overrides. Omit provider and model for ordinary generation.",
+      },
+      providers: {
+        openai: {
+          providerId: "openai",
+          models: [{ id: "gpt-image-2", modes: [{ id: "text2image" }] }],
+        },
+      },
+    }));
+
+    const result = await mod.execute({ kind: "image" }, makeCtx(request));
+
+    expect(result.details.mediaOptions).toMatchObject({
+      kind: "image",
+      selection: {
+        defaultConfigured: true,
+        selectionPolicy: "configured_default",
+        overrideRequired: false,
+        defaultInvocation: {
+          provider: "omit",
+          model: "omit",
+          mode: "omit_unless_needed",
+          options: "omit_unless_needed",
+        },
+        instruction: expect.stringMatching(/optional.+omit provider and model/i),
+      },
+      providers: [expect.objectContaining({ providerId: "openai" })],
+    });
+    expect(result.content[0].text).toMatch(/not a required menu|optional advanced overrides/i);
   });
 });

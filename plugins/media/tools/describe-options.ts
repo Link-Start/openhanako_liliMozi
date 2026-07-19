@@ -1,7 +1,7 @@
 import { inferMediaMode } from "../../../core/media/media-parameters.ts";
 
 export const name = "describe-options";
-export const description = "Describe installed image/video generation providers, models, modes, and provider-specific optional parameters before choosing advanced options.";
+export const description = "Describe optional advanced image/video provider, model, mode, and parameter overrides. The returned candidates are not a required menu; ordinary generation should omit provider and model so the host resolves them.";
 
 export const sessionPermission = { readOnly: true };
 
@@ -15,11 +15,11 @@ export const parameters = {
     },
     provider: {
       type: "string",
-      description: "Optional provider id, for example jimeng-cli.",
+      description: "Optional provider id to inspect, for example jimeng-cli. Omit to inspect all advanced override candidates; generation does not require choosing one.",
     },
     model: {
       type: "string",
-      description: "Optional model id within the provider.",
+      description: "Optional model id within the provider to inspect. This is an advanced override, not a required generation parameter.",
     },
     mode: {
       type: "string",
@@ -51,15 +51,41 @@ function compactModel(model: any = {}) {
   };
 }
 
+function describeSelection(selection: any) {
+  const defaultConfigured = typeof selection?.defaultConfigured === "boolean"
+    ? selection.defaultConfigured
+    : null;
+  const selectionPolicy = selection?.selectionPolicy === "configured_default"
+    || selection?.selectionPolicy === "first_available_fallback"
+    ? selection.selectionPolicy
+    : "host_resolved";
+  return {
+    defaultConfigured,
+    selectionPolicy,
+    overrideRequired: false,
+    defaultInvocation: {
+      provider: "omit",
+      model: "omit",
+      mode: "omit_unless_needed",
+      options: "omit_unless_needed",
+    },
+    instruction: typeof selection?.instruction === "string" && selection.instruction.trim()
+      ? selection.instruction
+      : "These providers and models are optional advanced overrides, not a required menu. For ordinary generation, omit provider and model so the host resolves its configured default or fallback.",
+  };
+}
+
 export async function execute(input: any = {}, ctx: any = {}) {
   const kind = input.kind === "video" ? "video" : "image";
   const capability = capabilityForKind(kind);
   const result = await ctx.bus?.request?.("provider:media-providers", { capability });
   const providers = result?.providers && typeof result.providers === "object" ? result.providers : {};
+  const selection = describeSelection(result?.selection);
   const providerIds = Object.keys(providers);
   if (!input.provider) {
     const summary = {
       kind,
+      selection,
       providers: providerIds.map((providerId) => ({
         providerId,
         displayName: providers[providerId].displayName || providerId,
@@ -74,9 +100,10 @@ export async function execute(input: any = {}, ctx: any = {}) {
 
   const provider = providers[input.provider];
   if (!provider) {
+    const summary = { kind, selection, providers: providerIds };
     return {
-      content: [{ type: "text", text: `Media provider not found: ${input.provider}` }],
-      details: { mediaOptions: { kind, providers: providerIds } },
+      content: [{ type: "text", text: `Media provider not found: ${input.provider}\n${selection.instruction}` }],
+      details: { mediaOptions: summary },
     };
   }
 
@@ -85,9 +112,10 @@ export async function execute(input: any = {}, ctx: any = {}) {
     ? models.find((item) => item.id === input.model || item.aliases?.includes?.(input.model))
     : models[0];
   if (!model) {
+    const summary = { kind, selection, providerId: input.provider, models: models.map(compactModel) };
     return {
-      content: [{ type: "text", text: `Media model not found for provider: ${input.provider}` }],
-      details: { mediaOptions: { kind, providerId: input.provider, models: models.map(compactModel) } },
+      content: [{ type: "text", text: `Media model not found for provider: ${input.provider}\n${selection.instruction}` }],
+      details: { mediaOptions: summary },
     };
   }
 
@@ -96,6 +124,7 @@ export async function execute(input: any = {}, ctx: any = {}) {
   const mode = modes.find((item) => item.id === modeId) || modes[0] || null;
   const summary = {
     kind,
+    selection,
     providerId: input.provider,
     providerName: provider.displayName || input.provider,
     model: compactModel(model),

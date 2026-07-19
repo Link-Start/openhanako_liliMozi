@@ -761,6 +761,27 @@ export class Hub {
 
     this._sessionHandlerCleanups.push(bus.handle("provider:media-providers", async ({ capability = "image_generation" }: any = {}) => {
       await engine.providerRegistry.refreshRuntimeMediaCapabilities?.({ capability });
+      const mediaConfig = capability === "video_generation"
+        ? engine.media?.getVideoConfig?.()
+        : engine.media?.getImageConfig?.();
+      const defaultModel = capability === "video_generation"
+        ? mediaConfig?.defaultVideoModel
+        : mediaConfig?.defaultImageModel;
+      const defaultConfigured = Boolean(defaultModel?.provider && defaultModel?.id);
+      const selection = {
+        defaultConfigured,
+        selectionPolicy: defaultConfigured ? "configured_default" : "first_available_fallback",
+        overrideRequired: false,
+        defaultInvocation: {
+          provider: "omit",
+          model: "omit",
+          mode: "omit_unless_needed",
+          options: "omit_unless_needed",
+        },
+        instruction: defaultConfigured
+          ? "These providers and models are optional advanced overrides, not a required menu. For ordinary generation, omit provider and model so the host uses the configured default."
+          : "These providers and models are optional advanced overrides, not a required menu. For ordinary generation, omit provider and model so the host uses its first available fallback.",
+      };
       const providers: any = {};
       for (const provider of engine.providerRegistry.getMediaProviders(capability)) {
         const credentialStatus = engine.providerRegistry.getMediaProviderCredentialStatus(provider.providerId, capability);
@@ -786,7 +807,7 @@ export class Hub {
           availableModels: [],
         };
       }
-      return { providers };
+      return { providers, selection };
     }));
 
     this._sessionHandlerCleanups.push(bus.handle("provider:resolve-media-model", async ({
