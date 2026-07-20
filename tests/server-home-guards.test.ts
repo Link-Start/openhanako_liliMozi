@@ -291,9 +291,9 @@ describe("server home guards — real spawn behavior (fast failure paths, before
 
       const child = spawnServerBootstrap(linkedHome);
       // The default marker only proves first-run seeding completed. Wait until
-      // the engine constructor returns so the migration registry has also
-      // finished writing its per-step receipts before stopping the process.
-      const result = await waitForStartupProgress(child, "② HanaEngine 构造完成");
+      // engine initialization reaches the first post-migration phase so the
+      // registry has finished writing its per-step receipts before shutdown.
+      const result = await waitForStartupProgress(child, "[init] 1/5 Pi SDK 初始化...");
 
       expect(result.stderr).toContain("HANA_DATA_EPOCH_BASELINE_WARNING reason=ambiguous-unstamped-home");
       expect(result.stderr).not.toContain("HANA_DATA_EPOCH_TRANSITION_INCOMPLETE");

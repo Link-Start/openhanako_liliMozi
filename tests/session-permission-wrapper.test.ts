@@ -1,10 +1,14 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createApprovalGateway } from "../lib/approval-gateway.ts";
 import { createAutomationTool } from "../lib/tools/automation-tool.ts";
 import { wrapWithSessionPermission } from "../lib/tools/session-permission-wrapper.ts";
 
+const SESSION_PATH = path.resolve("/tmp/session.jsonl");
+const DIRECT_SESSION_PATH = path.resolve("/tmp/direct-session.jsonl");
+
 const ctx = {
-  sessionManager: { getSessionFile: () => "/tmp/session.jsonl" },
+  sessionManager: { getSessionFile: () => SESSION_PATH },
 };
 
 function makeTool(name = "write", extras: any = {}) {
@@ -168,7 +172,7 @@ describe("session permission wrapper", () => {
     expect(confirmStore.create).toHaveBeenCalledWith(
       "tool_action_approval",
       expect.objectContaining({ toolName: "file" }),
-      "/tmp/session.jsonl",
+      SESSION_PATH,
     );
     expect(tool.execute).toHaveBeenCalledOnce();
     expect(result.details.executed).toBe(true);
@@ -194,10 +198,10 @@ describe("session permission wrapper", () => {
     expect(confirmStore.create).toHaveBeenCalledWith(
       "tool_action_approval",
       expect.objectContaining({ toolName: "write" }),
-      "/tmp/session.jsonl",
+      SESSION_PATH,
     );
     expect(emitted[0]).toMatchObject({
-      sessionPath: "/tmp/session.jsonl",
+      sessionPath: SESSION_PATH,
       event: {
         type: "session_confirmation",
         request: {
@@ -326,7 +330,7 @@ describe("session permission wrapper", () => {
       getPermissionMode: () => "auto",
       getConfirmStore: () => confirmStore,
       getApprovalGateway: () => approvalGateway,
-      getSessionIdForPath: (sessionPath) => sessionPath === "/tmp/session.jsonl" ? "sess_tool_permission" : null,
+      getSessionIdForPath: (sessionPath) => sessionPath === SESSION_PATH ? "sess_tool_permission" : null,
       emitEvent: vi.fn(),
     });
 
@@ -585,7 +589,7 @@ describe("session permission wrapper", () => {
   it("keeps Hana and runtime-native session identities in separate namespaces", async () => {
     const hanaSessionId = "sess-desktop";
     const runtimeNativeSessionId = "019f7dca-9ff4-7031-ba7f-cdcd5f7b3198";
-    const sessionPath = "/tmp/desktop-session.jsonl";
+    const sessionPath = path.resolve("/tmp/desktop-session.jsonl");
     let receivedCtx: any = null;
     const tool = makeChannelDescriptorTool();
     tool.execute = vi.fn(async (...toolArgs: any[]) => {
@@ -626,7 +630,7 @@ describe("session permission wrapper", () => {
   });
 
   it("fails closed when explicit Hana session identities conflict", async () => {
-    const sessionPath = "/tmp/conflicting-hana-session.jsonl";
+    const sessionPath = path.resolve("/tmp/conflicting-hana-session.jsonl");
     const tool = makeChannelDescriptorTool();
     const [wrapped] = wrapWithSessionPermission([tool], {
       getPermissionMode: () => "auto",
@@ -657,7 +661,7 @@ describe("session permission wrapper", () => {
 
   it("fails closed when the runtime-native session identity changes during review", async () => {
     const hanaSessionId = "sess-stable";
-    const sessionPath = "/tmp/runtime-native-drift.jsonl";
+    const sessionPath = path.resolve("/tmp/runtime-native-drift.jsonl");
     let runtimeNativeSessionId = "019f7dca-9ff4-7031-ba7f-cdcd5f7b3198";
     const tool = makeChannelDescriptorTool();
     const approvalGateway = {
@@ -699,8 +703,8 @@ describe("session permission wrapper", () => {
 
   it("fails closed when the Pi session context changes while approval review is pending", async () => {
     const sessions = {
-      a: { sessionId: "sess-a", sessionPath: "/tmp/session-a.jsonl" },
-      b: { sessionId: "sess-b", sessionPath: "/tmp/session-b.jsonl" },
+      a: { sessionId: "sess-a", sessionPath: path.resolve("/tmp/session-a.jsonl") },
+      b: { sessionId: "sess-b", sessionPath: path.resolve("/tmp/session-b.jsonl") },
     };
     let activeSession = sessions.a;
     const mutableCtx = {
@@ -805,14 +809,14 @@ describe("session permission wrapper", () => {
       a: {
         sessionId: "sess-a",
         runtimeNativeSessionId: "pi-session-a",
-        sessionPath: "/tmp/session-a.jsonl",
-        cwd: "/tmp/workspace-a",
+        sessionPath: path.resolve("/tmp/session-a.jsonl"),
+        cwd: path.resolve("/tmp/workspace-a"),
       },
       b: {
         sessionId: "sess-b",
         runtimeNativeSessionId: "pi-session-b",
-        sessionPath: "/tmp/session-b.jsonl",
-        cwd: "/tmp/workspace-b",
+        sessionPath: path.resolve("/tmp/session-b.jsonl"),
+        cwd: path.resolve("/tmp/workspace-b"),
       },
     };
     let activeSession = sessions.a;
@@ -981,7 +985,7 @@ describe("session permission wrapper", () => {
       null,
       null,
       expect.objectContaining({
-        sessionPath: "/tmp/session.jsonl",
+        sessionPath: SESSION_PATH,
         sessionManager: expect.any(Object),
       }),
     );
@@ -993,7 +997,7 @@ describe("session permission wrapper", () => {
     const directCtx = {};
     const [wrapped] = wrapWithSessionPermission([tool], {
       getPermissionMode: () => "auto",
-      getSessionPath: () => "/tmp/direct-session.jsonl",
+      getSessionPath: () => DIRECT_SESSION_PATH,
       getSessionIdForPath: () => "sess-direct",
     });
 
@@ -1005,10 +1009,10 @@ describe("session permission wrapper", () => {
       { action: "list" },
       expect.objectContaining({
         sessionId: "sess-direct",
-        sessionPath: "/tmp/direct-session.jsonl",
+        sessionPath: DIRECT_SESSION_PATH,
         sessionRef: {
           sessionId: "sess-direct",
-          sessionPath: "/tmp/direct-session.jsonl",
+          sessionPath: DIRECT_SESSION_PATH,
         },
       }),
     );
@@ -1327,7 +1331,7 @@ describe("session permission wrapper", () => {
       ...ctx,
       sessionRef: {
         sessionId: "sess_automation_draft",
-        sessionPath: "/tmp/session.jsonl",
+        sessionPath: SESSION_PATH,
       },
     };
     const result = await wrapped.execute(
@@ -1347,7 +1351,7 @@ describe("session permission wrapper", () => {
     expect(confirmStore.create).not.toHaveBeenCalled();
     expect(automationSuggestionStore.create).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "sess_automation_draft",
-      sessionPath: "/tmp/session.jsonl",
+      sessionPath: SESSION_PATH,
       operation: "create",
       apply: expect.any(Function),
     }));
@@ -1525,7 +1529,7 @@ describe("session permission wrapper", () => {
       })),
     };
     const runtimeCtx = {
-      sessionManager: { getSessionFile: () => "/tmp/session.jsonl" },
+      sessionManager: { getSessionFile: () => SESSION_PATH },
       agentId: "hana",
       userIntentSummary: "Click the send button in the local preview",
       explicitUserAuthorization: "User asked to submit the local preview form.",
@@ -1548,11 +1552,11 @@ describe("session permission wrapper", () => {
     expect(approvalGateway.review).toHaveBeenCalledWith(
       expect.objectContaining({
         toolName: "browser",
-        sessionPath: "/tmp/session.jsonl",
+        sessionPath: SESSION_PATH,
         agentId: "hana",
       }),
       expect.objectContaining({
-        sessionPath: "/tmp/session.jsonl",
+        sessionPath: SESSION_PATH,
         cwd: "/workspace/project",
         workspaceFolders: ["/workspace/project", "/workspace/shared"],
         authorizedFolders: ["/external/assets-live"],

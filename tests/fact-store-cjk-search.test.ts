@@ -148,6 +148,7 @@ describe("FactStore CJK full-text search", () => {
     ]);
   });
 
+  // Windows full-suite I/O contention can make this SQLite migration substantially slower.
   it("migrates existing v1 databases into the CJK-aware search index", () => {
     store.close();
     store = null;
@@ -160,5 +161,5 @@ describe("FactStore CJK full-text search", () => {
     expect(store.searchFullText("茉莉花茶", 10).map((r) => r.fact)).toEqual([
       "用户喜欢在晚上喝茉莉花茶",
     ]);
-  });
+  }, process.platform === "win32" ? 60_000 : 10_000);
 });

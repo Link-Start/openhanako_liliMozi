@@ -1,6 +1,10 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createAutomationTool } from "../lib/tools/automation-tool.ts";
 import { buildBridgeContext } from "../lib/bridge/bridge-context.ts";
+
+const AGENT_SESSION_PATH = path.resolve("/sessions/agent-a.jsonl");
+const LEGACY_SESSION_PATH = path.resolve("/sessions/legacy.jsonl");
 
 function makeStore(initialJobs: any[] = [], id = "studio_job_1") {
   const jobs = initialJobs.map((job) => ({
@@ -59,7 +63,7 @@ describe("automation tool", () => {
       {
         sessionId: "session-a",
         sessionManager: {
-          getSessionFile: () => "/sessions/agent-a.jsonl",
+          getSessionFile: () => AGENT_SESSION_PATH,
           getCwd: () => "/workspace/current",
         },
         bridgeContext: {
@@ -74,7 +78,7 @@ describe("automation tool", () => {
     expect(suggestionStore.create).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: "session-a",
-        sessionPath: "/sessions/agent-a.jsonl",
+        sessionPath: AGENT_SESSION_PATH,
         bridgeSessionKey: "wechat_dm_owner@agent-a",
         operation: "create",
         jobData: expect.objectContaining({
@@ -135,7 +139,7 @@ describe("automation tool", () => {
       undefined,
       undefined,
       {
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
         bridgeContext: buildBridgeContext({
           sessionKey: "wx_dm_owner@agent-a",
           role: "owner",
@@ -178,7 +182,7 @@ describe("automation tool", () => {
       undefined,
       {
         sessionId: "session-a",
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
       },
     );
 
@@ -208,7 +212,7 @@ describe("automation tool", () => {
       undefined,
       undefined,
       {
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
         // 手工拼的 bridgeContext（无 interactionCapabilities）：能力未声明就不输出文本协议指引
         bridgeContext: { isBridgeSession: true, platform: "wechat", sessionKey: "wechat_dm_owner@agent-a" },
       },
@@ -241,7 +245,7 @@ describe("automation tool", () => {
       undefined,
       {
         sessionId: "session-a",
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
       },
     );
 
@@ -314,7 +318,7 @@ describe("automation tool", () => {
       undefined,
       {
         sessionId: "session-a",
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
       },
     );
 
@@ -343,7 +347,7 @@ describe("automation tool", () => {
         kind: "session_workspace",
         cwd: "/home/agent-a",
         workspaceFolders: [],
-        sourceSessionPath: "/sessions/agent-a.jsonl",
+        sourceSessionPath: AGENT_SESSION_PATH,
         createdByAgentId: "agent-a",
       },
       executor: {
@@ -355,7 +359,7 @@ describe("automation tool", () => {
           kind: "session_workspace",
           cwd: "/home/agent-a",
           workspaceFolders: [],
-          sourceSessionPath: "/sessions/agent-a.jsonl",
+          sourceSessionPath: AGENT_SESSION_PATH,
           createdByAgentId: "agent-a",
         },
       },
@@ -385,7 +389,7 @@ describe("automation tool", () => {
       undefined,
       {
         sessionId: "session-a",
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
       },
     );
 
@@ -431,7 +435,7 @@ describe("automation tool", () => {
         kind: "session_workspace",
         cwd: "/home/agent-a",
         workspaceFolders: [],
-        sourceSessionPath: "/sessions/agent-a.jsonl",
+        sourceSessionPath: AGENT_SESSION_PATH,
         createdByAgentId: "agent-a",
       },
       executor: {
@@ -443,7 +447,7 @@ describe("automation tool", () => {
           kind: "session_workspace",
           cwd: "/home/agent-a",
           workspaceFolders: [],
-          sourceSessionPath: "/sessions/agent-a.jsonl",
+          sourceSessionPath: AGENT_SESSION_PATH,
           createdByAgentId: "agent-a",
         },
       },
@@ -470,7 +474,7 @@ describe("automation tool", () => {
       undefined,
       {
         sessionId: "session-a",
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
       },
     );
 
@@ -502,7 +506,7 @@ describe("automation tool", () => {
       },
       undefined,
       undefined,
-      { sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" } },
+      { sessionManager: { getSessionFile: () => AGENT_SESSION_PATH } },
     );
 
     expect(result.details).toMatchObject({
@@ -534,7 +538,7 @@ describe("automation tool", () => {
       },
       undefined,
       undefined,
-      { sessionManager: { getSessionFile: () => "/sessions/legacy.jsonl" } },
+      { sessionManager: { getSessionFile: () => LEGACY_SESSION_PATH } },
     );
 
     expect(suggestionStore.create).not.toHaveBeenCalled();
@@ -566,7 +570,7 @@ describe("automation tool", () => {
       },
       undefined,
       undefined,
-      { sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" } },
+      { sessionManager: { getSessionFile: () => AGENT_SESSION_PATH } },
     );
 
     expect(confirmStore.create).not.toHaveBeenCalled();
@@ -598,7 +602,7 @@ describe("automation tool", () => {
       undefined,
       {
         sessionId: "session-a",
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
       },
     );
 
@@ -660,7 +664,7 @@ describe("automation tool", () => {
       undefined,
       {
         sessionId: "session-a",
-        sessionManager: { getSessionFile: () => "/sessions/agent-a.jsonl" },
+        sessionManager: { getSessionFile: () => AGENT_SESSION_PATH },
       },
     );
 
