@@ -27,6 +27,39 @@ function expectedRenderedCommand(command: string, platform: NodeJS.Platform, cwd
 }
 
 describe("exec_command tools", () => {
+  it("declares contained one-shot commands routine and boundary-crossing commands reviewable", () => {
+    const [contained] = createExecCommandTools({
+      bashTool: { execute: vi.fn() },
+      getCwd: () => DEFAULT_TEST_CWD,
+      isOneShotSandboxEnforced: () => true,
+      platform: "linux",
+    });
+    const [uncontained] = createExecCommandTools({
+      bashTool: { execute: vi.fn() },
+      getCwd: () => DEFAULT_TEST_CWD,
+      isOneShotSandboxEnforced: () => false,
+      platform: "linux",
+    });
+
+    expect(contained.sessionPermission.resolveInvocation({ cmd: "pwd" })).toMatchObject({
+      kind: "routine",
+      sideEffect: {
+        sandboxed: true,
+        sandboxPermissions: "use_default",
+        networkAccess: "blocked",
+        hostIpcAccess: "available",
+      },
+    });
+    expect(contained.sessionPermission.resolveInvocation({
+      cmd: "npm view vitest version",
+      sandbox_permissions: "require_escalated",
+    })).toMatchObject({ kind: "review" });
+    expect(contained.sessionPermission.resolveInvocation({ cmd: "npm run dev", tty: true }))
+      .toMatchObject({ kind: "review" });
+    expect(uncontained.sessionPermission.resolveInvocation({ cmd: "pwd" }))
+      .toMatchObject({ kind: "review" });
+  });
+
   it("routes one-shot commands through the wrapped bash tool and returns nonzero exits as structured output", async () => {
     const platform = "win32";
     const bashTool = {
@@ -53,6 +86,7 @@ describe("exec_command tools", () => {
       expect.any(Object),
     );
     expect(result.content[0].text).toContain("python: not found");
+    expect(result.isError).toBe(true);
     expect(result.details.execCommand).toMatchObject({
       ok: false,
       exitCode: 127,
@@ -94,6 +128,7 @@ describe("exec_command tools", () => {
     );
     expect(result.content[0].text).toContain("复制");
     expect(result.content[0].text).not.toContain("�");
+    expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({
       outputEncoding: "gbk",
       outputTranscoded: true,
@@ -160,6 +195,7 @@ describe("exec_command tools", () => {
     );
 
     expect(bashTool.execute).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
     expect(result.details.errorCode).toBe("EXEC_COMMAND_INVALID_SANDBOX_PERMISSIONS");
   });
 

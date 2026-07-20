@@ -334,6 +334,30 @@ describe('streamBufferManager.ensureMessage 自愈', () => {
     ]);
   });
 
+  it('tool_end keeps the live failure outcome and short reason', () => {
+    streamBufferManager.handle({ type: 'tool_start', sessionPath: PATH, id: 'call_failed', name: 'read' });
+    streamBufferManager.handle({
+      type: 'tool_end',
+      sessionPath: PATH,
+      id: 'call_failed',
+      name: 'read',
+      status: 'failed',
+      success: false,
+      error: 'permission denied',
+    });
+
+    const group = getAssistantMessage()?.blocks?.find((block) => block.type === 'tool_group');
+    expect(group).toBeTruthy();
+    if (!group || group.type !== 'tool_group') throw new Error('expected tool group');
+    expect(group.tools[0]).toMatchObject({
+      id: 'call_failed',
+      done: true,
+      success: false,
+      status: 'failed',
+      error: 'permission denied',
+    });
+  });
+
   it('deferred 文件结果按 taskId 原地替换 media_generation 占位块', () => {
     streamBufferManager.handle({
       type: 'content_block',

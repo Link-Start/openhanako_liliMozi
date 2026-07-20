@@ -17,6 +17,8 @@ export interface ToolCall {
   args?: Record<string, unknown>;
   done: boolean;
   success: boolean;
+  status?: 'running' | 'succeeded' | 'failed' | 'unknown';
+  error?: string;
   details?: { card?: import('../types').PluginCardDetails; [key: string]: unknown };
 }
 

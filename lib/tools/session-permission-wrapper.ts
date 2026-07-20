@@ -8,7 +8,7 @@ import {
   SESSION_PERMISSION_MODES,
 } from "../../core/session-permission-mode.ts";
 import { getToolSessionPath, normalizeToolRuntimeContext } from "./tool-session.ts";
-import { toolError, toolOk } from "./tool-result.ts";
+import { toolError } from "./tool-result.ts";
 import { t } from "../i18n.ts";
 import {
   evaluateToolSafetyPolicy,
@@ -315,85 +315,61 @@ async function executeWithInvocationRevalidation(
   executionCtx: any,
   runtimeCtxIndex: number,
   legacySessionPermission: any,
+  revalidateAfterWait = true,
 ) {
-  const currentSessionBinding = captureSessionBinding(ctx, deps);
-  if (
-    currentSessionBinding.ok === false
-    || !isDeepStrictEqual(currentSessionBinding.value, expectedSessionBinding)
-  ) {
-    return toolError("Tool session context changed before execution.", {
-      errorCode: "TOOL_SESSION_CONTEXT_CHANGED_BEFORE_EXECUTION",
-      ...(currentSessionBinding.ok === false
-        ? { sessionContextReason: currentSessionBinding.reason }
-        : {}),
-      permissionMode: mode,
-      toolName: tool.name,
-    });
-  }
-  const sessionPath = expectedSessionBinding.sessionPath;
-  const current = resolveToolInvocationPermission(tool, params);
-  if (current.ok === false) {
-    return toolError("Tool invocation could not be revalidated before execution.", {
-      errorCode: current.error.code,
-      resolverReason: current.error.reason,
-      ...(current.error.field ? { resolverField: current.error.field } : {}),
-      permissionMode: mode,
-      toolName: tool.name,
-    });
-  }
-  if (
-    expectedInvocation
-    && (current.source !== "descriptor" || !isDeepStrictEqual(current.descriptor, expectedInvocation))
-  ) {
-    return toolError("Tool invocation target changed before execution and must be reviewed again.", {
-      errorCode: "TOOL_INVOCATION_CHANGED_BEFORE_EXECUTION",
-      permissionMode: mode,
-      toolName: tool.name,
-    });
-  }
-  if (!expectedInvocation && current.source !== "legacy") {
-    return toolError("Tool invocation permission source changed before execution.", {
-      errorCode: "TOOL_INVOCATION_CHANGED_BEFORE_EXECUTION",
-      permissionMode: mode,
-      toolName: tool.name,
-    });
-  }
-  if (
-    !expectedInvocation
-    && current.source === "legacy"
-    && !isDeepStrictEqual(current.sessionPermission, legacySessionPermission)
-  ) {
-    return toolError("Tool invocation permission changed before execution.", {
-      errorCode: "TOOL_INVOCATION_CHANGED_BEFORE_EXECUTION",
-      permissionMode: mode,
-      toolName: tool.name,
-    });
-  }
-
-  const currentInvocation = current.source === "descriptor" ? current.descriptor : null;
-  const currentLegacyPermission = current.source === "legacy"
-    ? current.sessionPermission
-    : legacySessionPermission;
-  const gatewayRequest = buildToolApprovalGatewayRequest(
-    tool.name,
-    params,
-    sessionPath,
-    expectedSessionBinding.sessionId || sessionPath || "session",
-    executionCtx,
-    deps,
-    currentInvocation,
-    currentLegacyPermission,
-  );
-  const safety = evaluateToolSafetyPolicy(gatewayRequest, deps.permissionBoundary);
-  if (safety?.action === "block") {
-    return toolError(safety.reason, {
-      errorCode: safety.code,
-      permissionMode: mode,
-      toolName: tool.name,
-      reviewer: safety.reviewer,
-      risk: safety.risk,
-      ruleIds: safety.ruleIds,
-    });
+  if (revalidateAfterWait) {
+    const currentSessionBinding = captureSessionBinding(ctx, deps);
+    if (
+      currentSessionBinding.ok === false
+      || !isDeepStrictEqual(currentSessionBinding.value, expectedSessionBinding)
+    ) {
+      return toolError("Tool session context changed before execution.", {
+        errorCode: "TOOL_SESSION_CONTEXT_CHANGED_BEFORE_EXECUTION",
+        ...(currentSessionBinding.ok === false
+          ? { sessionContextReason: currentSessionBinding.reason }
+          : {}),
+        permissionMode: mode,
+        toolName: tool.name,
+      });
+    }
+    const current = resolveToolInvocationPermission(tool, params);
+    if (current.ok === false) {
+      return toolError("Tool invocation could not be revalidated before execution.", {
+        errorCode: current.error.code,
+        resolverReason: current.error.reason,
+        ...(current.error.field ? { resolverField: current.error.field } : {}),
+        permissionMode: mode,
+        toolName: tool.name,
+      });
+    }
+    if (
+      expectedInvocation
+      && (current.source !== "descriptor" || !isDeepStrictEqual(current.descriptor, expectedInvocation))
+    ) {
+      return toolError("Tool invocation target changed before execution and must be reviewed again.", {
+        errorCode: "TOOL_INVOCATION_CHANGED_BEFORE_EXECUTION",
+        permissionMode: mode,
+        toolName: tool.name,
+      });
+    }
+    if (!expectedInvocation && current.source !== "legacy") {
+      return toolError("Tool invocation permission source changed before execution.", {
+        errorCode: "TOOL_INVOCATION_CHANGED_BEFORE_EXECUTION",
+        permissionMode: mode,
+        toolName: tool.name,
+      });
+    }
+    if (
+      !expectedInvocation
+      && current.source === "legacy"
+      && !isDeepStrictEqual(current.sessionPermission, legacySessionPermission)
+    ) {
+      return toolError("Tool invocation permission changed before execution.", {
+        errorCode: "TOOL_INVOCATION_CHANGED_BEFORE_EXECUTION",
+        permissionMode: mode,
+        toolName: tool.name,
+      });
+    }
   }
 
   const executionParams = cloneToolInvocationInput(params);
@@ -514,7 +490,8 @@ function resolveToolPermissionMode(deps: any, sessionPath: any) {
 }
 
 function toolApprovalUnavailable(toolName: any, status = "needs_user_approval_but_unavailable", reason = "human approval unavailable", extras: any = {}) {
-  return toolOk("Tool action needs user approval, but this execution context cannot ask the user.", {
+  return toolError("Tool action needs user approval, but this execution context cannot ask the user.", {
+    errorCode: "TOOL_APPROVAL_UNAVAILABLE",
     action: toolName,
     confirmed: false,
     confirmation: {
@@ -595,18 +572,6 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
           approvalPolicy: deps.approvalPolicy,
           allowHumanApproval: deps.allowHumanApproval,
         });
-        const gatewayRequest = buildToolApprovalGatewayRequest(tool.name, params, sessionPath, sessionBinding.value.sessionId || sessionPath || "session", executionCtx, deps, invocation, legacySessionPermission);
-        const safety = evaluateToolSafetyPolicy(gatewayRequest, deps.permissionBoundary);
-        if (safety?.action === "block") {
-          return toolError(safety.reason, {
-            errorCode: safety.code,
-            permissionMode: mode,
-            toolName: tool.name,
-            reviewer: safety.reviewer,
-            risk: safety.risk,
-            ruleIds: safety.ruleIds,
-          });
-        }
         const decision: any = classifySessionPermission({
           mode,
           toolName: tool.name,
@@ -631,6 +596,7 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
             executionCtx,
             runtimeCtxIndex,
             legacySessionPermission,
+            false,
           );
         }
         if (decision.action === "deny") {
@@ -668,7 +634,8 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
             );
           }
           if (review.status !== "ask_user") {
-            return toolOk("Tool action was not approved.", {
+            return toolError("Tool action was not approved.", {
+              errorCode: "TOOL_APPROVAL_DENIED",
               action: tool.name,
               confirmed: false,
               confirmation: {
@@ -708,7 +675,8 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
         }
         const approval = await askForToolApproval(tool.name, approvalParams.value, sessionPath, deps);
         if (!approval.allowed) {
-          return toolOk("Tool action was not approved.", {
+          return toolError("Tool action was not approved.", {
+            errorCode: "TOOL_APPROVAL_REJECTED",
             action: tool.name,
             confirmed: false,
             confirmation: {

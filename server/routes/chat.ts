@@ -55,6 +55,7 @@ import { isAllowedChatVideoMime, isChatVideoBase64WithinLimit } from "../../shar
 import { isAllowedChatAudioMime, isChatAudioBase64WithinLimit } from "../../shared/audio-mime.ts";
 import { getAssistantTextPhase } from "../../shared/text-signature.ts";
 import { summarizeToolArgs } from "../../shared/tool-arg-summary.ts";
+import { projectLiveToolResultOutcome } from "../../shared/tool-outcome.ts";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -1318,11 +1319,17 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
       });
     } else if (event.type === "tool_execution_end") {
       if (!ss) return;
+      const outcome = projectLiveToolResultOutcome({
+        ...event.result,
+        isError: event.isError === true || event.result?.isError === true,
+      });
       emitStreamEvent(sessionPath, ss, {
         type: "tool_end",
         id: event.toolCallId || undefined,
         name: event.toolName || "",
-        success: !event.isError,
+        status: outcome.status,
+        success: outcome.success,
+        ...(outcome.error ? { error: outcome.error } : {}),
         details: event.result?.details,
       });
 

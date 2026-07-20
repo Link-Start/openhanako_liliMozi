@@ -83,4 +83,46 @@ describe("Pi SDK createAgentSession adapter", () => {
       normalizedByAdapter: true,
     });
   });
+
+  it("promotes explicit Hana tool failures before the existing Pi hook runs", async () => {
+    const sdk = await import("@earendil-works/pi-coding-agent");
+    const existingHook = vi.fn(async ({ isError }) => ({ isError }));
+    const session = { agent: { afterToolCall: existingHook } };
+    vi.mocked(sdk.createAgentSession).mockResolvedValueOnce({ session, modelFallbackMessage: null } as any);
+    const adapter = await import("../lib/pi-sdk/index.ts");
+
+    await adapter.createAgentSession({ cwd: "/tmp/project" });
+    const result = {
+      isError: true,
+      content: [{ type: "text", text: "permission denied" }],
+      details: { error: "permission denied", errorCode: "TOOL_DENIED" },
+    };
+    const patch = await session.agent.afterToolCall({
+      toolCall: { id: "call-1", name: "exec_command" },
+      args: {},
+      result,
+      isError: false,
+    });
+
+    expect(existingHook).toHaveBeenCalledWith(expect.objectContaining({ result, isError: true }), undefined);
+    expect(patch).toMatchObject({ isError: true });
+  });
+
+  it("keeps an existing Pi hook's explicit outcome override", async () => {
+    const sdk = await import("@earendil-works/pi-coding-agent");
+    const existingHook = vi.fn(async (..._args: any[]) => ({ isError: false, details: { recovered: true } }));
+    const session = { agent: { afterToolCall: existingHook } };
+    vi.mocked(sdk.createAgentSession).mockResolvedValueOnce({ session, modelFallbackMessage: null } as any);
+    const adapter = await import("../lib/pi-sdk/index.ts");
+
+    await adapter.createAgentSession({ cwd: "/tmp/project" });
+    const patch = await session.agent.afterToolCall({
+      toolCall: { id: "call-2", name: "recoverable" },
+      args: {},
+      result: { isError: true, content: [{ type: "text", text: "recovered" }], details: {} },
+      isError: false,
+    });
+
+    expect(patch).toMatchObject({ isError: false, details: { recovered: true } });
+  });
 });

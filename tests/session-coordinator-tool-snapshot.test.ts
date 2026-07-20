@@ -910,6 +910,45 @@ describe("session-coordinator tool snapshot (createSession)", () => {
     expect(appliedList).toContain("browser");
   });
 
+  it("Case C: computes fresh tools from Agent settings and the explicit session kind", async () => {
+    const availability = vi.fn((_config, context) => (
+      context?.ownerPluginId === "tavern" && context?.sessionKind === "tavern"
+    ));
+    const tavernTool = {
+      ...makeTool("tavern_scene"),
+      _pluginId: "tavern",
+      isEnabledForAgentConfig: availability,
+    };
+    coord._d.buildTools = () => ({
+      tools: SDK_BUILTIN_OBJS,
+      customTools: [...HANAKO_CUSTOM_OBJS, tavernTool],
+    });
+    currentAgentConfig = { tools: { disabled: [] } };
+
+    const { sessionPath } = await coord.createSession(null, tmpDir, true, null, {
+      ownerPluginId: "tavern",
+      sessionKind: "tavern",
+      sessionVisibility: "plugin_private",
+    });
+
+    expect(availability).toHaveBeenCalledWith(
+      currentAgentConfig,
+      expect.objectContaining({
+        agentId: "test",
+        restore: false,
+        ownerPluginId: "tavern",
+        sessionKind: "tavern",
+        sessionVisibility: "plugin_private",
+      }),
+    );
+    expect(activeToolsSpy.mock.calls[0][0]).toContain("tavern_scene");
+    expect(coord._sessions.get(sessionPath)).toMatchObject({
+      ownerPluginId: "tavern",
+      sessionKind: "tavern",
+      sessionVisibility: "plugin_private",
+    });
+  });
+
   it("Case C: fresh sessions exclude computer when its global experiment gate is closed", async () => {
     const computerTool = {
       ...makeTool("computer"),

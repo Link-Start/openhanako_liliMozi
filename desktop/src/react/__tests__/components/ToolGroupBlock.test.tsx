@@ -17,6 +17,23 @@ describe('ToolGroupBlock', () => {
     cleanup();
   });
 
+  it('renders failed and unknown outcomes without presenting either as success', () => {
+    render(
+      <ToolGroupBlock
+        collapsed={false}
+        tools={[
+          { id: 'failed', name: 'read', done: true, success: false, status: 'failed', error: 'file not found' },
+          { id: 'unknown', name: 'read', done: true, success: false, status: 'unknown' },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('file not found')).toBeInTheDocument();
+    expect(screen.getByText('✗')).toBeInTheDocument();
+    expect(screen.getByText('?')).toBeInTheDocument();
+    expect(screen.queryByText('✓')).not.toBeInTheDocument();
+  });
+
   it('shows the full bash command in the hover title when the visible detail is truncated', () => {
     const command = 'rm -rf /Users/jason/.claude/plugins/marketplaces/temp_*';
 

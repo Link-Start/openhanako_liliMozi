@@ -1889,7 +1889,11 @@ export class SessionCoordinator {
         sessionMgr.getSessionId?.(),
       ),
     }; // pre-populated for resourceLoader proxy
-    const pluginSessionMeta = normalizePluginSessionMeta({ ownerPluginId, sessionKind, sessionVisibility });
+    const pluginSessionMeta = normalizePluginSessionMeta({
+      ownerPluginId: ownerPluginId ?? earlyBranchManifest?.plugin?.ownerPluginId,
+      sessionKind: sessionKind ?? earlyBranchManifest?.plugin?.kind,
+      sessionVisibility: sessionVisibility ?? earlyBranchManifest?.plugin?.visibility,
+    });
 
     // 快照当前 system prompt，per-session 隔离。
     // 后续记忆编译、技能变更只影响新对话，已有对话的 prompt 不变（保护 prefix cache）。
@@ -2179,13 +2183,21 @@ export class SessionCoordinator {
       includePluginTools: false,
     });
     const channelsEnabled = this._d.getPrefs?.()?.getChannelsEnabled?.();
+    const toolAvailabilityContext = {
+      agentId: creatingAgentId,
+      restore,
+      channelsEnabled,
+      ownerPluginId: pluginSessionMeta?.ownerPluginId || null,
+      sessionKind: pluginSessionMeta?.kind || earlyBranchManifest?.kind || "chat",
+      sessionVisibility: pluginSessionMeta?.visibility || "public",
+    };
     const stableFeatureDisabledToolNames = getStableFeatureDisabledToolNames({
       channelsEnabled,
     });
     const runtimeDisabledToolNames = computeRuntimeDisabledToolNames(
       allToolObjects,
       agent.config,
-      { agentId: creatingAgentId, restore, channelsEnabled },
+      toolAvailabilityContext,
       { warn: (msg) => log.warn(msg) },
     );
     const extraDisabledToolNames = [
@@ -6094,7 +6106,14 @@ export class SessionCoordinator {
     return {
       agent,
       allToolObjects,
-      context: { agentId: ownerAgentId, restore: false, channelsEnabled },
+      context: {
+        agentId: ownerAgentId,
+        restore: false,
+        channelsEnabled,
+        ownerPluginId: entry?.ownerPluginId || null,
+        sessionKind: entry?.sessionKind || "chat",
+        sessionVisibility: entry?.sessionVisibility || "public",
+      },
     };
   }
 

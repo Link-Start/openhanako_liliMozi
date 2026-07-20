@@ -6686,6 +6686,18 @@
       "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/index.ts (import-statement)."
     },
     {
+      "path": "lib/pi-sdk/tool-outcome-adapter.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "lib/pi-sdk/index.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/index.ts (import-statement)."
+    },
+    {
       "path": "lib/pii-guard.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -111656,6 +111668,33 @@
       "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/tool-snapshot-repair.ts (import-statement); core/bridge-session-manager.ts (import-statement); +7 more importer(s)."
     },
     {
+      "path": "shared/tool-outcome.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "lib/pi-sdk/tool-outcome-adapter.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "core/message-utils.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/chat.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/sessions.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/tool-outcome-adapter.ts (import-statement); core/message-utils.ts (import-statement); server/routes/chat.ts (import-statement); +1 more importer(s)."
+    },
+    {
       "path": "shared/video-mime.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -111855,9 +111894,9 @@
     }
   ],
   "stats": {
-    "totalFiles": 9596,
+    "totalFiles": 9598,
     "byInputType": {
-      "source-graph": 617,
+      "source-graph": 619,
       "runtime-asset": 11,
       "nft-runtime-trace": 8968
     }

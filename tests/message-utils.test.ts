@@ -331,6 +331,38 @@ describe("loadSessionHistoryMessages", () => {
     ]);
   });
 
+  it("read-time projects only known legacy Hana tool failures", async () => {
+    const sessionPath = path.join(tmpDir, "legacy-tool-outcomes.jsonl");
+    fs.writeFileSync(sessionPath, [
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: "known",
+          isError: false,
+          content: [{ type: "text", text: "context changed" }],
+          details: { errorCode: "TOOL_SESSION_CONTEXT_CHANGED_BEFORE_EXECUTION" },
+        },
+      }),
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: "plugin-warning",
+          isError: false,
+          content: [{ type: "text", text: "completed with diagnostics" }],
+          details: { error: "recoverable warning" },
+        },
+      }),
+      "",
+    ].join("\n"), "utf-8");
+
+    const result = await loadSessionHistoryMessages({}, sessionPath);
+
+    expect(result[0].isError).toBe(true);
+    expect(result[1].isError).toBe(false);
+  });
+
   it("projects legacy reminder-prefixed JSONL user messages without internal reminder text", async () => {
     const sessionPath = path.join(tmpDir, "legacy-reminder.jsonl");
     fs.writeFileSync(sessionPath, [

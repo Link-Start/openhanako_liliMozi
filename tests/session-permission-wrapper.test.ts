@@ -229,6 +229,7 @@ describe("session permission wrapper", () => {
 
     expect(tool.execute).not.toHaveBeenCalled();
     expect(result.details.confirmed).toBe(false);
+    expect(result.isError).toBe(true);
   });
 
   it("operate mode bypasses approval gateway and human confirmations", async () => {
@@ -416,6 +417,26 @@ describe("session permission wrapper", () => {
     const result = await wrapped.execute("call-channel-list", { action: "list" }, null, null, ctx);
 
     expect(approvalGateway.review).not.toHaveBeenCalled();
+    expect(tool.execute).toHaveBeenCalledOnce();
+    expect(result.details.executed).toBe(true);
+  });
+
+  it("resolves a synchronously allowed invocation only once", async () => {
+    const resolveInvocation = vi.fn(() => ({
+      action: "list",
+      kind: "read",
+      capability: "channel.list",
+    }));
+    const tool = makeTool("channel", {
+      sessionPermission: { resolveInvocation },
+    });
+    const [wrapped] = wrapWithSessionPermission([tool], {
+      getPermissionMode: () => "auto",
+    });
+
+    const result = await wrapped.execute("call-channel-list-once", { action: "list" }, null, null, ctx);
+
+    expect(resolveInvocation).toHaveBeenCalledOnce();
     expect(tool.execute).toHaveBeenCalledOnce();
     expect(result.details.executed).toBe(true);
   });
@@ -1016,7 +1037,7 @@ describe("session permission wrapper", () => {
 
     const result = await wrapped.execute("call-stage", { filepaths: ["/workspace/report.txt"] }, null, null, ctx);
 
-    expect(checkStagePath).toHaveBeenCalledTimes(3);
+    expect(checkStagePath).toHaveBeenCalledTimes(2);
     expect(tool.execute).not.toHaveBeenCalled();
     expect(result.details.errorCode).toBe("ACTION_BLOCKED_BY_WORKSPACE_BOUNDARY");
   });
@@ -1046,7 +1067,7 @@ describe("session permission wrapper", () => {
     }, null, null, ctx);
 
     expect(result.details.executed).toBe(true);
-    expect(checkStagePath).toHaveBeenCalledTimes(5);
+    expect(checkStagePath).toHaveBeenCalledTimes(3);
     expect(tool.execute).toHaveBeenCalledWith(
       "call-stage-canonical",
       expect.objectContaining({

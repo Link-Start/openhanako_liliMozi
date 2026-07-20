@@ -2760,6 +2760,43 @@ describe("sessions route", () => {
     expect(msgUtils.extractTextContent).toHaveBeenCalledTimes(20);
   });
 
+  it("pairs restored tool outcomes by call id and keeps missing results unknown", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const msgUtils = await import("../core/message-utils.ts");
+    const app = new Hono();
+
+    vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
+      { role: "assistant", content: "tool round" },
+      { role: "toolResult", toolCallId: "call-fail", toolName: "read", isError: true, content: [{ type: "text", text: "file not found" }] },
+      { role: "toolResult", toolCallId: "call-ok", toolName: "read", isError: false, content: [{ type: "text", text: "ok" }] },
+    ]);
+    vi.mocked(msgUtils.extractTextContent).mockReturnValueOnce({
+      text: "",
+      images: [],
+      thinking: "",
+      toolUses: [
+        { id: "call-ok", name: "read" },
+        { id: "call-fail", name: "read" },
+        { id: "call-missing", name: "read" },
+      ],
+    });
+
+    app.route("/api", createSessionsRoute({
+      agentsDir: "/tmp/agents",
+      deferredResults: null,
+    }));
+
+    const res = await app.request("/api/sessions/messages");
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.messages[0].toolCalls).toEqual([
+      expect.objectContaining({ id: "call-ok", status: "succeeded", success: true }),
+      expect.objectContaining({ id: "call-fail", status: "failed", success: false, error: "file not found" }),
+      expect.objectContaining({ id: "call-missing", status: "unknown", success: false }),
+    ]);
+  });
+
   it("does not return path-backed inline image base64 in session history", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const msgUtils = await import("../core/message-utils.ts");

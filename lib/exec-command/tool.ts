@@ -47,9 +47,10 @@ export function createExecCommandTools({
         const requiresEscalated = sandboxPermissions.value
           === EXEC_COMMAND_SANDBOX_PERMISSIONS.REQUIRE_ESCALATED;
         const networkIsolated = sandboxed && platform !== "win32" && !requiresEscalated;
+        const containedOneShot = sandboxed && networkIsolated && !requiresEscalated;
         return {
           action: "run",
-          kind: "review",
+          kind: containedOneShot ? "routine" : "review",
           capability: "exec_command.run",
           sideEffect: {
             kind: tty ? "interactive_command" : "command",
@@ -57,7 +58,7 @@ export function createExecCommandTools({
             sandboxed,
             sandboxPermissions: sandboxPermissions.value,
             networkAccess: networkIsolated ? "blocked" : "review_required",
-            hostIpcAccess: "review_required",
+            hostIpcAccess: containedOneShot ? "available" : "review_required",
           },
         };
       },

@@ -96,8 +96,8 @@ describe("createSandboxedTools on Linux", () => {
     expect(result.tools.find((tool) => tool.name === "bash")).toBeUndefined();
     const execCommand = result.tools.find((tool) => tool.name === "exec_command");
     expect(execCommand.sessionPermission.resolveInvocation({ cmd: "pwd" })).toMatchObject({
-      kind: "review",
-      sideEffect: { sandboxed: true, hostIpcAccess: "review_required" },
+      kind: "routine",
+      sideEffect: { sandboxed: true, hostIpcAccess: "available" },
     });
     const output = await execCommand.execute("call-1", { cmd: "pwd" });
 
@@ -146,11 +146,11 @@ describe("createSandboxedTools on Linux", () => {
     const execCommand = result.tools.find((tool) => tool.name === "exec_command");
 
     expect(execCommand.sessionPermission.resolveInvocation({ cmd: "pwd" })).toMatchObject({
-      kind: "review",
+      kind: "routine",
       sideEffect: {
         sandboxPermissions: "use_default",
         networkAccess: "blocked",
-        hostIpcAccess: "review_required",
+        hostIpcAccess: "available",
       },
     });
     expect(execCommand.sessionPermission.resolveInvocation({

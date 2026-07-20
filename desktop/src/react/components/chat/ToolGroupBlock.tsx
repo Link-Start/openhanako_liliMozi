@@ -43,8 +43,8 @@ export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, co
 
   if (tools.length === 0) return null;
 
-  const allDone = tools.every(t => t.done);
-  const failCount = tools.filter(t => t.done && !t.success).length;
+  const allDone = tools.every(t => t.status ? t.status !== 'running' : t.done);
+  const failCount = tools.filter(t => t.status === 'failed' || (!t.status && t.done && !t.success)).length;
   const isSingle = tools.length === 1;
 
   // 摘要标题
@@ -109,6 +109,7 @@ const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: T
   const detail = extractToolDetail(tool.name, tool.args);
   const label = getToolLabel(tool.name, tool.done ? 'done' : 'running', agentName);
   const detailTitle = detail.title || detail.href;
+  const status = tool.status || (tool.done ? (tool.success ? 'succeeded' : 'failed') : 'running');
 
   // 如果 args 里有 tag 类型信息（如 agent 名）
   const tag = tool.args?.agentId as string | undefined;
@@ -140,10 +141,13 @@ const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: T
             <span className={styles.toolDetail} title={detailTitle}>{detail.text}</span>
           )
         )}
+        {tool.error && (
+          <span className={styles.toolDetail} title={tool.error}>{tool.error}</span>
+        )}
         {tag && <span className={styles.toolTag}>{tag}</span>}
-        {tool.done ? (
-          <span className={`${styles.toolStatus} ${tool.success ? styles.toolStatusDone : styles.toolStatusFailed}`}>
-            {tool.success ? '✓' : '✗'}
+        {status !== 'running' ? (
+          <span className={`${styles.toolStatus} ${status === 'succeeded' ? styles.toolStatusDone : styles.toolStatusFailed}`}>
+            {status === 'succeeded' ? '✓' : status === 'failed' ? '✗' : '?'}
           </span>
         ) : (
           <span className={styles.toolDots} />

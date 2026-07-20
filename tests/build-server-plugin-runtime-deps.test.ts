@@ -1,13 +1,16 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { execFileSync } from "child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  collectBundledPluginNftRoots,
   collectBundledPluginPackageDependencies,
   collectBundledPluginRuntimeDependencies,
   copyBundledPluginRuntimeDependencies,
 } from "../scripts/build-server-plugin-runtime-deps.mjs";
+import { pruneServerNodeModulesViaNft } from "../scripts/build-server-phases.mjs";
 
 describe("bundled plugin runtime dependencies", () => {
   let tempDir;
@@ -181,6 +184,83 @@ describe("bundled plugin runtime dependencies", () => {
 
     await expect(collectBundledPluginPackageDependencies({ rootDir }))
       .resolves.toContain("js-yaml");
+  });
+
+  it("keeps transitive packages reached from packaged plugin and host runtime entries", async () => {
+    fs.mkdirSync(path.join(outDir, "bundle"), { recursive: true });
+    fs.writeFileSync(path.join(outDir, "bundle", "index.js"), "export {};\n", "utf-8");
+    fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
+
+    fs.mkdirSync(path.join(outDir, "plugins", "markdown", "tools"), { recursive: true });
+    fs.writeFileSync(
+      path.join(outDir, "plugins", "markdown", "tools", "validate.ts"),
+      [
+        'import MarkdownIt from "markdown-it";',
+        'import { expectedHeading } from "../../../lib/markdown-runtime.mjs";',
+        "const source: string = '# packaged';",
+        "const rendered = new MarkdownIt().render(source);",
+        "if (rendered !== expectedHeading) throw new Error(`unexpected render: ${rendered}`);",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(outDir, "lib"), { recursive: true });
+    fs.writeFileSync(
+      path.join(outDir, "lib", "markdown-runtime.mjs"),
+      "export const expectedHeading = '<h1>/packaged#packed</h1>';\n",
+      "utf-8",
+    );
+
+    const packages: Record<string, {
+      dependencies?: Record<string, string>;
+      source: string;
+    }> = {
+      "markdown-it": {
+        dependencies: { mdurl: "1.0.0", "linkify-it": "1.0.0", "uc.micro": "1.0.0" },
+        source: [
+          'import mdurl from "mdurl";',
+          'import linkify from "linkify-it";',
+          'import uc from "uc.micro";',
+          "export default class MarkdownIt {",
+          "  render(value) { return `<h1>${mdurl(value.slice(2))}${linkify()}${uc}</h1>`; }",
+          "}",
+        ].join("\n"),
+      },
+      mdurl: { source: "export default (value) => `/${value}`;\n" },
+      "linkify-it": { source: "export default () => '#packed';\n" },
+      "uc.micro": { source: "export default '';\n" },
+    };
+    for (const [name, fixture] of Object.entries(packages)) {
+      const packageDir = path.join(outDir, "node_modules", name);
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify({
+        name,
+        version: "1.0.0",
+        type: "module",
+        exports: "./index.js",
+        ...(fixture.dependencies ? { dependencies: fixture.dependencies } : {}),
+      }), "utf-8");
+      fs.writeFileSync(path.join(packageDir, "index.js"), fixture.source, "utf-8");
+    }
+
+    const pluginRoots = await collectBundledPluginNftRoots({ rootDir: outDir });
+    expect(pluginRoots).toEqual([
+      "lib/markdown-runtime.mjs",
+      "plugins/markdown/tools/validate.ts",
+    ]);
+
+    await pruneServerNodeModulesViaNft({
+      outDir,
+      nftRoots: ["bundle/index.js", ...pluginRoots],
+      externalPackageNames: ["markdown-it"],
+      runWithTargetNode: () => {},
+      log: () => {},
+    });
+
+    for (const transitive of ["mdurl", "linkify-it", "uc.micro"]) {
+      expect(fs.existsSync(path.join(outDir, "node_modules", transitive, "index.js"))).toBe(true);
+    }
+    expect(() => execFileSync(process.execPath, ["plugins/markdown/tools/validate.ts"], { cwd: outDir }))
+      .not.toThrow();
   });
 
   it("rejects plugin imports into host paths that are not explicit runtime surfaces", async () => {

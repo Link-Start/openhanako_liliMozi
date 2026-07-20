@@ -61,6 +61,7 @@ import {
   writeServerWrapperScripts,
 } from "./build-server-phases.mjs";
 import {
+  collectBundledPluginNftRoots,
   collectBundledPluginPackageDependencies,
   copyBundledPluginRuntimeDependencies,
 } from "./build-server-plugin-runtime-deps.mjs";
@@ -162,6 +163,7 @@ console.log("[build-server] resource files copied");
 // 否则打包产物的根 node_modules 解析不到插件运行时需要的包。开源产物不携带
 // plugins/，因此 build-server-open.mjs 不传这份清单。
 const pluginPackageDeps = await collectBundledPluginPackageDependencies({ rootDir: ROOT });
+const pluginNftRoots = await collectBundledPluginNftRoots({ rootDir: ROOT });
 const { externalPkg, rootPkg } = await resolveAndInstallExternalServerDeps({
   rootDir: ROOT,
   outDir,
@@ -177,7 +179,11 @@ const { externalPkg, rootPkg } = await resolveAndInstallExternalServerDeps({
 // ── 7. @vercel/nft 追踪：只保留运行时实际需要的文件 ──
 await pruneServerNodeModulesViaNft({
   outDir,
-  nftRoots: ["bundle/index.js"],
+  // Bundled plugins remain as source and are discovered dynamically. Making
+  // every plugin/host runtime source an nft root preserves the dependency
+  // closure of packages such as markdown-it without protecting all of
+  // node_modules from pruning.
+  nftRoots: ["bundle/index.js", ...pluginNftRoots],
   externalPackageNames: Object.keys(externalPkg.dependencies),
   runWithTargetNode,
 });

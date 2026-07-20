@@ -21,6 +21,7 @@ import { createHash } from "crypto";
 import { execSync } from "child_process";
 import { builtinModules } from "module";
 import { pathToFileURL } from "url";
+import ts from "typescript";
 import {
   buildBetterSqliteRuntimeSmokeScript,
   buildJiebaRuntimeSmokeScript,
@@ -473,6 +474,26 @@ export async function resolveAndInstallExternalServerDeps({
 
 // ── nft prune ────────────────────────────────────────────────────────────
 
+async function readNftTraceSource(filePath) {
+  let source;
+  try {
+    source = await fs.promises.readFile(filePath, "utf-8");
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "EISDIR") return null;
+    throw error;
+  }
+
+  if (!/\.(?:cts|mts|tsx?|d\.ts)$/i.test(filePath)) return source;
+  return ts.transpileModule(source, {
+    fileName: filePath,
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+      isolatedModules: true,
+    },
+  }).outputText;
+}
+
 /**
  * @vercel/nft-traces from `nftRoots` (relative to `outDir`) and deletes
  * every node_modules file that trace didn't reach, except files inside a
@@ -503,7 +524,15 @@ export async function pruneServerNodeModulesViaNft({
   try {
     ({ fileList } = await nodeFileTrace(
       nftRoots.map((root) => path.join(outDir, root)),
-      { base: outDir, conditions: ["node", "import"] },
+      {
+        base: outDir,
+        conditions: ["node", "import"],
+        // Bundled plugins remain as TypeScript source and are loaded through
+        // the plugin runtime. nft resolves .ts paths but its parser only
+        // accepts JavaScript syntax, so expose a read-only transpiled view for
+        // tracing while keeping the packaged files themselves unchanged.
+        readFile: readNftTraceSource,
+      },
     ));
   } catch (e) {
     // Windows CI 上 nft 可能因用户目录不存在而报错，跳过裁剪

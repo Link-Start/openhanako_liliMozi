@@ -2,6 +2,33 @@ import { describe, expect, it } from 'vitest';
 import { buildItemsFromHistory } from '../../utils/history-builder';
 
 describe('buildItemsFromHistory user image restoration', () => {
+  it('restores tool outcomes by toolCallId instead of tool name', () => {
+    const items = buildItemsFromHistory({
+      messages: [{
+        id: 'a1',
+        role: 'assistant',
+        content: '',
+        toolCalls: [
+          { id: 'call-ok', name: 'read', status: 'succeeded' },
+          { id: 'call-fail', name: 'read', status: 'failed', error: 'file not found' },
+          { id: 'call-missing', name: 'read', status: 'unknown' },
+        ],
+      }],
+    });
+
+    const first = items[0];
+    expect(first.type).toBe('message');
+    if (first.type !== 'message') throw new Error('expected message');
+    const group = first.data.blocks?.find((block) => block.type === 'tool_group');
+    expect(group).toMatchObject({
+      tools: [
+        { id: 'call-ok', status: 'succeeded', done: true, success: true },
+        { id: 'call-fail', status: 'failed', done: true, success: false, error: 'file not found' },
+        { id: 'call-missing', status: 'unknown', done: true, success: false },
+      ],
+    });
+  });
+
   it('把服务端 ISO timestamp 归一成前端毫秒时间', () => {
     const items = buildItemsFromHistory({
       messages: [{

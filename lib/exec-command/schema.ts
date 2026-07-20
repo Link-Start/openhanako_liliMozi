@@ -17,7 +17,10 @@ export function normalizeExecCommandSandboxPermissions(value: unknown) {
 }
 
 export function textResult(text: string, details: Record<string, any> = {}) {
+  const isError = (typeof details?.errorCode === "string" && !!details.errorCode)
+    || details?.execCommand?.ok === false;
   return {
+    ...(isError ? { isError: true as const } : {}),
     content: [{ type: "text", text }],
     details,
   };
@@ -117,6 +120,7 @@ export function normalizeWriteStdinParams(params: any = {}) {
 export function mergeExecDetails(result: any, execDetails: Record<string, any>) {
   return {
     ...(result || {}),
+    ...(execDetails?.ok === false ? { isError: true as const } : {}),
     details: {
       ...(result?.details && typeof result.details === "object" ? result.details : {}),
       execCommand: execDetails,

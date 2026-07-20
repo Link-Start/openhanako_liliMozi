@@ -10,6 +10,9 @@ interface AssistantBlockInput {
     toolCallId?: string;
     name: string;
     args?: Record<string, unknown>;
+    status?: 'succeeded' | 'failed' | 'unknown';
+    success?: boolean;
+    error?: string;
   }> | null;
   extraBlocks?: ContentBlock[] | null;
   includeTextSource?: boolean;
@@ -41,7 +44,9 @@ export function buildAssistantBlocksFromContent({
         name: tc.name,
         args: tc.args,
         done: true,
-        success: true,
+        success: tc.status === 'succeeded' || (tc.status === undefined && tc.success !== false),
+        status: tc.status || (tc.success === false ? 'failed' : 'succeeded'),
+        ...(tc.error ? { error: tc.error } : {}),
       })),
       collapsed: toolCalls.length > 1,
     });

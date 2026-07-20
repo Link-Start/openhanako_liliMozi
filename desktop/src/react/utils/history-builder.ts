@@ -55,7 +55,15 @@ export interface HistoryApiResponse {
     role: string;
     content: string;
     thinking?: string;
-    toolCalls?: Array<{ id?: string; toolCallId?: string; name: string; args?: Record<string, unknown> }>;
+    toolCalls?: Array<{
+      id?: string;
+      toolCallId?: string;
+      name: string;
+      args?: Record<string, unknown>;
+      status?: 'succeeded' | 'failed' | 'unknown';
+      success?: boolean;
+      error?: string;
+    }>;
     images?: Array<{ data: string; mimeType: string }>;
     timestamp?: number | string | null;
     sourceIndex?: number;

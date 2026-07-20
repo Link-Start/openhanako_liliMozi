@@ -228,6 +228,12 @@ function collectBundledPluginRuntimeGraph({ rootDir, allowedHostDirs }) {
   return {
     dependencies: [...dependencies].sort(),
     packages: [...packages].sort(),
+    nftRoots: [
+      ...pluginEntries.map((entry) => toPosixPath(path.relative(resolvedRootDir, entry))),
+      ...[...dependencies]
+        .filter((relativePath) => isTraceableSourceFile(relativePath))
+        .map(toPosixPath),
+    ].filter((value, index, all) => all.indexOf(value) === index).sort(),
   };
 }
 
@@ -245,6 +251,22 @@ export async function collectBundledPluginPackageDependencies({ rootDir } = {}) 
     rootDir,
     allowedHostDirs: BUNDLED_PLUGIN_ALLOWED_HOST_DIRS,
   }).packages;
+}
+
+/**
+ * Returns every source-form runtime entry copied into the packaged server for
+ * bundled plugins. These roots are intentionally broader than the static
+ * plugin import graph: tool modules are discovered by manifest conventions at
+ * runtime, so each plugin source file must be visible to nft even when no
+ * bundled server entry imports it directly. Host modules copied beside those
+ * plugins are roots too, preserving their package dependency closure.
+ */
+export async function collectBundledPluginNftRoots({
+  rootDir,
+  allowedHostDirs = BUNDLED_PLUGIN_ALLOWED_HOST_DIRS,
+} = {}) {
+  if (!rootDir) throw new Error("[build-server] collectBundledPluginNftRoots requires rootDir");
+  return collectBundledPluginRuntimeGraph({ rootDir, allowedHostDirs }).nftRoots;
 }
 
 export async function copyBundledPluginRuntimeDependencies({

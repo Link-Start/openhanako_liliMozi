@@ -429,7 +429,7 @@ describe("action-level tool descriptors", () => {
     });
   });
 
-  it("reviews every command execution while preserving network and sandbox boundary details", () => {
+  it("treats contained one-shot commands as routine while preserving boundary details", () => {
     let sandboxed = true;
     const [execCommand] = createExecCommandTools({
       isOneShotSandboxEnforced: () => sandboxed,
@@ -437,11 +437,11 @@ describe("action-level tool descriptors", () => {
     });
 
     expect(resolveDescriptor(execCommand, { cmd: "npm test" }).descriptor).toMatchObject({
-      kind: "review",
+      kind: "routine",
       sideEffect: {
         sandboxPermissions: "use_default",
         networkAccess: "blocked",
-        hostIpcAccess: "review_required",
+        hostIpcAccess: "available",
       },
     });
     expect(resolveDescriptor(execCommand, {

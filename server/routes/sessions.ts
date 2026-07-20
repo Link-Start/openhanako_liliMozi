@@ -84,6 +84,7 @@ import { findInSessionMessages } from "../../lib/search/session-find.ts";
 import { SessionSearchTokenizerUnavailableError } from "../../lib/search/session-search-tokenizer.ts";
 import { MountAwareFileError, MountAwareFileService } from "../../core/mount-aware-file-service.ts";
 import { isAssistantCommentaryTextBlock } from "../../shared/text-signature.ts";
+import { collectToolOutcomesByCallId } from "../../shared/tool-outcome.ts";
 
 const log = createModuleLogger("sessions");
 const lifecycleLog = createModuleLogger("sessions/lifecycle");
@@ -1337,6 +1338,7 @@ export function createSessionsRoute(engine, hub = null) {
       // 不会进展示（与 origin 记录同理），只用来覆盖后面 toolResult 分支产出的
       // suggestion_card block 的 status，让重开 session 不再回弹 pending。
       const sessionCollabDecisions = collectSessionCollabDecisions(sourceMessages);
+      const toolOutcomesByCallId = collectToolOutcomesByCallId(sourceMessages);
       let projectedDisplayIndex = 0;
       for (let sourceIndex = 0; sourceIndex < sourceMessages.length; sourceIndex += 1) {
         const message = sourceMessages[sourceIndex];
@@ -1511,6 +1513,13 @@ export function createSessionsRoute(engine, hub = null) {
           if (currentIndex >= pageBounds.startIdx && currentIndex < pageBounds.endIdx) {
             const { text, thinking, toolUses } = extractTextContent(m.content, { stripThink: true });
             const content = sanitizeVisibleContent(text);
+            const projectedToolUses = toolUses.map((toolUse) => {
+              const outcome = toolUse.id ? toolOutcomesByCallId.get(toolUse.id) : null;
+              return {
+                ...toolUse,
+                ...(outcome || { status: "unknown", success: false }),
+              };
+            });
             messages.push({
               id: String(currentIndex),
               sourceIndex,
@@ -1519,7 +1528,7 @@ export function createSessionsRoute(engine, hub = null) {
               content,
               ...(turnInputEntryId ? { turnInputEntryId, turnInputVisible } : {}),
               ...(contentHasThinkingBlock(m.content, { stripThink: true }) ? { thinking } : {}),
-              toolCalls: toolUses.length ? toolUses : undefined,
+              toolCalls: projectedToolUses.length ? projectedToolUses : undefined,
               ...(m.timestamp ? { timestamp: m.timestamp } : {}),
             });
           }

@@ -2,7 +2,7 @@ export function execCommandDescription({ platform = process.platform }: { platfo
   const common = [
     "Run a short, one-shot local command in the current session.",
     "When the OS sandbox is enabled, one-shot commands use its network-blocked path by default on macOS/Linux. Set sandbox_permissions=\"require_escalated\" only when the command genuinely needs reviewed network-capable execution; explicit sandbox network settings still apply.",
-    "Every command execution is permission-reviewed because command sandboxes do not isolate every host IPC surface. In Auto mode this review is automatic and normally requires no user action.",
+    "In Auto mode, network-blocked one-shot commands run as routine work under the session permission mode; interactive, unsandboxed, and escalated commands remain reviewable. The OS sandbox restricts files and networking but does not isolate every host IPC surface; use Ask mode when each command needs explicit confirmation.",
     "Use tty=true only when the command must remain interactive or long-running; then continue with write_stdin.",
     "For local GUI app control, use the computer tool instead of shell commands.",
   ];
