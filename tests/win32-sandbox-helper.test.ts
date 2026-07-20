@@ -6,7 +6,113 @@ import {
   buildWin32SandboxHelperArgs,
   createWin32SandboxTerminalStderrFilter,
   parseWin32SandboxTerminalRecord,
+  resolveWin32SandboxHelper,
+  resourceSiblingDir,
 } from "../lib/sandbox/win32-sandbox-helper.ts";
+
+describe("resolveWin32SandboxHelper", () => {
+  it("prefers the explicit helper contract over every resource-root candidate", () => {
+    const explicit = "C:\\custom\\hana-win-sandbox.exe";
+
+    expect(resolveWin32SandboxHelper({
+      env: {
+        HANA_WIN32_SANDBOX_HELPER: explicit,
+        HANA_DESKTOP_RESOURCES_PATH: "C:\\Hana\\resources",
+        HANA_DESKTOP_IS_PACKAGED: "1",
+        HANA_DESKTOP_APP_PATH: "C:\\OldHana\\resources\\app.asar",
+        HANA_DESKTOP_EXEC_PATH: "C:\\OldHana\\HanaAgent.exe",
+      },
+      resourcesPath: "C:\\Electron\\resources",
+      cwd: "C:\\repo",
+      arch: "x64",
+      existsSync: () => true,
+    })).toBe(explicit);
+  });
+
+  it("resolves the installed helper and bundled Git from old packaged-shell variables", () => {
+    const appPath = "C:\\Program Files\\HanaAgent\\resources\\app.asar";
+    const expectedResources = path.win32.dirname(appPath);
+    const expectedHelper = path.win32.join(
+      expectedResources,
+      "sandbox",
+      "windows",
+      "hana-win-sandbox.exe",
+    );
+    const expectedGit = path.win32.join(expectedResources, "git");
+    const env = {
+      HANA_DESKTOP_IS_PACKAGED: "1",
+      HANA_DESKTOP_APP_PATH: appPath,
+      HANA_DESKTOP_EXEC_PATH: "C:\\Program Files\\HanaAgent\\HanaAgent.exe",
+      HANA_ROOT: "C:\\Users\\Hana\\.hanako\\artifacts\\server\\0.412.7",
+    };
+    const existsSync = (candidate: string) => candidate === expectedHelper || candidate === expectedGit;
+
+    expect(resolveWin32SandboxHelper({
+      env,
+      resourcesPath: null,
+      cwd: "C:\\Users\\Hana\\.hanako\\artifacts\\server\\0.412.7",
+      arch: "x64",
+      existsSync,
+    })).toBe(expectedHelper);
+    expect(resourceSiblingDir("git", {
+      env,
+      resourcesPath: null,
+      existsSync,
+    })).toBe(expectedGit);
+  });
+
+  it("prefers the new desktop resource-root contract over old packaged-shell inference", () => {
+    const explicitResources = "C:\\Hana\\resources";
+    const expectedGit = path.win32.join(explicitResources, "git");
+
+    expect(resourceSiblingDir("git", {
+      env: {
+        HANA_DESKTOP_RESOURCES_PATH: explicitResources,
+        HANA_DESKTOP_IS_PACKAGED: "1",
+        HANA_DESKTOP_APP_PATH: "C:\\OldHana\\resources\\app.asar",
+        HANA_DESKTOP_EXEC_PATH: "C:\\OldHana\\HanaAgent.exe",
+      },
+      resourcesPath: null,
+      existsSync: () => true,
+    })).toBe(expectedGit);
+  });
+
+  it("does not infer installation resources outside a packaged desktop process", () => {
+    const legacyHelper = path.win32.join(
+      "C:\\Hana\\resources",
+      "sandbox",
+      "windows",
+      "hana-win-sandbox.exe",
+    );
+
+    expect(resolveWin32SandboxHelper({
+      env: {
+        HANA_DESKTOP_IS_PACKAGED: "0",
+        HANA_DESKTOP_APP_PATH: "C:\\Hana\\resources\\app.asar",
+        HANA_DESKTOP_EXEC_PATH: "C:\\Hana\\HanaAgent.exe",
+      },
+      resourcesPath: null,
+      cwd: "C:\\repo",
+      arch: "x64",
+      existsSync: (candidate: string) => candidate === legacyHelper,
+    })).toBeNull();
+  });
+
+  it("returns null when no explicit, packaged, artifact, or dev helper exists", () => {
+    expect(resolveWin32SandboxHelper({
+      env: {
+        HANA_DESKTOP_IS_PACKAGED: "1",
+        HANA_DESKTOP_APP_PATH: "C:\\Hana\\resources\\app.asar",
+        HANA_DESKTOP_EXEC_PATH: "C:\\Hana\\HanaAgent.exe",
+        HANA_ROOT: "C:\\Users\\Hana\\.hanako\\artifacts\\server\\0.412.7",
+      },
+      resourcesPath: null,
+      cwd: "C:\\repo",
+      arch: "x64",
+      existsSync: () => false,
+    })).toBeNull();
+  });
+});
 
 describe("buildWin32SandboxHelperArgs", () => {
   it("projects the helper contract as write roots instead of read ACL grants", () => {

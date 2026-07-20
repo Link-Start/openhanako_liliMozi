@@ -1653,6 +1653,13 @@ async function _spawnServerOnce(serverInfoPath, artifactBootContext) {
     HANA_DESKTOP_APP_PATH: app.getAppPath(),
     HANA_DESKTOP_IS_PACKAGED: app.isPackaged ? "1" : "0",
   };
+  if (
+    app.isPackaged
+    && typeof process.resourcesPath === "string"
+    && path.isAbsolute(process.resourcesPath)
+  ) {
+    serverEnv.HANA_DESKTOP_RESOURCES_PATH = process.resourcesPath;
+  }
   // The server receives every ordinary desktop environment variable, but it
   // must not inherit Pi's global agent directory. Hana supplies all SDK paths
   // explicitly so a host-level Pi installation cannot redirect Hana's data.
@@ -1752,6 +1759,7 @@ async function _spawnServerOnce(serverInfoPath, artifactBootContext) {
         "WINDOWS_SERVER_GUARDIAN_MISSING: hana-win-sandbox.exe is required to supervise the server process tree. Rebuild or reinstall HanaAgent."
       );
     }
+    serverEnv.HANA_WIN32_SANDBOX_HELPER = guardianBin;
     launcherBin = guardianBin;
     launcherArgs = buildWindowsServerGuardianArgs({
       parentPid: process.pid,

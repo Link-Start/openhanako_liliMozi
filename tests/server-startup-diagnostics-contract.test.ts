@@ -75,6 +75,19 @@ describe("server startup diagnostics contract", () => {
     expect(mainSource).toContain("serverProcess = spawn(launcherBin, launcherArgs");
   });
 
+  it("passes validated desktop resources and the resolved guardian to the server before spawn", () => {
+    const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
+    const resourcesIndex = mainSource.indexOf("serverEnv.HANA_DESKTOP_RESOURCES_PATH = process.resourcesPath;");
+    const guardianIndex = mainSource.indexOf("const guardianBin = resolveWindowsServerGuardian({");
+    const helperContractIndex = mainSource.indexOf("serverEnv.HANA_WIN32_SANDBOX_HELPER = guardianBin;", guardianIndex);
+    const spawnIndex = mainSource.indexOf("serverProcess = spawn(launcherBin, launcherArgs", guardianIndex);
+
+    expect(resourcesIndex).toBeGreaterThan(-1);
+    expect(guardianIndex).toBeGreaterThan(resourcesIndex);
+    expect(helperContractIndex).toBeGreaterThan(guardianIndex);
+    expect(spawnIndex).toBeGreaterThan(helperContractIndex);
+  });
+
   it("owned Windows shutdown uses token-auth grace then the guardian control pipe", () => {
     const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
     const shutdown = extractFunctionSource(mainSource, "shutdownServer");

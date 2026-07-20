@@ -5149,7 +5149,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 1734,
+      "line": 1741,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -5158,7 +5158,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2225,
+      "line": 2233,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(hanakoHome, { recursive: true })",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -5167,7 +5167,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2226,
+      "line": 2234,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(crashLogPath, content, \"utf-8\")",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -5176,7 +5176,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2287,
+      "line": 2295,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(lastSeenVersionPath), { recursive: true })",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5185,7 +5185,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2288,
+      "line": 2296,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(lastSeenVersionPath, JSON.stringify({ version }))",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5194,7 +5194,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2356,
+      "line": 2364,
       "kind": "write-file",
       "excerpt": "fs.promises.writeFile(windowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5203,7 +5203,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2455,
+      "line": 2463,
       "kind": "mkdir",
       "excerpt": "fs.promises.mkdir(path.dirname(quickChatWindowStatePath), { recursive: true })",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5212,7 +5212,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2456,
+      "line": 2464,
       "kind": "write-file",
       "excerpt": "fs.promises.writeFile(quickChatWindowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5221,7 +5221,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4209,
+      "line": 4217,
       "kind": "append-file",
       "excerpt": "require(\"fs\").appendFileSync(require(\"path\").join(hanakoHome, \"browser-cmd.log\"), `${new Date().toISOString()} ${redactMainLogText(line)}\\n`)",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -5230,7 +5230,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4776,
+      "line": 4784,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(tmpHtml, htmlContent, \"utf-8\")",
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
@@ -5239,7 +5239,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4830,
+      "line": 4838,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(tmpHtml)",
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
@@ -5248,7 +5248,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5395,
+      "line": 5403,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(tmpDir, { recursive: true })",
       "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
@@ -5257,7 +5257,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5541,
+      "line": 5549,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, content, \"utf-8\")",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5266,7 +5266,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5563,
+      "line": 5571,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(resolved), { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5275,7 +5275,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5564,
+      "line": 5572,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(resolved, Buffer.from(base64Data, \"base64\"))",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5284,7 +5284,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5575,
+      "line": 5583,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(destinationPath), { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5293,7 +5293,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5576,
+      "line": 5584,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(sourcePath, destinationPath)",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5302,7 +5302,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5609,
+      "line": 5617,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(dir, { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5311,7 +5311,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5610,
+      "line": 5618,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, pngBuffer)",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5320,7 +5320,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 6134,
+      "line": 6142,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(path.join(hanakoHome, \"server-info.json\"))",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",

@@ -26,11 +26,77 @@ export interface Win32SandboxTerminalStderrFilter {
   readonly terminalRecord: Win32SandboxTerminalRecord | null;
 }
 
-export function resourceSiblingDir(name, { env = process.env, resourcesPath = (process as any).resourcesPath } = {}) {
-  const candidates = [];
-  if (resourcesPath) candidates.push(path.join(resourcesPath, name));
-  if (env.HANA_ROOT) candidates.push(path.resolve(env.HANA_ROOT, "..", name));
-  return candidates.find((candidate) => defaultExistsSync(candidate)) || candidates[0] || null;
+function isWin32PathLike(value) {
+  return /^[a-z]:[\\/]/i.test(String(value || "")) || /^\\\\/.test(String(value || ""));
+}
+
+function joinRuntimePath(root, ...segments) {
+  return isWin32PathLike(root) ? path.win32.join(root, ...segments) : path.join(root, ...segments);
+}
+
+function dirnameRuntimePath(target) {
+  return isWin32PathLike(target) ? path.win32.dirname(target) : path.dirname(target);
+}
+
+function basenameRuntimePath(target) {
+  return isWin32PathLike(target) ? path.win32.basename(target) : path.basename(target);
+}
+
+function resolveRuntimePath(root, ...segments) {
+  return isWin32PathLike(root) ? path.win32.resolve(root, ...segments) : path.resolve(root, ...segments);
+}
+
+function pushUniqueRuntimePath(candidates, candidate) {
+  if (!candidate) return;
+  const key = String(candidate).toLowerCase();
+  if (candidates.some((existing) => String(existing).toLowerCase() === key)) return;
+  candidates.push(candidate);
+}
+
+function legacyPackagedDesktopResourceRoots(env) {
+  if (env.HANA_DESKTOP_IS_PACKAGED !== "1") return [];
+
+  const roots = [];
+  const appPath = env.HANA_DESKTOP_APP_PATH;
+  // Existing packaged shells use asar and pass app.getAppPath(). Accept only
+  // that exact layout so a source/dev directory cannot become an install root.
+  if (appPath && basenameRuntimePath(appPath).toLowerCase() === "app.asar") {
+    pushUniqueRuntimePath(roots, dirnameRuntimePath(appPath));
+  }
+
+  const execPath = env.HANA_DESKTOP_EXEC_PATH;
+  // Windows Electron keeps resources/ beside the packaged executable. This is
+  // a bounded compatibility candidate for shells released before the explicit
+  // HANA_DESKTOP_RESOURCES_PATH contract existed.
+  if (execPath && basenameRuntimePath(execPath).toLowerCase().endsWith(".exe")) {
+    pushUniqueRuntimePath(roots, joinRuntimePath(dirnameRuntimePath(execPath), "resources"));
+  }
+  return roots;
+}
+
+function resourceSiblingCandidates(segments, { env, resourcesPath }) {
+  const roots = [];
+  pushUniqueRuntimePath(roots, env.HANA_DESKTOP_RESOURCES_PATH);
+  pushUniqueRuntimePath(roots, resourcesPath);
+  for (const root of legacyPackagedDesktopResourceRoots(env)) {
+    pushUniqueRuntimePath(roots, root);
+  }
+  if (env.HANA_ROOT) {
+    pushUniqueRuntimePath(roots, resolveRuntimePath(env.HANA_ROOT, ".."));
+  }
+  return roots.map((root) => joinRuntimePath(root, ...segments));
+}
+
+export function resourceSiblingDir(
+  name,
+  {
+    env = process.env,
+    resourcesPath = (process as any).resourcesPath,
+    existsSync = defaultExistsSync,
+  } = {},
+) {
+  const candidates = resourceSiblingCandidates([name], { env, resourcesPath });
+  return candidates.find((candidate) => existsSync(candidate)) || candidates[0] || null;
 }
 
 export function resolveWin32SandboxHelper({
@@ -42,9 +108,11 @@ export function resolveWin32SandboxHelper({
 } = {}) {
   const candidates = [
     env.HANA_WIN32_SANDBOX_HELPER,
-    resourcesPath ? path.join(resourcesPath, "sandbox", "windows", WIN32_SANDBOX_HELPER_NAME) : null,
-    env.HANA_ROOT ? path.resolve(env.HANA_ROOT, "..", "sandbox", "windows", WIN32_SANDBOX_HELPER_NAME) : null,
-    path.join(cwd, "dist-sandbox", `win-${arch}`, WIN32_SANDBOX_HELPER_NAME),
+    ...resourceSiblingCandidates(
+      ["sandbox", "windows", WIN32_SANDBOX_HELPER_NAME],
+      { env, resourcesPath },
+    ),
+    joinRuntimePath(cwd, "dist-sandbox", `win-${arch}`, WIN32_SANDBOX_HELPER_NAME),
   ].filter(Boolean);
 
   return candidates.find((candidate) => existsSync(candidate)) || null;
