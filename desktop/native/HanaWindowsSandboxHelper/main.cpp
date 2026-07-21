@@ -650,18 +650,30 @@ static bool queryTokenDefaultDacl(HANDLE token, TokenDefaultDaclSnapshot& snapsh
     return true;
 }
 
-static PACL buildDaclWithRootSids(const std::vector<WritableRoot>& roots, PACL baseDefaultDacl, DWORD permissions) {
+static PACL buildTokenDefaultDacl(
+    const std::vector<WritableRoot>& roots,
+    PACL baseDefaultDacl,
+    PSID everyoneSid,
+    PSID logonSid,
+    DWORD permissions
+) {
     std::vector<EXPLICIT_ACCESSW> entries;
-    for (const auto& root : roots) {
-        if (!root.sid) continue;
+    auto appendGrant = [&](PSID sid) {
+        if (!sid || !IsValidSid(sid)) return;
         EXPLICIT_ACCESSW access = {};
         access.grfAccessPermissions = permissions;
         access.grfAccessMode = GRANT_ACCESS;
         access.grfInheritance = NO_INHERITANCE;
         access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
         access.Trustee.TrusteeType = TRUSTEE_IS_UNKNOWN;
-        access.Trustee.ptstrName = reinterpret_cast<LPWSTR>(root.sid);
+        access.Trustee.ptstrName = reinterpret_cast<LPWSTR>(sid);
         entries.push_back(access);
+    };
+    appendGrant(everyoneSid);
+    appendGrant(logonSid);
+    for (const auto& root : roots) {
+        if (!root.sid) continue;
+        appendGrant(root.sid);
     }
     if (entries.empty()) return nullptr;
     PACL dacl = nullptr;
@@ -672,7 +684,7 @@ static PACL buildDaclWithRootSids(const std::vector<WritableRoot>& roots, PACL b
         &dacl
     );
     if (rc != ERROR_SUCCESS) {
-        debug(L"SetEntriesInAclW(root SID DACL) failed: " + win32Message(rc));
+        fail(L"SetEntriesInAclW(token default DACL) failed: " + win32Message(rc));
         return nullptr;
     }
     return dacl;
@@ -786,19 +798,29 @@ static PSID copyCurrentLogonSid(HANDLE token) {
 
 static bool appendEveryoneRestrictingSid(
     std::vector<SID_AND_ATTRIBUTES>& sids,
-    std::vector<PSID>& ownedSids
+    std::vector<PSID>& ownedSids,
+    PSID& everyoneSid
 ) {
-    return appendRestrictingSid(sids, EVERYONE_SID, ownedSids);
+    PSID sid = nullptr;
+    if (!ConvertStringSidToSidW(EVERYONE_SID, &sid)) {
+        fail(L"cannot create Everyone restricting SID: " + win32Message(GetLastError()));
+        return false;
+    }
+    ownedSids.push_back(sid);
+    everyoneSid = sid;
+    return appendRestrictingSid(sids, sid);
 }
 
 static bool appendCurrentLogonRestrictingSid(
     std::vector<SID_AND_ATTRIBUTES>& sids,
     HANDLE token,
-    std::vector<PSID>& ownedSids
+    std::vector<PSID>& ownedSids,
+    PSID& logonSidOut
 ) {
     PSID logonSid = copyCurrentLogonSid(token);
     if (!logonSid) return false;
     ownedSids.push_back(logonSid);
+    logonSidOut = logonSid;
     return appendRestrictingSid(sids, logonSid);
 }
 
@@ -806,10 +828,12 @@ static bool buildRestrictingSids(
     const std::vector<WritableRoot>& roots,
     HANDLE baseToken,
     std::vector<SID_AND_ATTRIBUTES>& restrictingSids,
-    std::vector<PSID>& ownedRestrictingSids
+    std::vector<PSID>& ownedRestrictingSids,
+    PSID& everyoneSid,
+    PSID& logonSid
 ) {
-    if (!appendEveryoneRestrictingSid(restrictingSids, ownedRestrictingSids)) return false;
-    if (!appendCurrentLogonRestrictingSid(restrictingSids, baseToken, ownedRestrictingSids)) return false;
+    if (!appendEveryoneRestrictingSid(restrictingSids, ownedRestrictingSids, everyoneSid)) return false;
+    if (!appendCurrentLogonRestrictingSid(restrictingSids, baseToken, ownedRestrictingSids, logonSid)) return false;
     for (const auto& root : roots) {
         if (!root.sid) continue;
         appendRestrictingSid(restrictingSids, root.sid);
@@ -822,20 +846,59 @@ static bool buildRestrictingSids(
     return true;
 }
 
+static bool enableTokenPrivilege(HANDLE token, const wchar_t* privilegeName) {
+    LUID luid = {};
+    if (!LookupPrivilegeValueW(nullptr, privilegeName, &luid)) {
+        fail(std::wstring(L"LookupPrivilegeValueW(") + privilegeName + L") failed: " +
+             win32Message(GetLastError()));
+        return false;
+    }
+    TOKEN_PRIVILEGES privileges = {};
+    privileges.PrivilegeCount = 1;
+    privileges.Privileges[0].Luid = luid;
+    privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    SetLastError(ERROR_SUCCESS);
+    if (!AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr)) {
+        fail(std::wstring(L"AdjustTokenPrivileges(") + privilegeName + L") failed: " +
+             win32Message(GetLastError()));
+        return false;
+    }
+    const DWORD errorCode = GetLastError();
+    if (errorCode != ERROR_SUCCESS) {
+        fail(std::wstring(L"AdjustTokenPrivileges(") + privilegeName + L") was incomplete: " +
+             win32Message(errorCode));
+        return false;
+    }
+    return true;
+}
+
 static HANDLE createRestrictedWriteToken(const std::vector<WritableRoot>& roots) {
     HANDLE baseToken = nullptr;
     DWORD desired = TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY | TOKEN_IMPERSONATE |
-        TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID;
+        TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID | TOKEN_ADJUST_PRIVILEGES;
     if (!OpenProcessToken(GetCurrentProcess(), desired, &baseToken)) {
         fail(L"OpenProcessToken failed: " + win32Message(GetLastError()));
         return nullptr;
     }
     TokenDefaultDaclSnapshot baseDefaultDacl;
-    queryTokenDefaultDacl(baseToken, baseDefaultDacl);
+    if (!queryTokenDefaultDacl(baseToken, baseDefaultDacl)) {
+        CloseHandle(baseToken);
+        fail(L"cannot preserve the token default DACL for restricted child objects");
+        return nullptr;
+    }
 
     std::vector<SID_AND_ATTRIBUTES> restrictingSids;
     std::vector<PSID> ownedRestrictingSids;
-    if (!buildRestrictingSids(roots, baseToken, restrictingSids, ownedRestrictingSids)) {
+    PSID everyoneSid = nullptr;
+    PSID logonSid = nullptr;
+    if (!buildRestrictingSids(
+        roots,
+        baseToken,
+        restrictingSids,
+        ownedRestrictingSids,
+        everyoneSid,
+        logonSid
+    )) {
         CloseHandle(baseToken);
         freeOwnedSids(ownedRestrictingSids);
         return nullptr;
@@ -855,22 +918,40 @@ static HANDLE createRestrictedWriteToken(const std::vector<WritableRoot>& roots)
         &restrictedToken
     );
     CloseHandle(baseToken);
-    freeOwnedSids(ownedRestrictingSids);
     if (!ok) {
+        freeOwnedSids(ownedRestrictingSids);
         fail(L"CreateRestrictedToken failed: " + win32Message(GetLastError()));
         return nullptr;
     }
 
-    PACL defaultDacl = buildDaclWithRootSids(roots, baseDefaultDacl.dacl, GENERIC_ALL);
-    if (defaultDacl) {
-        TOKEN_DEFAULT_DACL info = {};
-        info.DefaultDacl = defaultDacl;
-        if (!SetTokenInformation(restrictedToken, TokenDefaultDacl, &info, sizeof(info))) {
-            debug(L"SetTokenInformation(TokenDefaultDacl) failed: " + win32Message(GetLastError()));
-        }
+    PACL defaultDacl = buildTokenDefaultDacl(
+        roots,
+        baseDefaultDacl.dacl,
+        everyoneSid,
+        logonSid,
+        GENERIC_ALL
+    );
+    if (!defaultDacl) {
+        freeOwnedSids(ownedRestrictingSids);
+        CloseHandle(restrictedToken);
+        return nullptr;
+    }
+    TOKEN_DEFAULT_DACL info = {};
+    info.DefaultDacl = defaultDacl;
+    if (!SetTokenInformation(restrictedToken, TokenDefaultDacl, &info, sizeof(info))) {
+        const DWORD errorCode = GetLastError();
         LocalFree(defaultDacl);
-    } else {
-        debug(L"TokenDefaultDacl left unchanged because no merged DACL was built");
+        freeOwnedSids(ownedRestrictingSids);
+        CloseHandle(restrictedToken);
+        fail(L"SetTokenInformation(TokenDefaultDacl) failed: " + win32Message(errorCode));
+        return nullptr;
+    }
+    LocalFree(defaultDacl);
+    freeOwnedSids(ownedRestrictingSids);
+
+    if (!enableTokenPrivilege(restrictedToken, SE_CHANGE_NOTIFY_NAME)) {
+        CloseHandle(restrictedToken);
+        return nullptr;
     }
 
     return restrictedToken;

@@ -340,6 +340,24 @@ describe("Windows sandbox helper build script", () => {
     expect(source).toContain("baseDefaultDacl");
   });
 
+  it("keeps restricted child object creation compatible with Windows initialization", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+    const createToken = source.match(
+      /static HANDLE createRestrictedWriteToken\([\s\S]*?\n\}/
+    )?.[0] || "";
+
+    expect(source).toContain("buildTokenDefaultDacl");
+    expect(createToken).toContain("everyoneSid");
+    expect(createToken).toContain("logonSid");
+    expect(createToken).toContain("SetTokenInformation(restrictedToken, TokenDefaultDacl");
+    expect(createToken).toContain("enableTokenPrivilege(restrictedToken, SE_CHANGE_NOTIFY_NAME)");
+    expect(source).toContain("AdjustTokenPrivileges");
+    expect(source).toContain("ERROR_SUCCESS");
+  });
+
   it("restricts child handle inheritance to stdio handles", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
