@@ -922,50 +922,23 @@ function formatWin32ExitCodeHex(exitCode) {
   return `0x${(exitCode >>> 0).toString(16).toUpperCase().padStart(8, "0")}`;
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function envValue(env, key) {
   if (!env) return "";
   const found = Object.keys(env).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
   return found ? String(env[found] || "") : "";
 }
 
-function redactWin32DiagnosticText(value: any, { sandbox, env }: { sandbox?: any; env?: any } = {}) {
-  let text = String(value || "");
-  const replacements = [
-    [sandbox?.hanakoHome, "<HANA_HOME>"],
-    [envValue(env, "HANA_HOME"), "<HANA_HOME>"],
-    [envValue(env, "USERPROFILE"), "<USERPROFILE>"],
-    [envValue(env, "HOME"), "<HOME>"],
-    [process.env.USERPROFILE, "<USERPROFILE>"],
-    [process.env.HOME, "<HOME>"],
-  ];
-  for (const [raw, marker] of replacements) {
-    const pathText = typeof raw === "string" ? raw.trim() : "";
-    if (!pathText) continue;
-    text = text.replace(new RegExp(escapeRegExp(pathText), "gi"), marker);
-  }
-  text = text.replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 <redacted>");
-  text = text.replace(/\b(api[_-]?key|authorization|password|secret|token)(\s*[:=]\s*)(["']?)[^\s"'&]+/gi, "$1$2$3<redacted>");
-  return text;
+function diagnosticValueMetadata(label, value) {
+  const text = value == null ? "" : String(value);
+  return `${label}: present=${text.length > 0} length=${text.length}`;
 }
 
-function redactWin32DiagnosticPath(value, sandbox, env) {
-  return redactWin32DiagnosticText(value, { sandbox, env });
-}
-
-function truncateDiagnosticValue(value, max = 120) {
-  const text = String(value || "");
-  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
-}
-
-function safeArgPreview(args, context) {
-  return (args || []).slice(0, 8).map((arg) => truncateDiagnosticValue(
-    redactWin32DiagnosticText(arg, context),
-    100
-  ));
+function diagnosticArgsMetadata(args) {
+  const values = Array.isArray(args) ? args.map((arg) => String(arg)) : [];
+  const lengths = values.map((arg) => arg.length);
+  const totalLength = lengths.reduce((sum, length) => sum + length, 0);
+  const maxLength = lengths.length > 0 ? Math.max(...lengths) : 0;
+  return `Args: count=${values.length} totalLength=${totalLength} maxLength=${maxLength}`;
 }
 
 function splitWin32PathEnv(env) {
@@ -977,26 +950,24 @@ function pathIndex(entries, pattern) {
   return entries.findIndex((entry) => pattern.test(entry));
 }
 
-function collectWin32EnvironmentDiagnostics(env, context) {
+function collectWin32EnvironmentDiagnostics(env) {
   const pathEntries = splitWin32PathEnv(env);
-  const firstEntries = pathEntries.slice(0, 6)
-    .map((entry) => redactWin32DiagnosticPath(entry, context.sandbox, env));
   const system32Index = pathIndex(pathEntries, /\\windows\\system32(?:\\|$)/i);
   const bundledGitIndex = pathIndex(pathEntries, /\\(?:resources\\git|git)\\(?:bin|usr\\bin|mingw64\\bin|cmd)(?:\\|$)/i);
   return [
-    `ComSpec: ${redactWin32DiagnosticPath(envValue(env, "ComSpec") || envValue(env, "COMSPEC") || "(unset)", context.sandbox, env)}`,
-    `SystemRoot: ${redactWin32DiagnosticPath(envValue(env, "SystemRoot") || "(unset)", context.sandbox, env)}`,
-    `PATHEXT: ${envValue(env, "PATHEXT") || "(unset)"}`,
-    `PATH entries: ${pathEntries.length}; first 6: ${JSON.stringify(firstEntries)}`,
+    diagnosticValueMetadata("ComSpec", envValue(env, "ComSpec") || envValue(env, "COMSPEC")),
+    diagnosticValueMetadata("SystemRoot", envValue(env, "SystemRoot")),
+    diagnosticValueMetadata("PATHEXT", envValue(env, "PATHEXT")),
+    `PATH entries: ${pathEntries.length}`,
     `PATH System32 index: ${system32Index}`,
     `PATH bundled Git index: ${bundledGitIndex}`,
-    `TEMP: ${redactWin32DiagnosticPath(envValue(env, "TEMP") || "(unset)", context.sandbox, env)}`,
-    `TMP: ${redactWin32DiagnosticPath(envValue(env, "TMP") || "(unset)", context.sandbox, env)}`,
-    `LOCALAPPDATA: ${redactWin32DiagnosticPath(envValue(env, "LOCALAPPDATA") || "(unset)", context.sandbox, env)}`,
-    `APPDATA: ${redactWin32DiagnosticPath(envValue(env, "APPDATA") || "(unset)", context.sandbox, env)}`,
-    `HANA_ROOT: ${redactWin32DiagnosticPath(envValue(env, "HANA_ROOT") || "(unset)", context.sandbox, env)}`,
-    `HANA_SERVER_ENTRY: ${redactWin32DiagnosticPath(envValue(env, "HANA_SERVER_ENTRY") || "(unset)", context.sandbox, env)}`,
-    `process.execPath: ${redactWin32DiagnosticPath(process.execPath || "(unknown)", context.sandbox, env)}`,
+    diagnosticValueMetadata("TEMP", envValue(env, "TEMP")),
+    diagnosticValueMetadata("TMP", envValue(env, "TMP")),
+    diagnosticValueMetadata("LOCALAPPDATA", envValue(env, "LOCALAPPDATA")),
+    diagnosticValueMetadata("APPDATA", envValue(env, "APPDATA")),
+    diagnosticValueMetadata("HANA_ROOT", envValue(env, "HANA_ROOT")),
+    diagnosticValueMetadata("HANA_SERVER_ENTRY", envValue(env, "HANA_SERVER_ENTRY")),
+    diagnosticValueMetadata("process.execPath", process.execPath),
     `Node: ${process.versions.node || "unknown"} ABI ${process.versions.modules || "unknown"}`,
   ];
 }
@@ -1018,23 +989,22 @@ function emitWin32RuntimeFailureDiagnostic(onData, {
   if (typeof onData !== "function") return;
   const runner = route?.runner || "unknown";
   const runnerReason = route?.reason || "unknown";
-  const resolvedExecutable = executable || runtimeInfo?.shell || runtimeInfo?.git || runtimeInfo?.executable || "(unknown)";
-  const context = { sandbox, env };
+  const resolvedExecutable = executable || runtimeInfo?.shell || runtimeInfo?.git || runtimeInfo?.executable || "";
   const lines = [
     "",
     `[win32-exec] ${runner} runner failed before command output (STATUS_DLL_INIT_FAILED / 0xC0000142).`,
     `Exit code: ${exitCode} (${formatWin32ExitCodeHex(exitCode)})`,
     `Route: runner=${runner} reason=${runnerReason} mode=${mode || "unknown"} sandbox=${sandboxIsEnabled(sandbox)}`,
-    `Executable: ${redactWin32DiagnosticPath(resolvedExecutable, sandbox, env)}`,
-    `Args count: ${(args || []).length}; preview: ${JSON.stringify(safeArgPreview(args, context))}`,
-    `CWD: ${redactWin32DiagnosticPath(cwd || "(unset)", sandbox, env)}`,
-    helperPath ? `Helper: ${redactWin32DiagnosticPath(helperPath, sandbox, env)}` : "Helper: (none)",
-    runtimeInfo?.label ? `Runtime label: ${redactWin32DiagnosticText(runtimeInfo.label, context)}` : null,
-    runtimeInfo?.bundledRoot ? `Runtime root: ${redactWin32DiagnosticPath(runtimeInfo.bundledRoot, sandbox, env)}` : null,
-    sandbox?.hanakoHome ? "HANA_HOME: <HANA_HOME>" : null,
+    diagnosticValueMetadata("Executable", resolvedExecutable),
+    diagnosticArgsMetadata(args),
+    diagnosticValueMetadata("CWD", cwd),
+    diagnosticValueMetadata("Helper", helperPath),
+    diagnosticValueMetadata("Runtime label", runtimeInfo?.label),
+    diagnosticValueMetadata("Runtime root", runtimeInfo?.bundledRoot),
+    diagnosticValueMetadata("HANA_HOME", sandbox?.hanakoHome || envValue(env, "HANA_HOME")),
     `Output bytes before failure: ${outputBytes ?? 0}`,
     `Duration ms: ${durationMs ?? "unknown"}`,
-    ...collectWin32EnvironmentDiagnostics(env, context),
+    ...collectWin32EnvironmentDiagnostics(env),
     "Default PowerShell/cmd/terminal execution is not changed by this diagnostic path.",
     "No fallback was attempted for this STATUS_DLL_INIT_FAILED result.",
     "Likely causes: Windows child process DLL initialization failed, the restricted-token helper environment is incomplete, or a runtime cache/AV block is preventing startup.",
@@ -1061,26 +1031,25 @@ function emitWin32SandboxHelperLaunchFailureDiagnostic(onData, {
   if (typeof onData !== "function") return;
   const runner = route?.runner || "unknown";
   const runnerReason = route?.reason || "unknown";
-  const resolvedExecutable = executable || runtimeInfo?.shell || runtimeInfo?.git || runtimeInfo?.executable || "(unknown)";
-  const context = { sandbox, env };
+  const resolvedExecutable = executable || runtimeInfo?.shell || runtimeInfo?.git || runtimeInfo?.executable || "";
   const lines = [
     "",
     "[win32-exec] sandbox helper launch failed before command execution.",
     "Native helper reported CreateProcessAsUserW failure.",
     `Exit code: ${exitCode ?? "unknown"}`,
     `Route: runner=${runner} reason=${runnerReason} mode=${mode || "unknown"} sandbox=${sandboxIsEnabled(sandbox)}`,
-    `Executable: ${redactWin32DiagnosticPath(resolvedExecutable, sandbox, env)}`,
-    `Args count: ${(args || []).length}; preview: ${JSON.stringify(safeArgPreview(args, context))}`,
-    `CWD: ${redactWin32DiagnosticPath(cwd || "(unset)", sandbox, env)}`,
-    helperPath ? `Helper: ${redactWin32DiagnosticPath(helperPath, sandbox, env)}` : "Helper: (none)",
-    runtimeInfo?.label ? `Runtime label: ${redactWin32DiagnosticText(runtimeInfo.label, context)}` : null,
-    runtimeInfo?.bundledRoot ? `Runtime root: ${redactWin32DiagnosticPath(runtimeInfo.bundledRoot, sandbox, env)}` : null,
-    sandbox?.hanakoHome ? "HANA_HOME: <HANA_HOME>" : null,
+    diagnosticValueMetadata("Executable", resolvedExecutable),
+    diagnosticArgsMetadata(args),
+    diagnosticValueMetadata("CWD", cwd),
+    diagnosticValueMetadata("Helper", helperPath),
+    diagnosticValueMetadata("Runtime label", runtimeInfo?.label),
+    diagnosticValueMetadata("Runtime root", runtimeInfo?.bundledRoot),
+    diagnosticValueMetadata("HANA_HOME", sandbox?.hanakoHome || envValue(env, "HANA_HOME")),
     `Output bytes before failure: ${outputBytes ?? 0}`,
     `Duration ms: ${durationMs ?? "unknown"}`,
-    ...collectWin32EnvironmentDiagnostics(env, context),
+    ...collectWin32EnvironmentDiagnostics(env),
     "No fallback was attempted for this CreateProcessAsUserW result.",
-    "Use the native launch-failure lines above to compare executable, cwd, commandLine, desktop, token probes, and named-object namespace probes.",
+    "Use the structured native launch-failure fields above to compare launch-stage metadata and token probes without exposing command content.",
     "",
   ].filter(Boolean);
   onData(Buffer.from(`${lines.join("\n")}\n`, "utf-8"));

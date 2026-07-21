@@ -1374,10 +1374,12 @@ describe("createWin32Exec", () => {
 
     const diagnostic = chunks.join("");
     expect(diagnostic).toContain("STATUS_DLL_INIT_FAILED");
-    expect(diagnostic).toContain("<HANA_HOME>\\.ephemeral\\win32-sandbox-runtime\\bash-cache\\bin\\bash.exe");
-    expect(diagnostic).toContain("HANA_HOME: <HANA_HOME>");
+    expect(diagnostic).toContain("Executable: present=true length=");
+    expect(diagnostic).toContain("Runtime root: present=true length=");
+    expect(diagnostic).toContain("HANA_HOME: present=true length=");
     expect(diagnostic).not.toContain("C:\\Users\\Hana");
     expect(diagnostic).not.toContain(cachedShell);
+    expect(diagnostic).not.toContain(cachedRoot);
     expect(diagnostic).toContain("Default PowerShell/cmd/terminal execution is not changed");
     expect(spawnAndStream).toHaveBeenCalledTimes(1);
   });
@@ -1410,13 +1412,51 @@ describe("createWin32Exec", () => {
     expect(diagnostic).toContain("[win32-exec] cmd runner failed before command output");
     expect(diagnostic).toContain("Exit code: 3221225794 (0xC0000142)");
     expect(diagnostic).toContain("Route: runner=cmd reason=cmd-builtin mode=direct-cmd sandbox=false");
-    expect(diagnostic).toContain("Executable: C:\\Windows\\System32\\cmd.exe");
+    expect(diagnostic).toContain("Executable: present=true length=");
     expect(diagnostic).toContain("Output bytes before failure: 7");
     expect(diagnostic).toContain("PATH System32 index: 0");
     expect(diagnostic).toContain("PATH bundled Git index: 1");
     expect(diagnostic).toContain("No fallback was attempted");
     expect(diagnostic).not.toContain("C:\\Users\\Hana");
     expect(spawnAndStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("never includes command arguments, customer paths, or environment paths in DLL init diagnostics", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
+    spawnAndStream.mockResolvedValueOnce({ exitCode: 3221225794 });
+    const secret = "CUSTOMER_SECRET_7f3b";
+    const customerRoot = "D:\\Customers\\Acme Private\\Case 42";
+    const command = `upload --api-key ${secret} "${customerRoot}\\records.json"`;
+    const chunks = [];
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec();
+
+    await exec(command, customerRoot, {
+      onData: (data) => chunks.push(String(data)),
+      signal: undefined,
+      timeout: 5,
+      env: {
+        PATH: `C:\\Windows\\System32;${customerRoot}\\bin`,
+        COMSPEC: `${customerRoot}\\cmd.exe`,
+        SystemRoot: `${customerRoot}\\Windows`,
+        TEMP: `${customerRoot}\\temp`,
+        TMP: `${customerRoot}\\tmp`,
+        LOCALAPPDATA: `${customerRoot}\\local`,
+        APPDATA: `${customerRoot}\\roaming`,
+        HANA_ROOT: `${customerRoot}\\hana`,
+        HANA_SERVER_ENTRY: `${customerRoot}\\server.mjs`,
+      },
+    });
+
+    const diagnostic = chunks.join("");
+    expect(diagnostic).toContain("Args: count=");
+    expect(diagnostic).toContain("CWD: present=true length=");
+    expect(diagnostic).toContain("PATH entries: 2");
+    expect(diagnostic).not.toContain(secret);
+    expect(diagnostic).not.toContain("--api-key");
+    expect(diagnostic).not.toContain("upload");
+    expect(diagnostic).not.toContain(customerRoot);
+    expect(diagnostic).not.toContain("records.json");
   });
 
   it("emits STATUS_DLL_INIT_FAILED diagnostics for sandboxed cmd helper failures", async () => {
@@ -1457,8 +1497,8 @@ describe("createWin32Exec", () => {
     expect(result.exitCode).toBe(3221225794);
     const diagnostic = chunks.join("");
     expect(diagnostic).toContain("Route: runner=cmd reason=cmd-builtin mode=sandbox-helper sandbox=true");
-    expect(diagnostic).toContain(`Helper: ${helper}`);
-    expect(diagnostic).toContain("HANA_HOME: <HANA_HOME>");
+    expect(diagnostic).toContain("Helper: present=true length=");
+    expect(diagnostic).toContain("HANA_HOME: present=true length=");
     expect(diagnostic).not.toContain("C:\\Users\\Hana");
     expect(spawnAndStream).toHaveBeenCalledTimes(1);
   });
@@ -1471,7 +1511,7 @@ describe("createWin32Exec", () => {
       opts.onStderr(Buffer.from([
         "hana-win-sandbox: CreateProcessAsUserW failed: Access is denied.",
         "hana-win-sandbox: launch-failure error=\"5\" errorHex=\"0x00000005\"",
-        "hana-win-sandbox: launch-failure-context executable=\"C:\\Windows\\System32\\cmd.exe\" cwd=\"C:\\work\\project\" commandLine=\"cmd.exe /c dir\"",
+        "hana-win-sandbox: launch-failure-context executablePresent=\"true\" executableLength=\"31\" cwdPresent=\"true\" cwdLength=\"15\" argumentCount=\"4\" commandLineLength=\"38\"",
         "hana-win-sandbox: terminal-v1 status=\"launch_failed\" exitCode=\"\" timeoutMs=\"5000\" win32Error=\"5\"",
       ].join("\n")));
       return { exitCode: 1 };
@@ -1508,10 +1548,55 @@ describe("createWin32Exec", () => {
     expect(diagnostic).toContain("[win32-exec] sandbox helper launch failed before command execution");
     expect(diagnostic).toContain("Route: runner=cmd reason=cmd-builtin mode=sandbox-helper sandbox=true");
     expect(diagnostic).toContain("Native helper reported CreateProcessAsUserW failure");
-    expect(diagnostic).toContain("Helper: C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe");
+    expect(diagnostic).toContain("Helper: present=true length=");
     expect(diagnostic).not.toContain("terminal-v1");
     expect(diagnostic).not.toContain("C:\\Users\\Hana");
     expect(spawnAndStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("never includes command arguments or customer paths in helper launch diagnostics", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
+    const customerRoot = "D:\\Customers\\Private Tenant\\Incident 9";
+    const helper = `${customerRoot}\\hana-win-sandbox.exe`;
+    const secret = "HELPER_SECRET_c91e";
+    existsSync.mockImplementation((p) => p === helper);
+    spawnAndStream.mockImplementationOnce(async (_cmd, _args, opts) => {
+      opts.onStderr(Buffer.from([
+        "hana-win-sandbox: CreateProcessAsUserW failed: Access is denied.",
+        "hana-win-sandbox: launch-failure error=\"5\" errorHex=\"0x00000005\"",
+        "hana-win-sandbox: launch-failure-context executablePresent=\"true\" executableLength=\"31\" cwdPresent=\"true\" cwdLength=\"42\" argumentCount=\"4\" commandLineLength=\"91\"",
+        "hana-win-sandbox: terminal-v1 status=\"launch_failed\" exitCode=\"\" timeoutMs=\"5000\" win32Error=\"5\"",
+      ].join("\n")));
+      return { exitCode: 1 };
+    });
+    const chunks = [];
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        hanakoHome: `${customerRoot}\\hana-home`,
+        grants: { readPaths: [], writePaths: [customerRoot] },
+      },
+    });
+
+    await exec(`upload --api-key ${secret} "${customerRoot}\\payload.bin"`, customerRoot, {
+      onData: (data) => chunks.push(String(data)),
+      signal: undefined,
+      timeout: 5,
+      env: {
+        PATH: `C:\\Windows\\System32;${customerRoot}\\bin`,
+        COMSPEC: `${customerRoot}\\cmd.exe`,
+      },
+    });
+
+    const diagnostic = chunks.join("");
+    expect(diagnostic).toContain("Helper: present=true length=");
+    expect(diagnostic).toContain("Args: count=");
+    expect(diagnostic).not.toContain(secret);
+    expect(diagnostic).not.toContain("--api-key");
+    expect(diagnostic).not.toContain("upload");
+    expect(diagnostic).not.toContain(customerRoot);
+    expect(diagnostic).not.toContain("payload.bin");
   });
 
   it("emits STATUS_DLL_INIT_FAILED diagnostics for sandboxed PowerShell helper failures", async () => {
@@ -1550,8 +1635,8 @@ describe("createWin32Exec", () => {
     expect(result.exitCode).toBe(3221225794);
     const diagnostic = chunks.join("");
     expect(diagnostic).toContain("Route: runner=powershell-command reason=default-powershell mode=sandbox-helper sandbox=true");
-    expect(diagnostic).toContain("Executable: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
-    expect(diagnostic).toContain(`Helper: ${helper}`);
+    expect(diagnostic).toContain("Executable: present=true length=");
+    expect(diagnostic).toContain("Helper: present=true length=");
     expect(diagnostic).toContain("No fallback was attempted");
     expect(spawnAndStream).toHaveBeenCalledTimes(1);
   });

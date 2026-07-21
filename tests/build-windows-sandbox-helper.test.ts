@@ -115,6 +115,77 @@ describe("Windows sandbox helper build script", () => {
     expect(source).toContain("SE_GROUP_LOGON_ID");
   });
 
+  it("uses the enabled logon SID for private USER objects and keeps it in the restricting list", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+    const logonSidLookup = source.match(
+      /static PSID copyCurrentLogonSid\(HANDLE token\) \{[\s\S]*?\n\}/
+    )?.[0] || "";
+    const appendLogonSid = source.match(
+      /static bool appendCurrentLogonRestrictingSid\([\s\S]*?\n\}/
+    )?.[0] || "";
+    const createDesktop = source.match(
+      /static bool createSandboxDesktop\([\s\S]*?\n\}/
+    )?.[0] || "";
+
+    expect(logonSidLookup).toContain("TokenGroups");
+    expect(logonSidLookup).toContain("SE_GROUP_LOGON_ID");
+    expect(logonSidLookup).toContain("SE_GROUP_ENABLED");
+    expect(appendLogonSid).toContain("copyCurrentLogonSid(token)");
+    expect(appendLogonSid).toContain("ownedSids.push_back(logonSid)");
+    expect(createDesktop).toContain("copyCurrentLogonSid(processToken)");
+    expect(createDesktop).toContain("SANDBOX_WINDOW_STATION_ACCESS");
+    expect(createDesktop).toContain("SANDBOX_DESKTOP_ACCESS");
+    expect(createDesktop).toContain("baseDefaultDacl.dacl");
+    expect(createDesktop).not.toContain("buildDaclWithRootSids");
+    expect(createDesktop).not.toContain("root.sid");
+    expect(source).not.toContain("GetTokenInformation(token, TokenUser");
+  });
+
+  it("uses concrete USER-object rights instead of generic ACL grants", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("WINSTA_ACCESSCLIPBOARD");
+    expect(source).toContain("WINSTA_ACCESSGLOBALATOMS");
+    expect(source).toContain("WINSTA_CREATEDESKTOP");
+    const stationMask = source.match(
+      /static const DWORD SANDBOX_WINDOW_STATION_ACCESS =([\s\S]*?);/
+    )?.[1] || "";
+    const desktopMask = source.match(
+      /static const DWORD SANDBOX_DESKTOP_ACCESS =([\s\S]*?);/
+    )?.[1] || "";
+
+    expect(stationMask).toContain("WINSTA_ACCESSCLIPBOARD");
+    expect(stationMask).toContain("WINSTA_ACCESSGLOBALATOMS");
+    expect(stationMask).toContain("WINSTA_CREATEDESKTOP");
+    expect(stationMask).toContain("WINSTA_EXITWINDOWS");
+    expect(stationMask).toContain("WINSTA_READATTRIBUTES");
+    expect(stationMask).toContain("STANDARD_RIGHTS_REQUIRED");
+    expect(stationMask).not.toContain("WINSTA_ENUMDESKTOPS");
+    expect(stationMask).not.toContain("WINSTA_ENUMERATE");
+    expect(stationMask).not.toContain("WINSTA_READSCREEN");
+    expect(stationMask).not.toContain("WINSTA_WRITEATTRIBUTES");
+    expect(source).toContain("DESKTOP_CREATEWINDOW");
+    expect(source).toContain("DESKTOP_ENUMERATE");
+    expect(source).toContain("DESKTOP_READOBJECTS");
+    expect(source).toContain("DESKTOP_WRITEOBJECTS");
+    expect(desktopMask).toContain("DESKTOP_CREATEMENU");
+    expect(desktopMask).toContain("DESKTOP_CREATEWINDOW");
+    expect(desktopMask).toContain("DESKTOP_ENUMERATE");
+    expect(desktopMask).toContain("DESKTOP_HOOKCONTROL");
+    expect(desktopMask).toContain("DESKTOP_READOBJECTS");
+    expect(desktopMask).toContain("DESKTOP_WRITEOBJECTS");
+    expect(desktopMask).toContain("STANDARD_RIGHTS_REQUIRED");
+    expect(desktopMask).not.toContain("DESKTOP_JOURNALPLAYBACK");
+    expect(desktopMask).not.toContain("DESKTOP_JOURNALRECORD");
+    expect(desktopMask).not.toContain("DESKTOP_SWITCHDESKTOP");
+  });
+
   it("exposes a token diagnostic mode with a named-object namespace probe", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
@@ -138,9 +209,12 @@ describe("Windows sandbox helper build script", () => {
     expect(source).toContain("emitCreateProcessLaunchFailureDiagnostic");
     expect(source).toContain("hana-win-sandbox: launch-failure");
     expect(source).toContain("errorHex=");
-    expect(source).toContain("executable=");
-    expect(source).toContain("cwd=");
-    expect(source).toContain("commandLine=");
+    expect(source).toContain("executablePresent=");
+    expect(source).toContain("executableLength=");
+    expect(source).toContain("cwdPresent=");
+    expect(source).toContain("cwdLength=");
+    expect(source).toContain("argumentCount=");
+    expect(source).toContain("commandLineLength=");
     expect(source).toContain("desktop=");
     expect(source).toContain("flagsHex=");
     expect(source).toContain("inheritHandles=");
@@ -148,6 +222,61 @@ describe("Windows sandbox helper build script", () => {
     expect(source).toContain("probeRestrictedDesktopAccess");
     expect(source).toContain("probeProcessWindowStationName");
     expect(source).toContain("namedObjectsProbe=");
+
+    const diagnostic = source.match(
+      /static void emitCreateProcessLaunchFailureDiagnostic\([\s\S]*?\n\}/
+    )?.[0] || "";
+    expect(diagnostic).not.toContain("escapeDiagnosticValue(opts.executable)");
+    expect(diagnostic).not.toContain("escapeDiagnosticValue(opts.cwd)");
+    expect(diagnostic).not.toContain("escapeDiagnosticValue(commandLine)");
+  });
+
+  it("fails closed when the restricted token cannot reopen the private desktop", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+    const runSandboxed = source.match(
+      /static int runSandboxed\([\s\S]*?\n\}/
+    )?.[0] || "";
+
+    expect(source).toContain("emitPrelaunchDesktopProbeFailureDiagnostic");
+    expect(runSandboxed).toContain('if (prelaunchDesktopProbe != L"ok")');
+    expect(runSandboxed.indexOf('if (prelaunchDesktopProbe != L"ok")'))
+      .toBeLessThan(runSandboxed.indexOf("CreateProcessAsUserW("));
+    expect(runSandboxed).toContain('emitTerminalRecord(L"launch_failed"');
+  });
+
+  it("checks station and impersonation restoration and terminates if RevertToSelf fails", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+    const probe = source.match(
+      /static std::wstring probeRestrictedDesktopAccess\([\s\S]*?\n\}/
+    )?.[0] || "";
+
+    expect(probe).toContain("SetProcessWindowStation(originalStation)");
+    expect(probe).toContain("restore-error:");
+    expect(probe).toContain("revertImpersonationOrTerminate");
+    expect(source).toContain("if (RevertToSelf()) return;");
+    expect(source).toContain("ExitProcess(HELPER_LAUNCH_FAILED_EXIT_CODE)");
+    expect(source).not.toContain("RevertToSelf();");
+  });
+
+  it("diagnoses post-create DLL initialization failures with the prelaunch desktop probe", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+
+    expect(source).toContain("STATUS_DLL_INIT_FAILED_EXIT_CODE");
+    expect(source).toContain("0xC0000142");
+    expect(source).toContain("emitPostCreateEarlyExitDiagnostic");
+    expect(source).toContain("hana-win-sandbox: post-create-exit-v1");
+    expect(source).toContain('classification = L"dll-init-failure"');
+    expect(source).toContain("prelaunchDesktopProbe=");
+    expect(source).toContain("probeRestrictedDesktopAccess(restrictedToken, desktop)");
   });
 
   it("keeps synthetic writable-root SIDs as the file write ACL grant surface", () => {
