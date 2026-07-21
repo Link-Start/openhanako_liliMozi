@@ -3,6 +3,32 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.415.16",
+      "version": "0.415.16",
+      "previousTag": "v0.415.15",
+      "generatedAt": "2026-07-21T07:10:00.000Z",
+      "noUserFacingChanges": true,
+      "summary": {
+        "zh": "本版无面向用户的功能或体验变更，仅包含 Windows 独立服务端发布校验相关的内部修复。",
+        "en": "This release has no user-facing product changes. It only includes an internal fix for Windows standalone server release verification."
+      },
+      "counts": {
+        "feature": 0,
+        "fix": 0,
+        "improvement": 0,
+        "migration": 0
+      },
+      "source": {
+        "owner": "liliMozi",
+        "repo": "openhanako",
+        "commitRange": "v0.415.15..v0.415.16",
+        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.415.16",
+        "releaseNotes": ""
+      },
+      "items": []
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.415.15",
       "version": "0.415.15",
       "previousTag": "v0.412.7",
