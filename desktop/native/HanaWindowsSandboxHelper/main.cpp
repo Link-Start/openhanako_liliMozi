@@ -6,6 +6,7 @@
 #endif
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <userenv.h>
 #include <aclapi.h>
 #include <sddl.h>
@@ -98,8 +99,11 @@ static const DWORD WRITE_ALLOW_MASK =
 static const DWORD WRITE_DENY_MASK =
     FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES | DELETE | FILE_DELETE_CHILD;
 // CreateProcessAsUserW requires the target token to have full access to the
-// lpDesktop pair. This grant is limited to per-launch private USER objects.
-// File ACLs and the shared WinSta0 station are unchanged.
+// lpDesktop pair. WinSta0 already grants the logon session access; the helper
+// only adds a full-access ACE to its per-launch private desktop. The shared
+// WinSta0 station ACL and file ACLs are unchanged. This desktop is a dedicated
+// USER32 launch surface, not an authorization boundary; the restricted token,
+// file ACLs, and kill-on-close job remain the sandbox boundaries.
 static const DWORD SANDBOX_WINDOW_STATION_ACCESS = WINSTA_ALL_ACCESS;
 static const DWORD SANDBOX_DESKTOP_ACCESS =
     STANDARD_RIGHTS_REQUIRED |
@@ -912,7 +916,34 @@ static bool waitForJobEmpty(HANDLE job, DWORD timeoutMs, DWORD* errorOut) {
     }
 }
 
+static bool generatePrivateDesktopName(std::wstring& name) {
+    BYTE randomBytes[16] = {};
+    const NTSTATUS status = BCryptGenRandom(
+        nullptr,
+        randomBytes,
+        static_cast<ULONG>(sizeof(randomBytes)),
+        BCRYPT_USE_SYSTEM_PREFERRED_RNG
+    );
+    if (status < 0) {
+        fail(L"BCryptGenRandom for private desktop name failed: " +
+             hexDword(static_cast<DWORD>(status)));
+        return false;
+    }
+
+    static const wchar_t HEX_DIGITS[] = L"0123456789abcdef";
+    std::wstring suffix;
+    suffix.reserve(sizeof(randomBytes) * 2);
+    for (BYTE value : randomBytes) {
+        suffix.push_back(HEX_DIGITS[value >> 4]);
+        suffix.push_back(HEX_DIGITS[value & 0x0f]);
+    }
+    name = L"hana-win-sandbox-desktop-" + suffix;
+    return true;
+}
+
 static bool createSandboxDesktop(SandboxDesktop& desktop) {
+    if (!generatePrivateDesktopName(desktop.desktopName)) return false;
+
     HANDLE processToken = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &processToken)) {
         fail(L"OpenProcessToken for desktop DACL failed: " + win32Message(GetLastError()));
@@ -929,12 +960,6 @@ static bool createSandboxDesktop(SandboxDesktop& desktop) {
     CloseHandle(processToken);
     if (!logonSid) return false;
 
-    PACL stationDacl = buildDaclForSid(
-        logonSid,
-        baseDefaultDacl.dacl,
-        SANDBOX_WINDOW_STATION_ACCESS,
-        L"sandbox window-station"
-    );
     PACL desktopDacl = buildDaclForSid(
         logonSid,
         baseDefaultDacl.dacl,
@@ -942,51 +967,33 @@ static bool createSandboxDesktop(SandboxDesktop& desktop) {
         L"sandbox desktop"
     );
     LocalFree(logonSid);
-    if (!stationDacl || !desktopDacl) {
-        if (stationDacl) LocalFree(stationDacl);
-        if (desktopDacl) LocalFree(desktopDacl);
-        return false;
-    }
+    if (!desktopDacl) return false;
 
-    SECURITY_DESCRIPTOR stationDescriptor = {};
     SECURITY_DESCRIPTOR desktopDescriptor = {};
-    if (!InitializeSecurityDescriptor(&stationDescriptor, SECURITY_DESCRIPTOR_REVISION) ||
-        !SetSecurityDescriptorDacl(&stationDescriptor, TRUE, stationDacl, FALSE) ||
-        !InitializeSecurityDescriptor(&desktopDescriptor, SECURITY_DESCRIPTOR_REVISION) ||
+    if (!InitializeSecurityDescriptor(&desktopDescriptor, SECURITY_DESCRIPTOR_REVISION) ||
         !SetSecurityDescriptorDacl(&desktopDescriptor, TRUE, desktopDacl, FALSE)) {
         DWORD err = GetLastError();
-        LocalFree(stationDacl);
         LocalFree(desktopDacl);
-        fail(L"cannot initialize sandbox user-object descriptor: " + win32Message(err));
+        fail(L"cannot initialize sandbox desktop descriptor: " + win32Message(err));
         return false;
     }
 
-    const std::wstring uniqueSuffix =
-        std::to_wstring(GetCurrentProcessId()) + L"-" +
-        std::to_wstring(GetTickCount64());
-    desktop.stationName = L"hana-win-sandbox-station-" + uniqueSuffix;
-    desktop.desktopName = L"hana-win-sandbox-desktop-" + uniqueSuffix;
+    desktop.stationName = L"WinSta0";
     desktop.qualifiedName = desktop.stationName + L"\\" + desktop.desktopName;
-    SECURITY_ATTRIBUTES stationAttributes = {};
-    stationAttributes.nLength = sizeof(stationAttributes);
-    stationAttributes.lpSecurityDescriptor = &stationDescriptor;
-    stationAttributes.bInheritHandle = FALSE;
     SECURITY_ATTRIBUTES desktopAttributes = {};
     desktopAttributes.nLength = sizeof(desktopAttributes);
     desktopAttributes.lpSecurityDescriptor = &desktopDescriptor;
     desktopAttributes.bInheritHandle = FALSE;
 
-    desktop.station = CreateWindowStationW(
+    desktop.station = OpenWindowStationW(
         desktop.stationName.c_str(),
-        0,
-        SANDBOX_WINDOW_STATION_ACCESS,
-        &stationAttributes
+        FALSE,
+        SANDBOX_WINDOW_STATION_ACCESS
     );
     if (!desktop.station) {
         DWORD errorCode = GetLastError();
-        LocalFree(stationDacl);
         LocalFree(desktopDacl);
-        fail(L"CreateWindowStationW failed: " + win32Message(errorCode));
+        fail(L"OpenWindowStationW(WinSta0) failed: " + win32Message(errorCode));
         return false;
     }
 
@@ -995,9 +1002,8 @@ static bool createSandboxDesktop(SandboxDesktop& desktop) {
         DWORD errorCode = GetLastError();
         CloseWindowStation(desktop.station);
         desktop.station = nullptr;
-        LocalFree(stationDacl);
         LocalFree(desktopDacl);
-        fail(L"cannot enter sandbox window station: " + win32Message(errorCode));
+        fail(L"cannot enter WinSta0 for private desktop creation: " + win32Message(errorCode));
         return false;
     }
 
@@ -1012,7 +1018,6 @@ static bool createSandboxDesktop(SandboxDesktop& desktop) {
     DWORD createDesktopError = desktop.handle ? ERROR_SUCCESS : GetLastError();
     BOOL restoredStation = SetProcessWindowStation(originalStation);
     DWORD restoreStationError = restoredStation ? ERROR_SUCCESS : GetLastError();
-    LocalFree(stationDacl);
     LocalFree(desktopDacl);
     if (!desktop.handle) {
         CloseWindowStation(desktop.station);

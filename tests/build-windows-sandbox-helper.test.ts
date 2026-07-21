@@ -38,6 +38,7 @@ describe("Windows sandbox helper build script", () => {
     expect(command).toContain("cl.exe");
     expect(command).toContain("userenv.lib");
     expect(command).toContain("advapi32.lib");
+    expect(command).toContain("bcrypt.lib");
     expect(command).toContain("user32.lib");
   });
 
@@ -55,21 +56,42 @@ describe("Windows sandbox helper build script", () => {
     expect(source).not.toContain("SECURITY_CAPABILITIES capabilities");
   });
 
-  it("runs restricted-token children on a private window station and desktop pair", () => {
+  it("runs restricted-token children on a private desktop inside WinSta0", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
       "utf8"
     );
 
-    expect(source).toContain("CreateWindowStationW");
+    expect(source).not.toContain("CreateWindowStationW");
     expect(source).toContain("OpenWindowStationW");
     expect(source).toContain("SetProcessWindowStation");
     expect(source).toContain("CreateDesktopW");
     expect(source).toContain("CloseDesktop");
     expect(source).toContain("CloseWindowStation");
+    expect(source).toContain('desktop.stationName = L"WinSta0"');
     expect(source).toContain('desktop.qualifiedName = desktop.stationName + L"\\\\" + desktop.desktopName');
     expect(source).toContain("startup.StartupInfo.lpDesktop");
     expect(source).toContain("desktop.qualifiedName.c_str()");
+  });
+
+  it("uses system cryptographic randomness for each private desktop name", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+    const generateName = source.match(
+      /static bool generatePrivateDesktopName\([\s\S]*?\n\}/
+    )?.[0] || "";
+    const createDesktop = source.match(
+      /static bool createSandboxDesktop\([\s\S]*?\n\}/
+    )?.[0] || "";
+
+    expect(generateName).toContain("BCryptGenRandom");
+    expect(generateName).toContain("BCRYPT_USE_SYSTEM_PREFERRED_RNG");
+    expect(generateName).toContain("BYTE randomBytes[16]");
+    expect(generateName).not.toContain("GetCurrentProcessId");
+    expect(generateName).not.toContain("GetTickCount64");
+    expect(createDesktop).toContain("generatePrivateDesktopName(desktop.desktopName)");
   });
 
   it("uses ordinary Hana write SIDs while retaining legacy capability ACL cleanup", () => {
@@ -139,12 +161,14 @@ describe("Windows sandbox helper build script", () => {
     expect(createDesktop).toContain("SANDBOX_WINDOW_STATION_ACCESS");
     expect(createDesktop).toContain("SANDBOX_DESKTOP_ACCESS");
     expect(createDesktop).toContain("baseDefaultDacl.dacl");
+    expect(createDesktop).not.toContain("stationDacl");
+    expect(createDesktop).not.toContain("stationDescriptor");
     expect(createDesktop).not.toContain("buildDaclWithRootSids");
     expect(createDesktop).not.toContain("root.sid");
     expect(source).not.toContain("GetTokenInformation(token, TokenUser");
   });
 
-  it("grants full access only to each per-launch private USER object", () => {
+  it("uses existing WinSta0 access and grants full access only to the per-launch private desktop", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
       "utf8"
@@ -183,8 +207,8 @@ describe("Windows sandbox helper build script", () => {
     expect(createDesktop).toContain("SANDBOX_DESKTOP_ACCESS");
     expect(probeDesktop).toContain("SANDBOX_WINDOW_STATION_ACCESS");
     expect(probeDesktop).toContain("SANDBOX_DESKTOP_ACCESS");
-    expect(source).toContain("per-launch private USER objects");
-    expect(source).toContain("File ACLs and the shared WinSta0 station are unchanged");
+    expect(source).toContain("per-launch private desktop");
+    expect(source).toContain("WinSta0 station ACL and file ACLs are unchanged");
   });
 
   it("exposes a token diagnostic mode with a named-object namespace probe", () => {
