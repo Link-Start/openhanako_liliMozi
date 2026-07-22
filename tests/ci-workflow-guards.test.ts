@@ -86,6 +86,28 @@ describe("ci.yml: Windows restricted-token helper is exercised before release bu
     expect(steps[buildIndex]?.if).toBe("runner.os == 'Windows'");
     expect(steps[smokeIndex]?.if).toBe("runner.os == 'Windows'");
   });
+
+  it("builds and smoke-verifies the extracted standalone package with an ephemeral CI keyset", () => {
+    const steps = doc.jobs.test?.steps ?? [];
+    const rendererIndex = steps.findIndex((step) => stepRun(step).includes("build:renderer"));
+    const keyIndex = steps.findIndex((step) => step.name === "Prepare ephemeral signing key for Windows standalone smoke");
+    const minGitIndex = steps.findIndex((step) => stepRun(step).includes("scripts/download-mingit.js"));
+    const serverIndex = steps.findIndex((step) => stepRun(step).includes("scripts/build-server.mjs win32 x64"));
+    const packIndex = steps.findIndex((step) => stepRun(step).includes("scripts/build-standalone-server-artifact.mjs x64"));
+    const verifyIndex = steps.findIndex((step) => stepRun(step).includes("scripts/verify-standalone-server-artifact.mjs x64 --smoke"));
+
+    expect(keyIndex).toBeGreaterThan(rendererIndex);
+    expect(minGitIndex).toBeGreaterThan(keyIndex);
+    expect(serverIndex).toBeGreaterThan(minGitIndex);
+    expect(packIndex).toBeGreaterThan(serverIndex);
+    expect(verifyIndex).toBeGreaterThan(packIndex);
+    for (const index of [keyIndex, minGitIndex, serverIndex, packIndex, verifyIndex]) {
+      expect(steps[index]?.if).toBe("runner.os == 'Windows'");
+    }
+    expect(stepRun(steps[keyIndex])).toContain("$RUNNER_TEMP/hana-ci-sign-key.pem");
+    expect(stepRun(steps[keyIndex])).toContain("HANA_SIGN_KEYSET=$RUNNER_TEMP/hana-ci-keyset.json");
+    expect(stepRun(steps[keyIndex])).not.toContain("secrets.HANA_SIGN_KEY");
+  });
 });
 
 describe("build.yml: seed kit verification precedes every electron-builder invocation", () => {

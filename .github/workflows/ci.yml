@@ -46,6 +46,42 @@ jobs:
       - name: Build renderer
         run: npm run build:renderer
 
+      # The tag-only Build workflow verifies the extracted Windows standalone
+      # package by launching its real hana-server.cmd and exercising exec_command.
+      # Keep that release boundary covered in ordinary CI too, using a throwaway
+      # signing key/keyset that exists only under RUNNER_TEMP. Production release
+      # jobs still require the repository HANA_SIGN_KEY secret and pinned keyset.
+      - name: Prepare ephemeral signing key for Windows standalone smoke
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          node scripts/artifact-keygen.mjs \
+            --out "$RUNNER_TEMP/hana-ci-sign-key.pem" \
+            --key-id ci-ephemeral \
+            > "$RUNNER_TEMP/hana-ci-key.json"
+          node -e \
+            'const fs = require("fs"); const entry = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); fs.writeFileSync(process.argv[2], JSON.stringify([entry]));' \
+            "$RUNNER_TEMP/hana-ci-key.json" \
+            "$RUNNER_TEMP/hana-ci-keyset.json"
+          echo "HANA_SIGN_KEY=$RUNNER_TEMP/hana-ci-sign-key.pem" >> "$GITHUB_ENV"
+          echo "HANA_SIGN_KEYSET=$RUNNER_TEMP/hana-ci-keyset.json" >> "$GITHUB_ENV"
+
+      - name: Download MinGit for Windows standalone smoke
+        if: runner.os == 'Windows'
+        run: node scripts/download-mingit.js
+
+      - name: Build Windows server bundle for standalone smoke
+        if: runner.os == 'Windows'
+        run: node scripts/build-server.mjs win32 x64
+
+      - name: Build Windows standalone server archive in CI
+        if: runner.os == 'Windows'
+        run: node scripts/build-standalone-server-artifact.mjs x64
+
+      - name: Smoke-test packaged Windows standalone server
+        if: runner.os == 'Windows'
+        run: node scripts/verify-standalone-server-artifact.mjs x64 --smoke
+
       - name: Run tests
         run: npm test
 
