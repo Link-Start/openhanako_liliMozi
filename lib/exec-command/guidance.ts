@@ -1,3 +1,5 @@
+import { WIN32_DEFAULT_ONE_SHOT_SHELL } from "./shell.ts";
+
 export function execCommandDescription({ platform = process.platform }: { platform?: NodeJS.Platform } = {}) {
   const common = [
     "Run a short, one-shot local command in the current session.",
@@ -9,7 +11,7 @@ export function execCommandDescription({ platform = process.platform }: { platfo
   if (platform === "win32") {
     common.push(
       "Windows cannot isolate command networking; sandbox_permissions=\"use_default\" still uses the restricted-token runner but requires the same permission review.",
-      "On Windows the default one-shot shell is cmd.exe. Use cmd.exe syntax for builtins, chaining, pipelines, and redirection.",
+      `On Windows the default one-shot shell is ${WIN32_DEFAULT_ONE_SHOT_SHELL.display}. Use ${WIN32_DEFAULT_ONE_SHOT_SHELL.display} syntax for builtins, chaining, pipelines, and redirection.`,
       "PowerShell cannot start reliably inside the Windows restricted-token sandbox. Use shell=\"powershell\" only with sandbox_permissions=\"require_escalated\".",
       "Use shell=\"bash\" only for explicit POSIX commands; the bundled runtime provides an sh-compatible shell (POSIX sh syntax, not full Bash). Bash-specific features require a system Git Bash install.",
       "Avoid POSIX heredocs on Windows; use python -c or a temporary file instead.",

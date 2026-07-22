@@ -11,7 +11,12 @@ import {
   textResult,
 } from "./schema.ts";
 import { runExecCommandDirect, runExecCommandOnce, startExecCommandTty } from "./runner.ts";
-import { renderCommandForExecShell, renderCommandWithWorkdir, resolveExecShell } from "./shell.ts";
+import {
+  WIN32_DEFAULT_ONE_SHOT_SHELL,
+  renderCommandForExecShell,
+  renderCommandWithWorkdir,
+  resolveExecShell,
+} from "./shell.ts";
 
 export function createExecCommandTools({
   bashTool,
@@ -64,7 +69,7 @@ export function createExecCommandTools({
       },
     },
     parameters: Type.Object({
-      cmd: Type.String({ description: "Command to execute. On Windows this is PowerShell syntax unless shell is set." }),
+      cmd: Type.String({ description: "Command to execute in the session's default shell; see tool description for the platform default." }),
       workdir: Type.Optional(Type.String({ description: "Working directory. Defaults to the current session cwd." })),
       shell: Type.Optional(Type.String({ description: "Optional shell override: auto, powershell, pwsh, cmd, bash." })),
       tty: Type.Optional(Type.Boolean({ description: "Start an interactive PTY-backed process instead of a one-shot command." })),
@@ -88,14 +93,14 @@ export function createExecCommandTools({
       const classification = classifyExecCommand(value.cmd, { platform });
       if (classification.unsupportedSyntax) {
         return textResult(
-          "This command uses POSIX heredoc syntax, but Windows exec_command defaults to PowerShell. Use PowerShell syntax, python -c, or write a temporary script file instead.",
+          `This command uses POSIX heredoc syntax, but Windows exec_command defaults to ${WIN32_DEFAULT_ONE_SHOT_SHELL.display}. Use ${WIN32_DEFAULT_ONE_SHOT_SHELL.display} syntax, python -c, or write a temporary script file instead.`,
           {
             errorCode: classification.errorCode,
             execCommand: {
               ok: false,
               cmd: value.cmd,
               workdir: value.workdir,
-              shell: "powershell",
+              shell: WIN32_DEFAULT_ONE_SHOT_SHELL.family,
               platform,
               classification,
             },

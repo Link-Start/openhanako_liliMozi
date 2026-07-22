@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { renderCommandWithWorkdir, resolveExecShell } from "../lib/exec-command/shell.ts";
+import { WIN32_DEFAULT_ONE_SHOT_SHELL, renderCommandWithWorkdir, resolveExecShell } from "../lib/exec-command/shell.ts";
+import { execCommandDescription } from "../lib/exec-command/guidance.ts";
 import { createExecCommandTools } from "../lib/exec-command/tool.ts";
 import { resolveToolInvocationPermission } from "../lib/permission/tool-invocation-permission.ts";
 
@@ -277,5 +278,23 @@ describe("exec_command tools", () => {
     expect(resolveToolInvocationPermission(execCommandTool, {
       cmd: "python -c \"import sys\nprint(sys.version)\"",
     })).toMatchObject({ ok: true, source: "descriptor" });
+  });
+
+  it("describes the same default shell that resolveExecShell actually uses on win32", () => {
+    const [execCommandTool] = createExecCommandTools({
+      bashTool: { execute: vi.fn() },
+      getCwd: () => DEFAULT_TEST_CWD,
+      platform: "win32",
+    });
+
+    const resolved = resolveExecShell({ platform: "win32" });
+    const description = execCommandDescription({ platform: "win32" });
+    const cmdParamDescription = execCommandTool.parameters.properties.cmd.description;
+
+    expect(description).toContain(`default one-shot shell is ${WIN32_DEFAULT_ONE_SHOT_SHELL.display}`);
+    // Parameter description must be platform-neutral: no per-platform shell claim here,
+    // otherwise it becomes a second source of truth alongside the tool description.
+    expect(cmdParamDescription).not.toMatch(/PowerShell|cmd\.exe/);
+    expect(resolved.family).toBe(WIN32_DEFAULT_ONE_SHOT_SHELL.family);
   });
 });
