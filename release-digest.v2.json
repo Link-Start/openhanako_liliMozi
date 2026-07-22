@@ -3,10 +3,10 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.416.14",
-      "version": "0.416.14",
+      "tag": "v0.416.15",
+      "version": "0.416.15",
       "previousTag": "v0.416.4",
-      "generatedAt": "2026-07-22T05:09:23.000Z",
+      "generatedAt": "2026-07-22T05:32:35.000Z",
       "noUserFacingChanges": false,
       "summary": {
         "zh": "修复 Windows 受限执行环境无法启动命令的问题，并加强真实 Windows 发布校验，减少安装包发布后才发现沙箱不可用的风险。",
@@ -21,8 +21,8 @@
       "source": {
         "owner": "liliMozi",
         "repo": "openhanako",
-        "commitRange": "v0.416.4..v0.416.14",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.14",
+        "commitRange": "v0.416.4..v0.416.15",
+        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.15",
         "releaseNotes": ""
       },
       "items": [
@@ -35,71 +35,8 @@
             "en": "Windows sandbox commands start correctly"
           },
           "summary": {
-            "zh": "Windows 受限执行环境现在会保留进程初始化所需的最小权限和句柄契约，同时继续限制文件写入范围；发布流程会在真实 Windows 环境中先启动沙箱命令并跑完整测试。",
-            "en": "The restricted Windows environment now preserves the minimum privileges and handle contract needed for process initialization while keeping file writes scoped; releases verify a real sandboxed command and the full test suite on Windows."
-          },
-          "details": [],
-          "sources": [
-            {
-              "type": "commit",
-              "ref": "0899aef11",
-              "title": "fix(windows): let restricted children initialize"
-            },
-            {
-              "type": "commit",
-              "ref": "aa1762ac3",
-              "title": "fix(windows): use a private WinSta0 desktop"
-            },
-            {
-              "type": "commit",
-              "ref": "dca46c4eb",
-              "title": "fix(windows): make child stdio inheritable"
-            },
-            {
-              "type": "commit",
-              "ref": "1fe75665a",
-              "title": "fix(windows): complete restricted token initialization"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "schemaVersion": 1,
-      "tag": "v0.416.13",
-      "version": "0.416.13",
-      "previousTag": "v0.416.4",
-      "generatedAt": "2026-07-21T21:37:21.000Z",
-      "noUserFacingChanges": false,
-      "summary": {
-        "zh": "修复 Windows 受限执行环境无法启动命令的问题，并加强真实 Windows 发布校验，减少安装包发布后才发现沙箱不可用的风险。",
-        "en": "Fix command startup in the restricted Windows environment and strengthen real Windows release verification, reducing the risk of shipping an installer with an unusable sandbox."
-      },
-      "counts": {
-        "feature": 0,
-        "fix": 1,
-        "improvement": 0,
-        "migration": 0
-      },
-      "source": {
-        "owner": "liliMozi",
-        "repo": "openhanako",
-        "commitRange": "v0.416.4..v0.416.13",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.13",
-        "releaseNotes": ""
-      },
-      "items": [
-        {
-          "id": "windows-restricted-command-startup",
-          "kind": "fix",
-          "importance": "high",
-          "title": {
-            "zh": "Windows 沙箱命令恢复启动",
-            "en": "Windows sandbox commands start correctly"
-          },
-          "summary": {
-            "zh": "Windows 受限执行环境现在会保留进程初始化所需的最小权限和句柄契约，同时继续限制文件写入范围；发布流程会在真实 Windows 环境中先启动沙箱命令并跑完整测试。",
-            "en": "The restricted Windows environment now preserves the minimum privileges and handle contract needed for process initialization while keeping file writes scoped; releases verify a real sandboxed command and the full test suite on Windows."
+            "zh": "Windows 受限执行环境现在会保留进程初始化所需的最小权限和句柄契约，同时继续限制文件写入范围；默认 PowerShell 命令会使用兼容的系统运行时，发布流程也会在真实 Windows 环境中启动打包后的沙箱命令。",
+            "en": "The restricted Windows environment now preserves the minimum privileges and handle contract needed for process initialization while keeping file writes scoped; default PowerShell commands use the compatible inbox runtime, and releases start the packaged sandbox command on real Windows."
           },
           "details": [],
           "sources": [

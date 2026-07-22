@@ -844,7 +844,15 @@ function resolvePowerShellExecutable(token, env = process.env) {
   });
 }
 
-function resolveDefaultPowerShellExecutable(env = process.env) {
+function resolveDefaultPowerShellExecutable(env = process.env, {
+  sandboxed = false,
+}: { sandboxed?: boolean } = {}) {
+  // PowerShell 7 can remain alive indefinitely during startup under the
+  // restricted token/private desktop used by one-shot commands. The inbox
+  // Windows PowerShell runtime has a stable restricted-token startup path.
+  // Keep preferring pwsh for unsandboxed defaults, and preserve explicit
+  // `pwsh` requests through parsePowerShellCommand.
+  if (sandboxed) return resolvePowerShellExecutable("powershell.exe", env);
   return resolveWin32DefaultPowerShellExecutable(env, {
     resolveOnPath: (commandName) => firstPathResult(commandName, env),
     exists: existsSync,
@@ -865,14 +873,14 @@ function parsePowerShellCommand(command, env) {
   };
 }
 
-function parsePowerShellFileCommand(command, env) {
+function parsePowerShellFileCommand(command, env, options = {}) {
   const args = splitShellLikeArgs(command);
   const script = args[0] || "";
   if (!/\.ps1$/i.test(basenameRuntimePath(script))) {
     throw new Error(`[win32-exec] Internal error: PowerShell file runner received non-.ps1 command: ${command}`);
   }
   return {
-    executable: resolveDefaultPowerShellExecutable(env),
+    executable: resolveDefaultPowerShellExecutable(env, options),
     args: [
       ...powerShellBaseArgs(),
       "-Command",
@@ -881,9 +889,9 @@ function parsePowerShellFileCommand(command, env) {
   };
 }
 
-function parseDefaultPowerShellCommand(command, env) {
+function parseDefaultPowerShellCommand(command, env, options = {}) {
   return {
-    executable: resolveDefaultPowerShellExecutable(env),
+    executable: resolveDefaultPowerShellExecutable(env, options),
     args: [
       ...powerShellBaseArgs(),
       "-Command",
@@ -1358,11 +1366,12 @@ export function createWin32Exec({ sandbox = null } = {}) {
     }
 
     if (route.runner === "powershell" || route.runner === "powershell-file" || route.runner === "powershell-command") {
+      const powerShellOptions = { sandboxed: sandboxIsEnabled(sandbox) };
       const powerShellInfo = route.runner === "powershell"
         ? parsePowerShellCommand(command, shellEnv)
         : route.runner === "powershell-file"
-          ? parsePowerShellFileCommand(command, shellEnv)
-          : parseDefaultPowerShellCommand(command, shellEnv);
+          ? parsePowerShellFileCommand(command, shellEnv, powerShellOptions)
+          : parseDefaultPowerShellCommand(command, shellEnv, powerShellOptions);
 
       if (sandboxIsEnabled(sandbox)) {
         const helperPath = sandbox.helperPath || resolveWin32SandboxHelper({ env: shellEnv });

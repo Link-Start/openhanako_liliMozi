@@ -407,6 +407,53 @@ describe("createWin32Exec", () => {
     );
   });
 
+  it("uses inbox PowerShell for sandboxed default commands even when pwsh is installed", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "powershell-command", reason: "default-powershell" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    const pwshExe = "D:\\PowerShell\\7\\pwsh.exe";
+    const powerShellExe = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    existsSync.mockImplementation((candidate) => candidate === helper);
+    spawnSync.mockImplementation((command: any, args: any[]) => {
+      if (command === "where" && args[0] === "pwsh.exe") {
+        return { status: 0, stdout: `${pwshExe}\r\n`, stderr: "" };
+      }
+      if (command === pwshExe) {
+        return { status: 0, stdout: "7\r\n", stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "" };
+    });
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        grants: { readPaths: [], writePaths: ["C:\\work"] },
+      },
+    });
+
+    await exec("Write-Output 1", "C:\\work", {
+      onData: () => {},
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "D:\\PowerShell\\7;C:\\Windows\\System32", SystemRoot: "C:\\Windows" },
+    });
+
+    expect(spawnAndStream).toHaveBeenCalledWith(
+      helper,
+      expect.arrayContaining([
+        "--",
+        powerShellExe,
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        withPowerShellUtf8Prelude("Write-Output 1"),
+      ]),
+      expect.objectContaining({ cwd: "C:\\work" }),
+    );
+    expect(spawnAndStream.mock.calls[0][1]).not.toContain(pwshExe);
+  });
+
   it("routes batch scripts through cmd call without bash", async () => {
     classifyWin32Command.mockReturnValue({ runner: "cmd-script", reason: "cmd-script-file" });
     const createWin32Exec = await loadExecFactory();
