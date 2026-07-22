@@ -236,7 +236,7 @@ describe("createWin32Exec", () => {
     );
   });
 
-  it("redirects TEMP/TMP under the sandbox write root for every sandbox-helper launch", async () => {
+  it("promotes the Hana sandbox scratch root to a required writable-root for every sandbox-helper launch", async () => {
     classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "windows-native-utility" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     existsSync.mockImplementation((p) => p === helper);
@@ -244,6 +244,7 @@ describe("createWin32Exec", () => {
     const exec = createWin32Exec({
       sandbox: {
         helperPath: helper,
+        hanakoHome: "C:\\Users\\Hana\\.hanako",
         grants: {
           readPaths: [],
           writePaths: ["C:\\work", "C:\\other"],
@@ -258,16 +259,20 @@ describe("createWin32Exec", () => {
       env: { PATH: "C:\\Windows\\System32" },
     });
 
-    const expectedTempDir = "C:\\work\\hana-tmp";
-    expect(mkdirSync).toHaveBeenCalledWith(expectedTempDir, { recursive: true });
+    const envRoot = "C:\\Users\\Hana\\.hanako\\.ephemeral\\win32-sandbox-env";
+    const tempDir = `${envRoot}\\Temp`;
+    expect(mkdirSync).toHaveBeenCalledWith(envRoot, { recursive: true });
+    const helperArgs = spawnAndStream.mock.calls[0][1];
+    expect(helperArgs).toEqual(expect.arrayContaining(["--writable-root", envRoot]));
+    // The two policy-derived roots stay required roots too; the scratch root
+    // is appended, not substituted for them.
+    expect(helperArgs).toEqual(expect.arrayContaining(["--writable-root", "C:\\work"]));
+    expect(helperArgs).toEqual(expect.arrayContaining(["--writable-root", "C:\\other"]));
     const spawnOptions = spawnAndStream.mock.calls[0][2];
-    expect(spawnOptions.env).toEqual(expect.objectContaining({
-      TEMP: expectedTempDir,
-      TMP: expectedTempDir,
-    }));
+    expect(spawnOptions.env).toEqual(expect.objectContaining({ TEMP: tempDir, TMP: tempDir }));
   });
 
-  it("leaves TEMP/TMP untouched when the sandbox has no write root granted", async () => {
+  it("does not add a required writable-root when the sandbox has no hanakoHome", async () => {
     classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "windows-native-utility" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     existsSync.mockImplementation((p) => p === helper);
@@ -275,7 +280,7 @@ describe("createWin32Exec", () => {
     const exec = createWin32Exec({
       sandbox: {
         helperPath: helper,
-        grants: { readPaths: [], writePaths: [] },
+        grants: { readPaths: [], writePaths: ["C:\\work"] },
       },
     });
 
@@ -286,9 +291,13 @@ describe("createWin32Exec", () => {
       env: { PATH: "C:\\Windows\\System32", TEMP: "C:\\Users\\Hana\\AppData\\Local\\Temp" },
     });
 
+    const helperArgs = spawnAndStream.mock.calls[0][1];
+    expect(helperArgs).toEqual(expect.arrayContaining(["--writable-root", "C:\\work"]));
+    expect(helperArgs.filter((a: string) => a === "--writable-root")).toHaveLength(1);
     const spawnOptions = spawnAndStream.mock.calls[0][2];
+    // No hanakoHome means withWin32SandboxRuntimeEnv never redirects TEMP;
+    // only the UTF-8 defaults get layered on top of whatever was passed in.
     expect(spawnOptions.env.TEMP).toBe("C:\\Users\\Hana\\AppData\\Local\\Temp");
-    expect(mkdirSync).not.toHaveBeenCalledWith(expect.stringMatching(/hana-tmp/), expect.anything());
   });
 
   it("spawns direct cmd with windowsVerbatimArguments", async () => {
@@ -837,26 +846,27 @@ describe("createWin32Exec", () => {
     });
 
     const envRoot = "C:\\Users\\Hana\\.hanako\\.ephemeral\\win32-sandbox-env";
-    // TEMP/TMP land in the sandbox helper's write root (see the "redirects
-    // TEMP/TMP under the sandbox write root" test): that redirect runs later,
-    // inside spawnViaSandboxHelper, and takes precedence for every sandboxed
-    // launch so PowerShell's startup probe writes succeed too. LOCALAPPDATA /
-    // APPDATA / npm / pip caches are untouched by that redirect and still land
-    // in the hanakoHome-scoped scratch area set up earlier in the pipeline.
+    const tempDir = `${envRoot}\\Temp`;
     const localAppDataDir = `${envRoot}\\LocalAppData`;
     const appDataDir = `${envRoot}\\AppData\\Roaming`;
     const npmCacheDir = `${envRoot}\\npm-cache`;
     const pipCacheDir = `${envRoot}\\pip-cache`;
-    const sandboxTempDir = "C:\\work\\hana-tmp";
     const spawnOptions = spawnAndStream.mock.calls[0][2];
 
-    for (const dir of [`${envRoot}\\Temp`, localAppDataDir, appDataDir, npmCacheDir, pipCacheDir, sandboxTempDir]) {
+    for (const dir of [tempDir, localAppDataDir, appDataDir, npmCacheDir, pipCacheDir]) {
       expect(mkdirSync).toHaveBeenCalledWith(dir, { recursive: true });
     }
+    // envRoot itself is also created and promoted to a required writable-root
+    // (see the "promotes the Hana sandbox scratch root" test) so the
+    // write-restricted token can actually write the Temp/LocalAppData/AppData
+    // subdirectories underneath it.
+    expect(mkdirSync).toHaveBeenCalledWith(envRoot, { recursive: true });
+    const helperArgs = spawnAndStream.mock.calls[0][1];
+    expect(helperArgs).toEqual(expect.arrayContaining(["--writable-root", envRoot]));
     expect(spawnOptions.env).toEqual(expect.objectContaining({
       USERPROFILE: "C:\\Users\\Hana",
-      TEMP: sandboxTempDir,
-      TMP: sandboxTempDir,
+      TEMP: tempDir,
+      TMP: tempDir,
       LOCALAPPDATA: localAppDataDir,
       APPDATA: appDataDir,
       npm_config_cache: npmCacheDir,

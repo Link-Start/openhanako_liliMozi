@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:ba41f8a870e2e1cb3b02c3f5e8732b2fc7712a038a7e9fe8f58861c4dd0c4766",
+  "payloadFingerprint": "sha256:67901df5b73b32f1a2f029db2840727090fafdcf2f9ac3ab64ecee0fee9c8c2e",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2878,8 +2878,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "New discovered mkdirSync site for the sandboxed PowerShell TEMP redirect falls under the existing sandbox-win32-command-temp exemption; no persisted store or schema changed.",
-    "payloadFingerprint": "sha256:ba41f8a870e2e1cb3b02c3f5e8732b2fc7712a038a7e9fe8f58861c4dd0c4766"
+    "compatibilityReason": "Reverted the hana-tmp writable-root approach for sandboxed PowerShell TEMP redirect and promoted the existing hanakoHome scratch-area root as a required writable root instead; the discovered mkdirSync site under the sandbox-win32-command-temp exemption moved lines but no persisted store or schema changed.",
+    "payloadFingerprint": "sha256:67901df5b73b32f1a2f029db2840727090fafdcf2f9ac3ab64ecee0fee9c8c2e"
   },
   "schemas": [
     {
@@ -7636,7 +7636,7 @@
     {
       "exemptionId": "sandbox-win32-command-temp",
       "kind": "mkdir",
-      "line": 1209,
+      "line": 1208,
       "reason": "Writes a request-scoped Windows command wrapper outside persistent Hana state.",
       "sourceFile": "lib/sandbox/win32-exec.ts",
       "storeId": null

@@ -1182,32 +1182,33 @@ function cleanupRootsForSandboxGrants(grants) {
   ];
 }
 
-const WIN32_SANDBOX_TEMP_DIR_NAME = "hana-tmp";
-
 // A write-restricted token can only write inside the paths the sandbox
-// explicitly granted. The user's normal %TEMP% is not one of those paths, so
-// anything that writes there during startup fails. PowerShell is the clearest
-// case: it writes a small policy-probe script file to %TEMP% while starting
-// up to figure out whether an AppLocker-style script restriction applies, and
-// when that write is denied it falls back to Constrained Language Mode, which
-// breaks most one-shot commands. Other child processes (cmd builtins,
-// python's own temp files, …) hit the same wall for the same reason. Pointing
-// TEMP/TMP at a subdirectory inside the sandbox's own write root sidesteps
-// this for every process the helper launches, not just PowerShell.
-function sandboxTempDir(grants) {
-  const root = grants?.writePaths?.[0];
-  if (!root) return null;
-  return joinRuntimePath(root, WIN32_SANDBOX_TEMP_DIR_NAME);
+// explicitly granted. PowerShell writes a small policy-probe script file to
+// %TEMP% while starting up to figure out whether an AppLocker-style script
+// restriction applies; when that write is denied — the user's real %TEMP% is
+// not one of the granted paths — PowerShell falls back to Constrained
+// Language Mode, which breaks most one-shot commands. withWin32SandboxRuntimeEnv
+// (above) already points TEMP/TMP at <hanakoHome>/.ephemeral/win32-sandbox-env
+// for sandboxed sessions; this makes sure that directory is one of the
+// sandbox's *required* write roots. The restricted-token startup probe needs
+// a guaranteed write grant for this directory; an optional root does not
+// provide the same contract. This lets the token write there under every code
+// path, not just the ones that happen to also touch a required root for other
+// reasons.
+function win32SandboxEnvRoot(hanakoHome) {
+  if (!hanakoHome) return null;
+  return joinRuntimePath(hanakoHome, ".ephemeral", WIN32_SANDBOX_ENV_DIR);
 }
 
-function withSandboxTempEnv(env, grants) {
-  const tempDir = sandboxTempDir(grants);
-  // No write root granted means the sandbox has nowhere to write at all; that
-  // is an existing, intentional restriction, not something this redirect
-  // should paper over, so leave env untouched rather than inventing a path.
-  if (!tempDir) return env;
-  mkdirSync(tempDir, { recursive: true });
-  return { ...env, TEMP: tempDir, TMP: tempDir };
+function withSandboxEnvRootAsRequiredWritePath(grants, hanakoHome) {
+  const root = win32SandboxEnvRoot(hanakoHome);
+  // No hanakoHome means withWin32SandboxRuntimeEnv never redirected TEMP in
+  // the first place; nothing to promote to a required root here.
+  if (!root) return grants;
+  mkdirSync(root, { recursive: true });
+  const existingWritePaths = grants?.writePaths || [];
+  if (existingWritePaths.some((p) => String(p).toLowerCase() === root.toLowerCase())) return grants;
+  return { ...grants, writePaths: [...existingWritePaths, root] };
 }
 
 async function spawnViaSandboxHelper({
@@ -1230,8 +1231,7 @@ async function spawnViaSandboxHelper({
     );
   }
   assertSandboxNetworkSupported(sandbox);
-  const grants = grantsForSandbox(sandbox, cwd);
-  const spawnEnv = withSandboxTempEnv(env, grants);
+  const grants = withSandboxEnvRootAsRequiredWritePath(grantsForSandbox(sandbox, cwd), sandbox.hanakoHome);
   const nativeTimeoutMs = timeout == null || timeout <= 0
     ? 0
     : Math.min(Math.ceil(timeout * 1000), 0xFFFFFFFE);
@@ -1256,7 +1256,7 @@ async function spawnViaSandboxHelper({
     try {
       result = await spawnAndStream(helper, helperArgs, {
         cwd,
-        env: spawnEnv,
+        env,
         onData,
         onStdout: onData,
         onStderr: (data) => stderrFilter.push(data),
@@ -1300,7 +1300,8 @@ async function spawnViaSandboxHelper({
 
 // ── 沙盒 PowerShell 启动探针 ──
 //
-// Even with TEMP redirected (see withSandboxTempEnv above), a PowerShell build
+// Even with TEMP redirected (see withWin32SandboxRuntimeEnv and
+// withSandboxEnvRootAsRequiredWritePath above), a PowerShell build
 // or a machine policy this codebase hasn't seen yet could still fail the same
 // way. Rather than trust that in the dark, the first sandboxed PowerShell
 // command for a given executable in this process runs a tiny scripted probe
