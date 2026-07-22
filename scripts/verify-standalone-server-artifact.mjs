@@ -232,13 +232,11 @@ export function runRestrictedTokenHelperSmoke({
   for (const dir of spec.runtimeDirs || []) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  const sandboxResult = spawnSyncImpl(spec.helperPath, spec.args, {
-    cwd: workDir,
-    env: spec.env,
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 45_000,
-  });
+  const sandboxResult = spawnSyncImpl(
+    spec.helperPath,
+    spec.args,
+    restrictedTokenSmokeSpawnOptions({ cwd: workDir, env: spec.env, timeout: 45_000 }),
+  );
   if (sandboxResult.error || sandboxResult.status !== 0) {
     throw new Error(
       "[verify-standalone] restricted-token sandbox smoke failed"
@@ -270,13 +268,11 @@ export function runRestrictedTokenHelperSmoke({
     throw new Error("[verify-standalone] restricted-token sandbox wrote inside an explicit deny-write path");
   }
 
-  const powerShellResult = spawnSyncImpl(spec.helperPath, spec.powerShellArgs, {
-    cwd: workDir,
-    env: spec.env,
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 25_000,
-  });
+  const powerShellResult = spawnSyncImpl(
+    spec.helperPath,
+    spec.powerShellArgs,
+    restrictedTokenSmokeSpawnOptions({ cwd: workDir, env: spec.env, timeout: 25_000 }),
+  );
   if (powerShellResult.error || powerShellResult.status !== 0) {
     throw new Error(
       "[verify-standalone] restricted-token PowerShell smoke failed"
@@ -299,6 +295,20 @@ export function runRestrictedTokenHelperSmoke({
     );
   }
   return spec;
+}
+
+export function restrictedTokenSmokeSpawnOptions({ cwd, env, timeout }) {
+  return {
+    cwd,
+    env,
+    encoding: "utf8",
+    windowsHide: true,
+    // Production one-shot execution gives the helper a closed stdin. Keep the
+    // smoke on the same contract: Windows PowerShell 5.1 may wait indefinitely
+    // for an inherited pipe whose writer stays open in the intermediary parent.
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout,
+  };
 }
 
 export function standaloneExecCommandSmokeSpec({ layoutRoot, workDir, hanaHome, env = process.env }) {

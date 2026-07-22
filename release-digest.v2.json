@@ -3,10 +3,10 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.416.24",
-      "version": "0.416.24",
+      "tag": "v0.416.25",
+      "version": "0.416.25",
       "previousTag": "v0.416.4",
-      "generatedAt": "2026-07-22T09:09:12.000Z",
+      "generatedAt": "2026-07-22T09:27:13.000Z",
       "noUserFacingChanges": false,
       "summary": {
         "zh": "修复 Windows 受限执行环境无法启动命令的问题，并加强真实 Windows 发布校验，减少安装包发布后才发现沙箱不可用的风险。",
@@ -21,8 +21,8 @@
       "source": {
         "owner": "liliMozi",
         "repo": "openhanako",
-        "commitRange": "v0.416.4..v0.416.24",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.24",
+        "commitRange": "v0.416.4..v0.416.25",
+        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.25",
         "releaseNotes": ""
       },
       "items": [
@@ -35,8 +35,8 @@
             "en": "Windows sandbox commands start correctly"
           },
           "summary": {
-            "zh": "Windows 受限执行环境现在会保留进程初始化所需的最小权限和句柄契约，同时继续限制文件写入范围；PowerShell 会使用兼容其内部管道的子对象权限、显式 Unicode 环境和原子 Job 归属直接启动，发布流程也会在真实 Windows 环境中启动打包后的沙箱命令。",
-            "en": "The restricted Windows environment now preserves the minimum privileges and handle contract needed for process initialization while keeping file writes scoped; PowerShell starts directly with child-object permissions compatible with its internal pipelines, an explicit Unicode environment, and atomic Job membership, and releases start the packaged sandbox command on real Windows."
+            "zh": "Windows 受限执行环境现在会保留进程初始化所需的最小权限和句柄契约，同时继续限制文件写入范围；PowerShell 会使用兼容其内部管道的子对象权限、显式 Unicode 环境和原子 Job 归属直接启动，发布校验也会关闭一次性命令的标准输入，并在真实 Windows 环境中启动打包后的沙箱命令。",
+            "en": "The restricted Windows environment now preserves the minimum privileges and handle contract needed for process initialization while keeping file writes scoped; PowerShell starts directly with child-object permissions compatible with its internal pipelines, an explicit Unicode environment, and atomic Job membership, while release verification closes one-shot command stdin and starts the packaged sandbox command on real Windows."
           },
           "details": [],
           "sources": [

@@ -5,7 +5,10 @@ import {
   smokeWindowsSandboxHelper,
   windowsSandboxHelperPath,
 } from "../scripts/smoke-windows-sandbox-helper.mjs";
-import { standaloneRestrictedTokenSmokeSpec } from "../scripts/verify-standalone-server-artifact.mjs";
+import {
+  restrictedTokenSmokeSpawnOptions,
+  standaloneRestrictedTokenSmokeSpec,
+} from "../scripts/verify-standalone-server-artifact.mjs";
 
 describe("Windows sandbox helper CI smoke", () => {
   it("resolves the helper produced by the native helper build", () => {
@@ -44,5 +47,17 @@ describe("Windows sandbox helper CI smoke", () => {
     expect(spec.powerShellArgs).toContain("-EncodedCommand");
     const decodedCommand = Buffer.from(spec.powerShellArgs.at(-1) || "", "base64").toString("utf16le");
     expect(decodedCommand).toContain("HANA_RESTRICTED_POWERSHELL_OK");
+  });
+
+  it("keeps restricted helper smoke stdin closed like production one-shot execution", () => {
+    expect(restrictedTokenSmokeSpawnOptions({
+      cwd: "C:\\smoke\\work",
+      env: { SystemRoot: "C:\\Windows" },
+      timeout: 25_000,
+    })).toMatchObject({
+      cwd: "C:\\smoke\\work",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 25_000,
+    });
   });
 });
