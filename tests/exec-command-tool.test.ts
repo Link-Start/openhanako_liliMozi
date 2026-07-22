@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { renderCommandWithWorkdir, resolveExecShell } from "../lib/exec-command/shell.ts";
 import { createExecCommandTools } from "../lib/exec-command/tool.ts";
+import { resolveToolInvocationPermission } from "../lib/permission/tool-invocation-permission.ts";
 
 const DEFAULT_TEST_CWD = "/tmp/work";
 
@@ -258,5 +259,23 @@ describe("exec_command tools", () => {
       errorCode: "EXEC_COMMAND_POSIX_SYNTAX_ON_WINDOWS",
       execCommand: { ok: false },
     });
+  });
+
+  it("resolves invocation for multiline cmd strings", () => {
+    const [execCommandTool] = createExecCommandTools({
+      bashTool: { execute: vi.fn() },
+      getCwd: () => DEFAULT_TEST_CWD,
+      isOneShotSandboxEnforced: () => true,
+      platform: "linux",
+    });
+
+    const invocation = execCommandTool.sessionPermission.resolveInvocation({
+      cmd: "python -c \"import sys\nprint(sys.version)\"",
+    });
+
+    expect(invocation).not.toBeNull();
+    expect(resolveToolInvocationPermission(execCommandTool, {
+      cmd: "python -c \"import sys\nprint(sys.version)\"",
+    })).toMatchObject({ ok: true, source: "descriptor" });
   });
 });

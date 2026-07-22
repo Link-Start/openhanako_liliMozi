@@ -299,6 +299,20 @@ function hasControlCharacters(value: string) {
   return false;
 }
 
+// sideEffect string values are command/output text, not identity tokens: \t \n \r
+// are bounded whitespace that legitimately appears in multiline command payloads.
+// Every other C0 control character (including 0x1B ESC, used for ANSI/terminal
+// injection) and 0x7F stay rejected. normalizeStableString (action/capability/
+// target ids) must not be relaxed the same way, so it keeps hasControlCharacters.
+function hasDisallowedSideEffectControlCharacters(value: string) {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x09 || code === 0x0a || code === 0x0d) continue;
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 function containsWildcard(value: string) {
   return value.includes("*") || value.includes("?");
 }
@@ -331,7 +345,7 @@ function normalizeSideEffectValue(value: unknown, depth: number, count: number):
       : { ok: false, reason: "invalid_side_effect" };
   }
   if (typeof value === "string") {
-    return value.length <= MAX_SIDE_EFFECT_STRING_LENGTH && !hasControlCharacters(value)
+    return value.length <= MAX_SIDE_EFFECT_STRING_LENGTH && !hasDisallowedSideEffectControlCharacters(value)
       ? { ok: true, value, count: count + 1 }
       : { ok: false, reason: "invalid_side_effect" };
   }

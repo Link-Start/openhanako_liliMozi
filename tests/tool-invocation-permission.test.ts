@@ -23,6 +23,21 @@ function resolveDescriptor(tool: Record<string, unknown>, input: unknown) {
   return result;
 }
 
+function resolveInvocationForTest({ sideEffect }: { sideEffect: Record<string, unknown> }) {
+  const tool = {
+    name: "side_effect_probe",
+    sessionPermission: {
+      resolveInvocation: () => ({
+        action: "run",
+        kind: "review",
+        capability: "side_effect_probe.run",
+        sideEffect,
+      }),
+    },
+  };
+  return resolveToolInvocationPermission(tool, {});
+}
+
 describe("tool invocation permission contract", () => {
   it("snapshots bounded plain JSON without evaluating accessors", () => {
     const getter = vi.fn(() => "secret");
@@ -270,6 +285,20 @@ describe("tool invocation permission contract", () => {
     };
 
     expect(resolveDescriptor(tool, {}).descriptor.capability).toBe("send.deliver");
+  });
+
+  it("accepts sideEffect strings containing newlines and tabs", () => {
+    const result = resolveInvocationForTest({
+      sideEffect: { kind: "command", command: "python - <<'EOF'\nprint(1)\nEOF\t# done" },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("still rejects sideEffect strings containing ESC and other control characters", () => {
+    const result = resolveInvocationForTest({
+      sideEffect: { kind: "command", command: "echo \x1b[31mred" },
+    });
+    expect(result.ok).toBe(false);
   });
 
   it("does not expose resolver exceptions and rejects control characters in targets", () => {
