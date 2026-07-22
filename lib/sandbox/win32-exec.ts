@@ -1386,8 +1386,8 @@ export function createWin32Exec({ sandbox = null } = {}) {
       if (sandboxIsEnabled(sandbox)) {
         const error: any = new Error(
           "[win32-sandbox] PowerShell cannot run reliably inside the Windows restricted-token sandbox. "
-          + "Use a cmd.exe-compatible command, or retry explicit PowerShell with "
-          + "sandbox_permissions=\"require_escalated\".",
+          + "Rerun it with sandbox_permissions=\"require_escalated\" and a one-sentence justification; "
+          + "the user reviews it before it runs unsandboxed.",
         );
         error.code = "HANA_WIN32_SANDBOX_POWERSHELL_UNSUPPORTED";
         error.runner = route.runner;

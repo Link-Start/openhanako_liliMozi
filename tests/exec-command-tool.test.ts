@@ -352,4 +352,15 @@ describe("exec_command tools", () => {
     expect(cmdParamDescription).not.toMatch(/PowerShell|cmd\.exe/);
     expect(resolved.family).toBe(WIN32_DEFAULT_ONE_SHOT_SHELL.family);
   });
+
+  it("guides the model to retry sandbox-blocked commands with require_escalated and a justification", () => {
+    const description = execCommandDescription({ platform: "win32" });
+
+    expect(description).toContain(
+      "rerun it with sandbox_permissions=\"require_escalated\" and a one-sentence justification",
+    );
+    expect(description).not.toContain(
+      "only when the command genuinely needs reviewed network-capable execution",
+    );
+  });
 });
