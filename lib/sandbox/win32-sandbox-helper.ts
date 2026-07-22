@@ -122,6 +122,7 @@ export function buildWin32SandboxHelperArgs({
   cwd,
   timeoutMs = 0,
   desktopMode = "private",
+  verbatimLastArg = false,
   grants = {},
   executable,
   args = [],
@@ -129,6 +130,7 @@ export function buildWin32SandboxHelperArgs({
   cwd?: string;
   timeoutMs?: number;
   desktopMode?: "private" | "current";
+  verbatimLastArg?: boolean;
   grants?: Record<string, any>;
   executable?: string;
   args?: string[];
@@ -144,6 +146,10 @@ export function buildWin32SandboxHelperArgs({
 
   const out = ["--cwd", cwd];
   if (desktopMode === "current") out.push("--current-desktop");
+  if (verbatimLastArg) {
+    if (!args.length) throw new Error("win32 sandbox helper verbatimLastArg requires at least one child argument");
+    out.push("--verbatim-last-arg");
+  }
   for (const p of grants.writePaths || []) out.push("--writable-root", p);
   for (const p of grants.optionalWritePaths || []) out.push("--writable-root-optional", p);
   for (const p of grants.denyWritePaths || []) out.push("--deny-write", p);

@@ -210,6 +210,24 @@ describe("buildWin32SandboxHelperArgs", () => {
     })).toThrow(/desktopMode/);
   });
 
+  it("preserves a caller-owned cmd command tail only when explicitly requested", () => {
+    expect(buildWin32SandboxHelperArgs({
+      cwd: "C:\\work",
+      timeoutMs: 5000,
+      verbatimLastArg: true,
+      executable: "C:\\Windows\\System32\\cmd.exe",
+      args: ["/d", "/s", "/c", '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -EncodedCommand AAA='],
+    })).toContain("--verbatim-last-arg");
+
+    expect(() => buildWin32SandboxHelperArgs({
+      cwd: "C:\\work",
+      timeoutMs: 5000,
+      verbatimLastArg: true,
+      executable: "C:\\Windows\\System32\\cmd.exe",
+      args: [],
+    })).toThrow(/verbatimLastArg requires at least one child argument/);
+  });
+
   it("parses the last versioned native terminal record without confusing exit 124 with timeout", () => {
     const output = [
       "child output",

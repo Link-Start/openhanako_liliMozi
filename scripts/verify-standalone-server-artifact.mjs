@@ -188,6 +188,10 @@ export function standaloneRestrictedTokenSmokeSpec({
     "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
     + "$OutputEncoding = [Console]::OutputEncoding; "
     + "Write-Output HANA_RESTRICTED_POWERSHELL_OK";
+  const encodedPowerShellCommand = Buffer.from(powerShellCommand, "utf16le").toString("base64");
+  const powerShellViaCmd =
+    `"${powerShellPath}" -NoLogo -NoProfile -NonInteractive `
+    + `-ExecutionPolicy Bypass -EncodedCommand ${encodedPowerShellCommand}`;
   return {
     helperPath,
     markerPath: path.win32.join(workDir, markerFileName),
@@ -207,18 +211,13 @@ export function standaloneRestrictedTokenSmokeSpec({
     ],
     powerShellArgs: [
       "--cwd", workDir,
-      "--current-desktop",
+      "--verbatim-last-arg",
       "--writable-root", workDir,
       "--timeout-ms", "15000",
       "--",
-      powerShellPath,
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      powerShellCommand,
+      smokeEnv.ComSpec,
+      "/d", "/s", "/c",
+      powerShellViaCmd,
     ],
   };
 }

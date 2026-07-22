@@ -100,6 +100,20 @@ describe("Windows sandbox helper build script", () => {
     expect(runSandboxed).toContain('if (prelaunchDesktopProbe != L"ok")');
   });
 
+  it("preserves an explicitly owned final cmd argument without generic argv escaping", () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
+      "utf8"
+    );
+    const buildCommandLine = source.match(
+      /static std::wstring buildCommandLine\([\s\S]*?\n\}/
+    )?.[0] || "";
+
+    expect(source).toContain('--verbatim-last-arg');
+    expect(buildCommandLine).toContain("opts.verbatimLastArg && i + 1 == opts.args.size()");
+    expect(buildCommandLine).toContain("command += opts.args[i]");
+  });
+
   it("uses system cryptographic randomness for each private desktop name", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),

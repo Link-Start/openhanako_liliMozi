@@ -50,6 +50,7 @@ struct Options {
     bool cleanupLegacyAcl = false;
     bool diagnoseToken = false;
     bool currentDesktop = false;
+    bool verbatimLastArg = false;
     std::wstring executable;
     std::vector<std::wstring> args;
 };
@@ -409,6 +410,11 @@ static Options parseArgs(int argc, wchar_t** argv) {
             opts.currentDesktop = true;
             continue;
         }
+        if (arg == L"--verbatim-last-arg") {
+            if (opts.verbatimLastArg) throw std::runtime_error("duplicate --verbatim-last-arg");
+            opts.verbatimLastArg = true;
+            continue;
+        }
         if (arg == L"--network" || arg == L"--grant-read" || arg == L"--grant-read-optional" ||
             arg == L"--grant-write" || arg == L"--grant-write-optional" || arg == L"--deny-read") {
             throw std::runtime_error("legacy AppContainer helper argument is no longer supported");
@@ -422,7 +428,7 @@ static Options parseArgs(int argc, wchar_t** argv) {
         !opts.legacyProfileCleanupNames.empty() ||
         opts.cleanupLegacyAcl;
     if (maintenanceMode) {
-        if (!opts.cwd.empty() || !opts.executable.empty() || !opts.writableRoots.empty() || !opts.denyWritePaths.empty() || opts.diagnoseToken || opts.currentDesktop || opts.timeoutSpecified || opts.superviseServer || opts.parentPidSpecified) {
+        if (!opts.cwd.empty() || !opts.executable.empty() || !opts.writableRoots.empty() || !opts.denyWritePaths.empty() || opts.diagnoseToken || opts.currentDesktop || opts.verbatimLastArg || opts.timeoutSpecified || opts.superviseServer || opts.parentPidSpecified) {
             throw std::runtime_error("maintenance arguments cannot be combined with sandbox execution arguments");
         }
         return opts;
@@ -431,7 +437,7 @@ static Options parseArgs(int argc, wchar_t** argv) {
         if (!opts.parentPidSpecified) throw std::runtime_error("missing --parent-pid");
         if (opts.cwd.empty()) throw std::runtime_error("missing --cwd");
         if (opts.executable.empty()) throw std::runtime_error("missing executable after --");
-        if (opts.timeoutSpecified || !opts.writableRoots.empty() || !opts.denyWritePaths.empty() || opts.diagnoseToken || opts.currentDesktop) {
+        if (opts.timeoutSpecified || !opts.writableRoots.empty() || !opts.denyWritePaths.empty() || opts.diagnoseToken || opts.currentDesktop || opts.verbatimLastArg) {
             throw std::runtime_error("server guardian arguments cannot be combined with sandbox execution arguments");
         }
         return opts;
@@ -440,6 +446,9 @@ static Options parseArgs(int argc, wchar_t** argv) {
     if (opts.cwd.empty()) throw std::runtime_error("missing --cwd");
     if (!opts.timeoutSpecified) throw std::runtime_error("missing --timeout-ms");
     if (opts.executable.empty()) throw std::runtime_error("missing executable after --");
+    if (opts.verbatimLastArg && opts.args.empty()) {
+        throw std::runtime_error("--verbatim-last-arg requires at least one child argument");
+    }
     if (opts.writableRoots.empty()) opts.writableRoots.push_back({ opts.cwd, true });
     return opts;
 }
@@ -473,9 +482,13 @@ static std::wstring quoteArg(const std::wstring& arg) {
 
 static std::wstring buildCommandLine(const Options& opts) {
     std::wstring command = quoteArg(opts.executable);
-    for (const auto& arg : opts.args) {
+    for (size_t i = 0; i < opts.args.size(); i++) {
         command.push_back(L' ');
-        command += quoteArg(arg);
+        if (opts.verbatimLastArg && i + 1 == opts.args.size()) {
+            command += opts.args[i];
+        } else {
+            command += quoteArg(opts.args[i]);
+        }
     }
     return command;
 }

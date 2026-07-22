@@ -844,6 +844,35 @@ function powerShellArgsWithUtf8Prelude(args) {
   return args;
 }
 
+function powerShellArgsForRestrictedCmdProxy(args) {
+  if (args.some(isPowerShellEncodedCommandFlag)) return args;
+
+  const commandIndex = args.findIndex(isPowerShellCommandFlag);
+  if (commandIndex < 0 || commandIndex + 1 >= args.length) return args;
+
+  const next = [...args];
+  next.splice(
+    commandIndex,
+    2,
+    "-EncodedCommand",
+    Buffer.from(String(args[commandIndex + 1]), "utf16le").toString("base64"),
+  );
+  return next;
+}
+
+function restrictedPowerShellCmdProxy(powerShellInfo, env) {
+  const executable = resolveWin32CmdExecutable(env);
+  const powerShellArgs = powerShellArgsForRestrictedCmdProxy(powerShellInfo.args);
+  const command = [
+    quoteCmdArg(powerShellInfo.executable, { always: true }),
+    ...powerShellArgs.map((arg) => quoteCmdArg(arg)),
+  ].join(" ");
+  return {
+    executable,
+    args: cmdArgsForCommand(command),
+  };
+}
+
 function resolvePowerShellExecutable(token, env = process.env) {
   return resolveWin32PowerShellExecutable(token, env, {
     resolveOnPath: (commandName) => firstPathResult(commandName, env),
@@ -1194,6 +1223,7 @@ async function spawnViaSandboxHelper({
   signal,
   timeout,
   desktopMode = "private",
+  verbatimLastArg = false,
 }) {
   const helper = sandbox.helperPath || resolveWin32SandboxHelper({ env });
   if (!helper) {
@@ -1211,6 +1241,7 @@ async function spawnViaSandboxHelper({
     cwd,
     timeoutMs: nativeTimeoutMs,
     desktopMode,
+    verbatimLastArg,
     grants,
     executable,
     args,
@@ -1392,11 +1423,18 @@ export function createWin32Exec({ sandbox = null } = {}) {
 
       if (sandboxIsEnabled(sandbox)) {
         const helperPath = sandbox.helperPath || resolveWin32SandboxHelper({ env: shellEnv });
+        // Windows PowerShell can remain stuck during its own initialization when
+        // it is the direct CreateProcessAsUser target. Start the already-supported
+        // cmd.exe under the restricted token, then let it create PowerShell as a
+        // normal child. The child inherits the same token, private desktop, stdio,
+        // environment, and kill-on-close Job. Encode the script so cmd.exe never
+        // interprets PowerShell metacharacters.
+        const cmdProxy = restrictedPowerShellCmdProxy(powerShellInfo, shellEnv);
         return runWithWin32Diagnostics({
           route,
           mode: "sandbox-helper",
-          executable: powerShellInfo.executable,
-          args: powerShellInfo.args,
+          executable: cmdProxy.executable,
+          args: cmdProxy.args,
           cwd,
           env: shellEnv,
           onData,
@@ -1404,18 +1442,18 @@ export function createWin32Exec({ sandbox = null } = {}) {
           sandbox,
           run: (diagnosticOnData) => spawnViaSandboxHelper({
             sandbox,
-            executable: powerShellInfo.executable,
-            args: powerShellInfo.args,
+            executable: cmdProxy.executable,
+            args: cmdProxy.args,
             cwd,
             env: shellEnv,
             onData: diagnosticOnData,
             signal,
             timeout,
-            // CreateProcessAsUser does not attach a null lpDesktop to the helper's
-            // current desktop. PowerShell needs that desktop named explicitly for
-            // runtime initialization; the restricted token, file ACLs, and Job
-            // remain the authorization and process-lifetime boundaries.
-            desktopMode: "current",
+            desktopMode: "private",
+            // cmd.exe consumes the command after /c from its raw command line.
+            // Preserve that final argument so the quoted PowerShell executable
+            // is not rewritten into literal backslash-quote sequences.
+            verbatimLastArg: true,
           }),
         });
       }

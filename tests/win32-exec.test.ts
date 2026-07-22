@@ -407,7 +407,7 @@ describe("createWin32Exec", () => {
     );
   });
 
-  it("uses inbox PowerShell for sandboxed default commands even when pwsh is installed", async () => {
+  it("starts inbox PowerShell through restricted cmd.exe without exposing script metacharacters to cmd", async () => {
     classifyWin32Command.mockReturnValue({ runner: "powershell-command", reason: "default-powershell" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     const pwshExe = "D:\\PowerShell\\7\\pwsh.exe";
@@ -440,22 +440,26 @@ describe("createWin32Exec", () => {
     expect(spawnAndStream).toHaveBeenCalledWith(
       helper,
       expect.arrayContaining([
-        "--current-desktop",
+        "--verbatim-last-arg",
         "--",
-        powerShellExe,
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        withPowerShellUtf8Prelude("Write-Output 1"),
+        systemCmdExe,
+        "/d",
+        "/s",
+        "/c",
       ]),
       expect.objectContaining({ cwd: "C:\\work" }),
     );
-    expect(spawnAndStream.mock.calls[0][1]).not.toContain(pwshExe);
-    expect(spawnAndStream.mock.calls[0][1].indexOf("--current-desktop"))
-      .toBeLessThan(spawnAndStream.mock.calls[0][1].indexOf("--"));
+    const helperArgs = spawnAndStream.mock.calls[0][1];
+    const cmdCommand = helperArgs.at(-1);
+    const encoded = Buffer.from(
+      withPowerShellUtf8Prelude("Write-Output 1"),
+      "utf16le",
+    ).toString("base64");
+    expect(helperArgs).not.toContain("--current-desktop");
+    expect(cmdCommand).toContain(`"${powerShellExe}"`);
+    expect(cmdCommand).toContain(`-EncodedCommand ${encoded}`);
+    expect(cmdCommand).not.toContain("Write-Output 1");
+    expect(cmdCommand).not.toContain(pwshExe);
   });
 
   it("routes batch scripts through cmd call without bash", async () => {

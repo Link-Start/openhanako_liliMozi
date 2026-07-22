@@ -25,7 +25,7 @@ describe("Windows sandbox helper CI smoke", () => {
     })).toThrow(/helper is missing/);
   });
 
-  it("runs PowerShell through the restricted helper on the explicitly named current desktop", () => {
+  it("runs PowerShell as a child of restricted cmd.exe on the private desktop", () => {
     const spec = standaloneRestrictedTokenSmokeSpec({
       layoutRoot: "C:\\HanaCore",
       workDir: "C:\\smoke\\work",
@@ -35,11 +35,14 @@ describe("Windows sandbox helper CI smoke", () => {
     });
 
     expect(spec.env.HANA_WIN32_SANDBOX_DEBUG).toBe("1");
-    expect(spec.powerShellArgs).toContain("--current-desktop");
-    expect(spec.powerShellArgs).toContain(
-      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    expect(spec.powerShellArgs).not.toContain("--current-desktop");
+    expect(spec.powerShellArgs).toContain("--verbatim-last-arg");
+    expect(spec.powerShellArgs).toContain("C:\\Windows\\System32\\cmd.exe");
+    expect(spec.powerShellArgs).toContain("/c");
+    expect(spec.powerShellArgs.at(-1)).toContain(
+      '"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
     );
-    expect(spec.powerShellArgs).toContain("-NonInteractive");
-    expect(spec.powerShellArgs.at(-1)).toContain("HANA_RESTRICTED_POWERSHELL_OK");
+    expect(spec.powerShellArgs.at(-1)).toContain("-EncodedCommand");
+    expect(spec.powerShellArgs.at(-1)).not.toContain("HANA_RESTRICTED_POWERSHELL_OK");
   });
 });

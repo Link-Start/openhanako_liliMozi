@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.416.18",
-  "version": "0.416.18",
+  "tag": "v0.416.19",
+  "version": "0.416.19",
   "previousTag": "v0.416.4",
-  "generatedAt": "2026-07-22T06:58:43.000Z",
+  "generatedAt": "2026-07-22T07:25:46.000Z",
   "noUserFacingChanges": false,
   "summary": {
     "zh": "修复 Windows 受限执行环境无法启动命令的问题，并加强真实 Windows 发布校验，减少安装包发布后才发现沙箱不可用的风险。",
@@ -18,8 +18,8 @@
   "source": {
     "owner": "liliMozi",
     "repo": "openhanako",
-    "commitRange": "v0.416.4..v0.416.18",
-    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.18",
+    "commitRange": "v0.416.4..v0.416.19",
+    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.19",
     "releaseNotes": ""
   },
   "items": [
@@ -32,8 +32,8 @@
         "en": "Windows sandbox commands start correctly"
       },
       "summary": {
-        "zh": "Windows 受限执行环境现在会保留进程初始化所需的最小权限和句柄契约，同时继续限制文件写入范围；默认 PowerShell 命令会使用系统运行时、非交互模式，并明确连接到 helper 当前桌面，发布流程也会在真实 Windows 环境中启动打包后的沙箱命令。",
-        "en": "The restricted Windows environment now preserves the minimum privileges and handle contract needed for process initialization while keeping file writes scoped; default PowerShell commands use the inbox runtime, non-interactive mode, and an explicitly named current helper desktop, and releases start the packaged sandbox command on real Windows."
+        "zh": "Windows 受限执行环境现在会保留进程初始化所需的最小权限和句柄契约，同时继续限制文件写入范围；默认 PowerShell 命令会由受限的系统 cmd 进程安全转发，并以编码脚本避免跨 shell 解析，发布流程也会在真实 Windows 环境中启动打包后的沙箱命令。",
+        "en": "The restricted Windows environment now preserves the minimum privileges and handle contract needed for process initialization while keeping file writes scoped; default PowerShell commands are safely proxied by a restricted system cmd process with encoded scripts to avoid cross-shell parsing, and releases start the packaged sandbox command on real Windows."
       },
       "details": [],
       "sources": [
