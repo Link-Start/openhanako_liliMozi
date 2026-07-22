@@ -173,7 +173,7 @@ export function classifyWin32Command(command, { resolveNativePath = defaultResol
   const baseName = getTokenBaseName(token);
   const hasComplexSyntax = hasComplexShellSyntax(normalizedCommand);
 
-  if (!token) return { runner: "cmd", reason: "empty" };
+  if (!token) return { runner: "powershell-command", reason: "empty" };
   if (EXPLICIT_CMD_SHELLS.has(lower) || EXPLICIT_CMD_SHELLS.has(baseName)) {
     return { runner: "cmd", reason: "explicit-cmd-shell" };
   }
@@ -200,7 +200,7 @@ export function classifyWin32Command(command, { resolveNativePath = defaultResol
   }
 
   return {
-    runner: "cmd",
-    reason: hasComplexSyntax ? "default-cmd-complex" : "default-cmd",
+    runner: "powershell-command",
+    reason: hasComplexSyntax ? "default-powershell-complex" : "default-powershell",
   };
 }

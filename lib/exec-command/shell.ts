@@ -10,13 +10,15 @@ export interface ResolvedExecShell {
 }
 
 // Single source of truth for the Windows one-shot default shell: guidance text,
-// the tool description, and heredoc rejection wording all derive from this
-// constant instead of hardcoding a shell name that can drift out of sync with
-// what resolveExecShell's auto branch actually runs.
+// the tool description, heredoc rejection wording, and resolveExecShell's auto
+// branch (including its diagnostic `label`) all derive from this constant
+// instead of hardcoding a shell name that can drift out of sync with what
+// actually runs.
 export const WIN32_DEFAULT_ONE_SHOT_SHELL = Object.freeze({
-  family: "cmd" as ExecShellFamily,          // flip to "powershell" when restoring PowerShell as default
-  display: "cmd.exe",
-  syntaxHint: "On Windows this is cmd.exe syntax unless shell is set.",
+  family: "powershell" as ExecShellFamily,
+  display: "PowerShell",
+  label: "powershell",
+  syntaxHint: "On Windows this is PowerShell syntax unless shell is set.",
 });
 
 function normalizeShell(value: any) {
@@ -46,7 +48,7 @@ export function resolveExecShell({
     if (normalized !== "auto") {
       return { requested: normalized, family: "auto", label: normalized, explicit };
     }
-    return { requested: "auto", family: WIN32_DEFAULT_ONE_SHOT_SHELL.family, label: "cmd", explicit: false };
+    return { requested: "auto", family: WIN32_DEFAULT_ONE_SHOT_SHELL.family, label: WIN32_DEFAULT_ONE_SHOT_SHELL.label, explicit: false };
   }
   if (normalized !== "auto" && normalized !== "bash") {
     return { requested: normalized, family: "posix", label: normalized, explicit };

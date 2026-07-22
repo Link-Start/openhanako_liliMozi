@@ -144,6 +144,26 @@ export function sandboxRuntimeCacheRoot(hanakoHome) {
   return joinRuntimePath(hanakoHome, ".ephemeral", CACHE_DIR);
 }
 
+// Per-executable, in-process cache of whether a sandboxed PowerShell startup
+// probe succeeded. Keyed by resolved executable path so pwsh and Windows
+// PowerShell 5.1 are probed and cached independently; populated the first
+// time a sandboxed PowerShell command reaches spawnViaSandboxHelper for that
+// executable, so later commands in the same process skip the probe entirely.
+const sandboxPowerShellProbeCache = new Map<string, "ok" | "unsupported">();
+
+export function getSandboxPowerShellProbeResult(executable: string) {
+  return sandboxPowerShellProbeCache.get(normalizeForCompare(executable)) ?? null;
+}
+
+export function setSandboxPowerShellProbeResult(executable: string, result: "ok" | "unsupported") {
+  sandboxPowerShellProbeCache.set(normalizeForCompare(executable), result);
+}
+
+// Test-only: clear cached probe verdicts between cases.
+export function resetSandboxPowerShellProbeCacheForTests() {
+  sandboxPowerShellProbeCache.clear();
+}
+
 export function prepareSandboxRuntime(runtimeInfo, { hanakoHome, kind }) {
   if (!runtimeInfo) return runtimeInfo;
   const sourceRoot = runtimeSourceRoot(runtimeInfo);

@@ -1,8 +1,14 @@
 import path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const spawnAndStream = vi.fn<(...args: any[]) => Promise<{ exitCode: number }>>(async (cmd, _args, opts) => {
+const spawnAndStream = vi.fn<(...args: any[]) => Promise<{ exitCode: number }>>(async (cmd, args, opts) => {
   if (/hana-win-sandbox\.exe$/i.test(String(cmd))) {
+    // The sandboxed PowerShell startup probe always succeeds by default so
+    // tests that don't care about probing can exercise the actual command;
+    // tests that specifically exercise probe failure override this per-case.
+    if (Array.isArray(args) && args.includes("[Console]::Out.Write('ok')")) {
+      opts?.onStdout?.(Buffer.from("ok"));
+    }
     opts?.onStderr?.(Buffer.from(
       'hana-win-sandbox: terminal-v1 status="exited" exitCode="0" timeoutMs="5000" win32Error="0"\n'
     ));
@@ -11,6 +17,12 @@ const spawnAndStream = vi.fn<(...args: any[]) => Promise<{ exitCode: number }>>(
 });
 const classifyWin32Command = vi.fn();
 const prepareSandboxRuntime = vi.fn<(...args: any[]) => any>((runtimeInfo) => runtimeInfo);
+const sandboxPowerShellProbeCache = new Map<string, "ok" | "unsupported">();
+const getSandboxPowerShellProbeResult = vi.fn((executable: string) =>
+  sandboxPowerShellProbeCache.get(String(executable).toLowerCase()) ?? null);
+const setSandboxPowerShellProbeResult = vi.fn((executable: string, result: "ok" | "unsupported") => {
+  sandboxPowerShellProbeCache.set(String(executable).toLowerCase(), result);
+});
 const existsSync = vi.fn<(...args: any[]) => boolean>(() => false);
 const mkdirSync = vi.fn();
 const statSync = vi.fn<(...args: any[]) => any>(() => ({ isDirectory: () => true }));
@@ -32,6 +44,8 @@ vi.mock("../lib/sandbox/win32-command-router.js", () => ({
 
 vi.mock("../lib/sandbox/win32-runtime-cache.js", () => ({
   prepareSandboxRuntime,
+  getSandboxPowerShellProbeResult,
+  setSandboxPowerShellProbeResult,
 }));
 
 vi.mock("fs", () => ({
@@ -53,6 +67,7 @@ describe("createWin32Exec", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    sandboxPowerShellProbeCache.clear();
     prepareSandboxRuntime.mockImplementation((runtimeInfo) => runtimeInfo);
     existsSync.mockReturnValue(false);
     mkdirSync.mockImplementation(() => undefined);
@@ -518,7 +533,39 @@ describe("createWin32Exec", () => {
     );
   });
 
-  it("fails fast for PowerShell inside the restricted-token sandbox", async () => {
+  it("routes sandboxed default PowerShell commands through the helper after a passing startup probe", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "powershell-command", reason: "default-powershell" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    const powerShellExe = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    existsSync.mockImplementation((candidate) => candidate === helper);
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        grants: { readPaths: [], writePaths: ["C:\\work"] },
+      },
+    });
+
+    await exec("Write-Output 1", "C:\\work", {
+      onData: () => {},
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32", SystemRoot: "C:\\Windows" },
+    });
+
+    expect(spawnAndStream).toHaveBeenCalledTimes(2);
+    const probeArgs = spawnAndStream.mock.calls[0][1];
+    expect(probeArgs).toEqual(expect.arrayContaining([
+      "--", powerShellExe, "-NoProfile", "-NonInteractive", "-Command", "[Console]::Out.Write('ok')",
+    ]));
+    const commandArgs = spawnAndStream.mock.calls[1][1];
+    expect(commandArgs).toEqual(expect.arrayContaining([
+      "--", powerShellExe, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+      "-Command", withPowerShellUtf8Prelude("Write-Output 1"),
+    ]));
+  });
+
+  it("caches a passing sandboxed PowerShell probe across repeated commands", async () => {
     classifyWin32Command.mockReturnValue({ runner: "powershell-command", reason: "default-powershell" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     existsSync.mockImplementation((candidate) => candidate === helper);
@@ -529,26 +576,57 @@ describe("createWin32Exec", () => {
         grants: { readPaths: [], writePaths: ["C:\\work"] },
       },
     });
-
-    await expect(exec("Write-Output 1", "C:\\work", {
+    const opts = {
       onData: () => {},
       signal: undefined,
       timeout: 5,
       env: { PATH: "C:\\Windows\\System32", SystemRoot: "C:\\Windows" },
-    })).rejects.toMatchObject({
-      code: "HANA_WIN32_SANDBOX_POWERSHELL_UNSUPPORTED",
-      runner: "powershell-command",
-      message: expect.stringContaining('sandbox_permissions="require_escalated"'),
-    });
-    expect(spawnAndStream).not.toHaveBeenCalled();
-    expect(spawnSync).not.toHaveBeenCalled();
+    };
+
+    await exec("Write-Output 1", "C:\\work", opts);
+    await exec("Write-Output 2", "C:\\work", opts);
+
+    // One probe call plus one command call per exec, and the second exec's
+    // probe is skipped entirely because the first exec already cached "ok".
+    expect(spawnAndStream).toHaveBeenCalledTimes(3);
   });
 
-  it("also fails fast for explicit PowerShell executables in the restricted-token sandbox", async () => {
+  it("probes the explicitly requested PowerShell executable before running it in the sandbox", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "powershell", reason: "explicit-powershell-shell" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    const powerShellExe = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    existsSync.mockImplementation((candidate) => candidate === helper);
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        grants: { readPaths: [], writePaths: ["C:\\work"] },
+      },
+    });
+
+    await exec('powershell -Command "Write-Output 1"', "C:\\work", {
+      onData: () => {},
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32", SystemRoot: "C:\\Windows" },
+    });
+
+    expect(spawnAndStream).toHaveBeenCalledTimes(2);
+    expect(spawnAndStream.mock.calls[0][1]).toEqual(expect.arrayContaining([powerShellExe]));
+    expect(spawnAndStream.mock.calls[1][1]).toEqual(expect.arrayContaining([powerShellExe]));
+  });
+
+  it("fails fast when the explicitly requested PowerShell executable fails its sandboxed startup probe", async () => {
     classifyWin32Command.mockReturnValue({ runner: "powershell", reason: "explicit-powershell-shell" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     const configuredPowerShell = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
     existsSync.mockImplementation((candidate) => candidate === helper);
+    spawnAndStream.mockImplementation(async (cmd, args, opts) => {
+      opts?.onStderr?.(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="1" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 1 };
+    });
     const createWin32Exec = await loadExecFactory();
     const exec = createWin32Exec({
       sandbox: {
@@ -568,9 +646,106 @@ describe("createWin32Exec", () => {
       },
     })).rejects.toMatchObject({
       code: "HANA_WIN32_SANDBOX_POWERSHELL_UNSUPPORTED",
-      runner: "powershell",
+      message: expect.stringContaining('sandbox_permissions="require_escalated"'),
     });
-    expect(spawnAndStream).not.toHaveBeenCalled();
+    // Only the probe ran; the explicitly requested shell never got a chance
+    // to silently swap to a different PowerShell executable.
+    expect(spawnAndStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back from pwsh to Windows PowerShell 5.1 when the sandboxed pwsh probe fails", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "powershell-command", reason: "default-powershell" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    const pwshExe = "D:\\PowerShell\\7\\pwsh.exe";
+    const legacyExe = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    existsSync.mockImplementation((candidate) => candidate === helper);
+    spawnSync.mockImplementation((command: any, args: any[]) => {
+      if (command === "where" && args[0] === "pwsh.exe") {
+        return { status: 0, stdout: `${pwshExe}\r\n`, stderr: "" };
+      }
+      if (command === pwshExe) {
+        return { status: 0, stdout: "7\r\n", stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "" };
+    });
+    spawnAndStream.mockImplementation(async (cmd, args, opts) => {
+      if (!/hana-win-sandbox\.exe$/i.test(String(cmd))) return { exitCode: 0 };
+      const isProbe = Array.isArray(args) && args.includes("[Console]::Out.Write('ok')");
+      const targetsPwsh = Array.isArray(args) && args.includes(pwshExe);
+      if (isProbe && targetsPwsh) {
+        opts?.onStderr?.(Buffer.from(
+          'hana-win-sandbox: terminal-v1 status="exited" exitCode="1" timeoutMs="5000" win32Error="0"\n'
+        ));
+        return { exitCode: 1 };
+      }
+      if (isProbe) opts?.onStdout?.(Buffer.from("ok"));
+      opts?.onStderr?.(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="0" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 0 };
+    });
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        grants: { readPaths: [], writePaths: ["C:\\work"] },
+      },
+    });
+
+    await exec("Write-Output 1", "C:\\work", {
+      onData: () => {},
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "D:\\PowerShell\\7;C:\\Windows\\System32", SystemRoot: "C:\\Windows" },
+    });
+
+    // pwsh probe (failed), legacy probe (passed), then the actual command on legacy.
+    expect(spawnAndStream).toHaveBeenCalledTimes(3);
+    const commandArgs = spawnAndStream.mock.calls[2][1];
+    expect(commandArgs).toEqual(expect.arrayContaining(["--", legacyExe]));
+  });
+
+  it("fails fast when both pwsh and Windows PowerShell 5.1 fail the sandboxed startup probe", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "powershell-command", reason: "default-powershell" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    const pwshExe = "D:\\PowerShell\\7\\pwsh.exe";
+    existsSync.mockImplementation((candidate) => candidate === helper);
+    spawnSync.mockImplementation((command: any, args: any[]) => {
+      if (command === "where" && args[0] === "pwsh.exe") {
+        return { status: 0, stdout: `${pwshExe}\r\n`, stderr: "" };
+      }
+      if (command === pwshExe) {
+        return { status: 0, stdout: "7\r\n", stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "" };
+    });
+    spawnAndStream.mockImplementation(async (cmd, _args, opts) => {
+      if (!/hana-win-sandbox\.exe$/i.test(String(cmd))) return { exitCode: 0 };
+      opts?.onStderr?.(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="1" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 1 };
+    });
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        grants: { readPaths: [], writePaths: ["C:\\work"] },
+      },
+    });
+
+    await expect(exec("Write-Output 1", "C:\\work", {
+      onData: () => {},
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "D:\\PowerShell\\7;C:\\Windows\\System32", SystemRoot: "C:\\Windows" },
+    })).rejects.toMatchObject({
+      code: "HANA_WIN32_SANDBOX_POWERSHELL_UNSUPPORTED",
+      message: expect.stringContaining('sandbox_permissions="require_escalated"'),
+    });
+    // pwsh probe, then legacy probe; both fail, route fails fast without
+    // silently falling back to cmd.
+    expect(spawnAndStream).toHaveBeenCalledTimes(2);
   });
 
   it("routes batch scripts through cmd call without bash", async () => {
@@ -1772,10 +1947,16 @@ describe("createWin32Exec", () => {
     expect(diagnostic).not.toContain("payload.bin");
   });
 
-  it("does not spawn or emit process diagnostics for unsupported sandboxed PowerShell", async () => {
+  it("does not leak the startup probe's own output into the caller's stream for unsupported sandboxed PowerShell", async () => {
     classifyWin32Command.mockReturnValue({ runner: "powershell", reason: "explicit-powershell-shell" });
     const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
     existsSync.mockImplementation((p) => p === helper);
+    spawnAndStream.mockImplementation(async (cmd, _args, opts) => {
+      opts?.onStderr?.(Buffer.from(
+        'hana-win-sandbox: terminal-v1 status="exited" exitCode="1" timeoutMs="5000" win32Error="0"\n'
+      ));
+      return { exitCode: 1 };
+    });
     const chunks = [];
     const createWin32Exec = await loadExecFactory();
     const exec = createWin32Exec({
@@ -1799,8 +1980,10 @@ describe("createWin32Exec", () => {
       },
     })).rejects.toMatchObject({ code: "HANA_WIN32_SANDBOX_POWERSHELL_UNSUPPORTED" });
 
+    // The probe ran (and failed) but the caller's own onData never saw any
+    // of the probe's internal stdio; the failed command itself never spawned.
     expect(chunks).toEqual([]);
-    expect(spawnAndStream).not.toHaveBeenCalled();
+    expect(spawnAndStream).toHaveBeenCalledTimes(1);
   });
 
   it("does not pass network capability flags for restricted-token sandboxed commands", async () => {

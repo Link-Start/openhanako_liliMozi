@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:95c729d8e4b3989fd12c15d0ccf4d784dedb2d1d533aba55fd8a1b7f48c08c38",
+  "payloadFingerprint": "sha256:ba41f8a870e2e1cb3b02c3f5e8732b2fc7712a038a7e9fe8f58861c4dd0c4766",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2878,8 +2878,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "recall_experience gains a tool-owned read permission descriptor; experience Markdown store schemas, paths, ownership, and data epoch are unchanged.",
-    "payloadFingerprint": "sha256:95c729d8e4b3989fd12c15d0ccf4d784dedb2d1d533aba55fd8a1b7f48c08c38"
+    "compatibilityReason": "New discovered mkdirSync site for the sandboxed PowerShell TEMP redirect falls under the existing sandbox-win32-command-temp exemption; no persisted store or schema changed.",
+    "payloadFingerprint": "sha256:ba41f8a870e2e1cb3b02c3f5e8732b2fc7712a038a7e9fe8f58861c4dd0c4766"
   },
   "schemas": [
     {
@@ -7628,7 +7628,15 @@
     {
       "exemptionId": "sandbox-win32-command-temp",
       "kind": "mkdir",
-      "line": 526,
+      "line": 530,
+      "reason": "Writes a request-scoped Windows command wrapper outside persistent Hana state.",
+      "sourceFile": "lib/sandbox/win32-exec.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "sandbox-win32-command-temp",
+      "kind": "mkdir",
+      "line": 1209,
       "reason": "Writes a request-scoped Windows command wrapper outside persistent Hana state.",
       "sourceFile": "lib/sandbox/win32-exec.ts",
       "storeId": null

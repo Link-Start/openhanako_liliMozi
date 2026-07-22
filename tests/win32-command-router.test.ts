@@ -36,9 +36,9 @@ describe("classifyWin32Command", () => {
     );
   });
 
-  it("keeps POSIX-shaped find expressions on the default cmd path", () => {
+  it("keeps POSIX-shaped find expressions on the default powershell path", () => {
     expect(classifyWin32Command('find . -name "*.txt"', { resolveNativePath })).toEqual(
-      expect.objectContaining({ runner: "cmd", reason: "default-cmd" })
+      expect.objectContaining({ runner: "powershell-command", reason: "default-powershell" })
     );
   });
 
@@ -88,24 +88,24 @@ describe("classifyWin32Command", () => {
     expect(classifyWin32Command('node -e \\"console.log(process.version);\\"', { resolveNativePath }).runner).toBe("node");
   });
 
-  it("runs shell-shaped Python commands through the default cmd shell", () => {
+  it("runs shell-shaped Python commands through the default powershell shell", () => {
     expect(classifyWin32Command("python script.py > out.txt", { resolveNativePath })).toEqual(
-      expect.objectContaining({ runner: "cmd", reason: "default-cmd-complex" })
+      expect.objectContaining({ runner: "powershell-command", reason: "default-powershell-complex" })
     );
   });
 
-  it("runs shell-shaped Node commands through the default cmd shell", () => {
+  it("runs shell-shaped Node commands through the default powershell shell", () => {
     expect(classifyWin32Command("node server.js > out.txt", { resolveNativePath })).toEqual(
-      expect.objectContaining({ runner: "cmd", reason: "default-cmd-complex" })
+      expect.objectContaining({ runner: "powershell-command", reason: "default-powershell-complex" })
     );
   });
 
-  it("defaults unknown or complex Windows commands to cmd", () => {
+  it("defaults unknown or complex Windows commands to powershell", () => {
     expect(classifyWin32Command("tool --version", { resolveNativePath })).toEqual(
-      expect.objectContaining({ runner: "cmd", reason: "default-cmd" })
+      expect.objectContaining({ runner: "powershell-command", reason: "default-powershell" })
     );
     expect(classifyWin32Command("ls && pwd", { resolveNativePath })).toEqual(
-      expect.objectContaining({ runner: "cmd", reason: "default-cmd-complex" })
+      expect.objectContaining({ runner: "powershell-command", reason: "default-powershell-complex" })
     );
   });
 });

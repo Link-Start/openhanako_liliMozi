@@ -7030,9 +7030,18 @@
     },
     {
       "sourceFile": "lib/sandbox/win32-exec.ts",
-      "line": 526,
+      "line": 530,
       "kind": "mkdir",
       "excerpt": "mkdirSync(dir, { recursive: true })",
+      "reason": "Writes a request-scoped Windows command wrapper outside persistent Hana state.",
+      "storeId": null,
+      "exemptionId": "sandbox-win32-command-temp"
+    },
+    {
+      "sourceFile": "lib/sandbox/win32-exec.ts",
+      "line": 1209,
+      "kind": "mkdir",
+      "excerpt": "mkdirSync(tempDir, { recursive: true })",
       "reason": "Writes a request-scoped Windows command wrapper outside persistent Hana state.",
       "storeId": null,
       "exemptionId": "sandbox-win32-command-temp"

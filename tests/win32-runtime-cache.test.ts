@@ -3,8 +3,11 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  getSandboxPowerShellProbeResult,
   prepareSandboxRuntime,
+  resetSandboxPowerShellProbeCacheForTests,
   sandboxRuntimeCacheRoot,
+  setSandboxPowerShellProbeResult,
 } from "../lib/sandbox/win32-runtime-cache.ts";
 
 const tempRoots = [];
@@ -101,5 +104,32 @@ describe("win32 sandbox runtime cache", () => {
 
     expect(second).toEqual(first);
     expect(fs.statSync(marker).mtimeMs).toBe(markerBefore);
+  });
+});
+
+describe("sandbox PowerShell startup probe cache", () => {
+  afterEach(() => {
+    resetSandboxPowerShellProbeCacheForTests();
+  });
+
+  it("returns null for an executable that has not been probed yet", () => {
+    expect(getSandboxPowerShellProbeResult("C:\\Program Files\\PowerShell\\7\\pwsh.exe")).toBeNull();
+  });
+
+  it("caches a probe verdict per executable path independently", () => {
+    const pwsh = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+    const legacy = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+
+    setSandboxPowerShellProbeResult(pwsh, "unsupported");
+    setSandboxPowerShellProbeResult(legacy, "ok");
+
+    expect(getSandboxPowerShellProbeResult(pwsh)).toBe("unsupported");
+    expect(getSandboxPowerShellProbeResult(legacy)).toBe("ok");
+  });
+
+  it("is case-insensitive on Windows-style paths", () => {
+    const executable = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+    setSandboxPowerShellProbeResult(executable, "ok");
+    expect(getSandboxPowerShellProbeResult(executable.toUpperCase())).toBe("ok");
   });
 });

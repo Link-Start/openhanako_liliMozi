@@ -5,10 +5,10 @@ import { renderCommandForExecShell, renderCommandWithWorkdir, resolveExecShell }
 import { checkCommandExecutionAccess } from "../lib/sandbox/tool-wrapper.ts";
 
 describe("exec_command policy and shell rendering", () => {
-  it("describes cmd as the Windows default and requires escalation for PowerShell", () => {
+  it("describes PowerShell as the Windows default and requires escalation when sandboxing blocks a command", () => {
     const description = execCommandDescription({ platform: "win32" });
-    expect(description).toContain("default one-shot shell is cmd.exe");
-    expect(description).toContain('shell="powershell"');
+    expect(description).toContain("default one-shot shell is PowerShell");
+    expect(description).toContain('shell="cmd"');
     expect(description).toContain('sandbox_permissions="require_escalated"');
   });
 
@@ -35,7 +35,7 @@ describe("exec_command policy and shell rendering", () => {
 
   it("keeps Windows auto shell raw and wraps explicit shell overrides", () => {
     const auto = resolveExecShell({ platform: "win32" });
-    expect(auto).toMatchObject({ family: "cmd", label: "cmd", explicit: false });
+    expect(auto).toMatchObject({ family: "powershell", label: "powershell", explicit: false });
     expect(renderCommandForExecShell("dir", auto, { platform: "win32" })).toBe("dir");
 
     const cmd = resolveExecShell({ shell: "cmd", platform: "win32" });
@@ -57,12 +57,12 @@ describe("exec_command policy and shell rendering", () => {
       platform: "win32",
     })).toBe("Set-Location -LiteralPath 'C:\\work\\repo'; Get-ChildItem");
 
-    const cmd = resolveExecShell({ platform: "win32" });
-    expect(renderCommandWithWorkdir("dir", cmd, {
+    const auto = resolveExecShell({ platform: "win32" });
+    expect(renderCommandWithWorkdir("dir", auto, {
       workdir: "C:\\work\\repo",
       defaultCwd: "C:\\work",
       platform: "win32",
-    })).toBe('cd /d "C:\\work\\repo" && dir');
+    })).toBe("Set-Location -LiteralPath 'C:\\work\\repo'; dir");
 
     const posix = resolveExecShell({ platform: "linux" });
     expect(renderCommandWithWorkdir("pwd", posix, {
