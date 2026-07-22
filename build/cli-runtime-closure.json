@@ -5084,11 +5084,16 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "lib/exec-command/guidance.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/exec-command/tool.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/exec-command/tool.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/exec-command/guidance.ts (import-statement); lib/exec-command/tool.ts (import-statement)."
     },
     {
       "path": "lib/exec-command/tool.ts",
