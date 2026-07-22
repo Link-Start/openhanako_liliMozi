@@ -2,6 +2,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  AUTO_ROUTED_POWERSHELL_COMMAND,
+  EXPLICIT_PWSH_COMMAND,
+  NODE_MULTILINE_COMMAND,
+  PYTHON_MULTILINE_COMMAND,
+  QUOTED_REGISTRY_QUERY_COMMAND,
+  smokeMultilineCommand,
+  smokeQuotedRegistryQuery,
+  smokeSandboxedPowerShell,
   smokeWindowsSandboxHelper,
   windowsSandboxHelperPath,
 } from "../scripts/smoke-windows-sandbox-helper.mjs";
@@ -54,5 +62,38 @@ describe("Windows sandbox helper CI smoke", () => {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 25_000,
     });
+  });
+
+  it("fails explicitly outside a Windows runner for the quoted registry query case", async () => {
+    await expect(smokeQuotedRegistryQuery({ platform: "darwin" }))
+      .rejects.toThrow(/requires a Windows runner/);
+  });
+
+  it("fails explicitly outside a Windows runner for the multiline command case", async () => {
+    await expect(smokeMultilineCommand({ platform: "darwin" }))
+      .rejects.toThrow(/requires a Windows runner/);
+  });
+
+  it("fails explicitly outside a Windows runner for the sandboxed PowerShell case", async () => {
+    await expect(smokeSandboxedPowerShell({ platform: "darwin" }))
+      .rejects.toThrow(/requires a Windows runner/);
+  });
+
+  it("carries an embedded double-quoted registry path in the quoted-quote case", () => {
+    expect(QUOTED_REGISTRY_QUERY_COMMAND).toContain('"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"');
+    expect(QUOTED_REGISTRY_QUERY_COMMAND.startsWith("reg query ")).toBe(true);
+  });
+
+  it("carries a real embedded newline in both multiline command shapes", () => {
+    expect(PYTHON_MULTILINE_COMMAND).toContain("\n");
+    expect(PYTHON_MULTILINE_COMMAND.startsWith("python -c ")).toBe(true);
+    expect(NODE_MULTILINE_COMMAND).toContain("\n");
+    expect(NODE_MULTILINE_COMMAND.startsWith("node -e ")).toBe(true);
+  });
+
+  it("names PS-OK as the sandboxed PowerShell success marker for both routes", () => {
+    expect(AUTO_ROUTED_POWERSHELL_COMMAND).toBe("Write-Output PS-OK");
+    expect(EXPLICIT_PWSH_COMMAND.startsWith("pwsh ")).toBe(true);
+    expect(EXPLICIT_PWSH_COMMAND).toContain("PS-OK");
   });
 });
