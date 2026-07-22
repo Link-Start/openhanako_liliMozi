@@ -27,6 +27,9 @@ const EXIT_STDIO_GRACE_MS = 100;
  * @param {number} [opts.timeoutErrorValue] timeout 错误里报告的业务秒数
  * @param {'tree'|'process'} [opts.killMode] process 只终止直接子进程；用于持有私有 Job 的 helper
  * @param {number} [opts.exitStdioGraceMs] 直接子进程退出后等待 stdio 收尾的上限
+ * @param {boolean} [opts.windowsVerbatimArguments] Windows: 不再对 args 做 MSVCRT 转义重建，
+ *   原样拼接。调用方（如 win32-exec 的 cmd 路径）已经手工构造好完整的 /c 载荷字符串，
+ *   Node 默认的转义规则会破坏内嵌引号；仅在调用方已知 args 是最终字面量时传 true。
  * @returns {Promise<{exitCode: number|null}>}
  */
 export function spawnAndStream(cmd, args, {
@@ -40,6 +43,7 @@ export function spawnAndStream(cmd, args, {
   timeoutErrorValue = timeout,
   killMode = "tree",
   exitStdioGraceMs = EXIT_STDIO_GRACE_MS,
+  windowsVerbatimArguments = false,
 }) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -50,6 +54,7 @@ export function spawnAndStream(cmd, args, {
       // Windows 的 killTree 用 taskkill，不依赖进程组，所以不需要 detached。
       detached: process.platform !== "win32",
       windowsHide: true,
+      windowsVerbatimArguments,
       stdio: ["ignore", "pipe", "pipe"],
     });
 

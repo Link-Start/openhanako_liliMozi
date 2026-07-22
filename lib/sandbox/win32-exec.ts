@@ -911,7 +911,9 @@ function cmdScriptCommand(command) {
 }
 
 function cmdArgsForCommand(command) {
-  return ["/d", "/s", "/c", `chcp 65001 >NUL & ${command}`];
+  // /s 会剥掉整段的首尾引号；外层引号由此处补上，两条执行路径都必须
+  // verbatim 传递本数组，任何一层再做 MSVCRT 转义都会破坏 cmd 解析。
+  return ["/d", "/s", "/c", `"chcp 65001 >NUL & ${command}"`];
 }
 
 function sandboxIsEnabled(sandbox) {
@@ -1303,6 +1305,7 @@ export function createWin32Exec({ sandbox = null } = {}) {
             onData: diagnosticOnData,
             signal,
             timeout,
+            verbatimLastArg: true,
           }),
         });
       }
@@ -1323,6 +1326,7 @@ export function createWin32Exec({ sandbox = null } = {}) {
           onData: diagnosticOnData,
           signal,
           timeout,
+          windowsVerbatimArguments: true,
         }),
       });
     }
@@ -1352,6 +1356,7 @@ export function createWin32Exec({ sandbox = null } = {}) {
             onData: diagnosticOnData,
             signal,
             timeout,
+            verbatimLastArg: true,
           }),
         });
       }
@@ -1372,6 +1377,7 @@ export function createWin32Exec({ sandbox = null } = {}) {
           onData: diagnosticOnData,
           signal,
           timeout,
+          windowsVerbatimArguments: true,
         }),
       });
     }

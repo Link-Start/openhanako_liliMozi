@@ -74,9 +74,10 @@ describe("createWin32Exec", () => {
 
     expect(spawnAndStream).toHaveBeenCalledWith(
       systemCmdExe,
-      ["/d", "/s", "/c", "chcp 65001 >NUL & ipconfig /all"],
+      ["/d", "/s", "/c", '"chcp 65001 >NUL & ipconfig /all"'],
       expect.objectContaining({
         cwd: "C:\\work",
+        windowsVerbatimArguments: true,
         env: expect.objectContaining({
           PYTHONUTF8: "1",
           PYTHONIOENCODING: "utf-8",
@@ -124,8 +125,9 @@ describe("createWin32Exec", () => {
 
     expect(spawnAndStream).toHaveBeenCalledWith(
       systemCmdExe,
-      ["/d", "/s", "/c", "chcp 65001 >NUL & type sample.txt"],
+      ["/d", "/s", "/c", '"chcp 65001 >NUL & type sample.txt"'],
       expect.objectContaining({
+        windowsVerbatimArguments: true,
         env: expect.objectContaining({
           PYTHONUTF8: "0",
           PYTHONIOENCODING: "utf-8",
@@ -158,6 +160,7 @@ describe("createWin32Exec", () => {
 
     const helperArgs = spawnAndStream.mock.calls[0][1];
     expect(helperArgs).toEqual(expect.arrayContaining([
+      "--verbatim-last-arg",
       "--timeout-ms",
       "5000",
       "--",
@@ -165,7 +168,7 @@ describe("createWin32Exec", () => {
       "/d",
       "/s",
       "/c",
-      'chcp 65001 >NUL & findstr /N "Hello" sample.txt',
+      '"chcp 65001 >NUL & findstr /N "Hello" sample.txt"',
     ]));
     expect(spawnAndStream).toHaveBeenCalledWith(
       helper,
@@ -181,6 +184,59 @@ describe("createWin32Exec", () => {
           PYTHONIOENCODING: "utf-8",
         }),
       })
+    );
+  });
+
+  it("passes embedded double quotes through the sandbox helper verbatim", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "windows-native-utility" });
+    const helper = "C:\\Hanako\\resources\\sandbox\\windows\\hana-win-sandbox.exe";
+    existsSync.mockImplementation((p) => p === helper);
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec({
+      sandbox: {
+        helperPath: helper,
+        grants: {
+          readPaths: [],
+          writePaths: ["C:\\work"],
+        },
+      },
+    });
+
+    await exec(
+      'reg query "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\ICM" /s',
+      "C:\\work",
+      {
+        onData: () => {},
+        signal: undefined,
+        timeout: 5,
+        env: { PATH: "C:\\Windows\\System32" },
+      },
+    );
+
+    const helperArgs = spawnAndStream.mock.calls[0][1];
+    expect(helperArgs).toContain("--verbatim-last-arg");
+    const last = helperArgs[helperArgs.length - 1];
+    expect(last).toBe(
+      '"chcp 65001 >NUL & reg query "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\ICM" /s"',
+    );
+  });
+
+  it("spawns direct cmd with windowsVerbatimArguments", async () => {
+    classifyWin32Command.mockReturnValue({ runner: "cmd", reason: "cmd-builtin" });
+    const createWin32Exec = await loadExecFactory();
+    const exec = createWin32Exec();
+
+    await exec('echo "a b"', "C:\\work", {
+      onData: () => {},
+      signal: undefined,
+      timeout: 5,
+      env: { PATH: "C:\\Windows\\System32" },
+    });
+
+    expect(spawnAndStream).toHaveBeenCalledWith(
+      systemCmdExe,
+      ["/d", "/s", "/c", '"chcp 65001 >NUL & echo "a b""'],
+      expect.objectContaining({ windowsVerbatimArguments: true }),
     );
   });
 
@@ -476,8 +532,8 @@ describe("createWin32Exec", () => {
 
     expect(spawnAndStream).toHaveBeenCalledWith(
       systemCmdExe,
-      ["/d", "/s", "/c", "chcp 65001 >NUL & call C:\\work\\run-tests.bat --fast"],
-      expect.objectContaining({ cwd: "C:\\work" })
+      ["/d", "/s", "/c", '"chcp 65001 >NUL & call C:\\work\\run-tests.bat --fast"'],
+      expect.objectContaining({ cwd: "C:\\work", windowsVerbatimArguments: true })
     );
   });
 
@@ -506,12 +562,13 @@ describe("createWin32Exec", () => {
     expect(spawnAndStream).toHaveBeenCalledWith(
       helper,
       expect.arrayContaining([
+        "--verbatim-last-arg",
         "--",
         "C:\\Windows\\System32\\cmd.exe",
         "/d",
         "/s",
         "/c",
-        "chcp 65001 >NUL & call .tmp\\sandbox-smoke\\test-bat.bat",
+        '"chcp 65001 >NUL & call .tmp\\sandbox-smoke\\test-bat.bat"',
       ]),
       expect.objectContaining({ cwd: "C:\\work" })
     );
